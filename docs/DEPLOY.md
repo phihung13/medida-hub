@@ -111,15 +111,18 @@ Máy không có SMTP nên quản lý tài khoản là admin-driven. Lần đầu
   trước khi deploy (`git remote add origin <url-private>` — remote `upstream` đang trỏ
   Postiz gốc, chỉ để pull update, KHÔNG push lên đó).
 
-## 8. Cần verify khi build lần đầu trên VPS (chưa chạy thử ở môi trường dev)
+## 8. Trạng thái kiểm chứng + việc cần verify trên VPS
 
-`docker-compose.prod.yaml` + `.env.production.example` đã soạn theo chuẩn Postiz +
-custom Media Hub và **validate cú pháp compose OK**, nhưng **image chưa được build thử
-trên Linux** ở phiên chuẩn bị này. Lần build đầu trên VPS cần để ý:
+- ✅ **Compose validate OK** (`docker compose config`).
+- ✅ **Image ĐÃ BUILD THỬ THÀNH CÔNG** với custom code (Docker Desktop, image Linux
+  `viet-anh-media-hub:latest` ~5.66 GB; `nest build` backend+orchestrator và
+  `pnpm run build` frontend đều exit 0). Native module (`bcrypt`/`sharp`/`canvas`)
+  build được nhờ `g++ make python3-pip` trong Dockerfile.dev.
 
-1. **Build native module** (`bcrypt`, `sharp`, `canvas`…) trên Linux — Dockerfile.dev đã
-   cài `g++ make python3-pip`; nếu thiếu gói, thêm vào `Dockerfile.dev`.
-2. **RAM khi build**: `pnpm run build` đặt `--max-old-space-size=4096`; VPS 4 GB có thể
-   cần thêm swap khi build frontend.
-3. Sau khi lên, verify: đăng nhập được, **đăng thử 1 bài** (kiểm orchestrator đăng thật),
-   ảnh media hiển thị (`/uploads`), AI viết caption (Claude) chạy.
+Còn lại cần verify **khi chạy container thật trên VPS** (chưa chạy thử end-to-end):
+
+1. **RAM khi build**: `pnpm run build` đặt `--max-old-space-size=4096`; VPS 4 GB nên
+   thêm swap khi build (build local đã qua nhưng máy dev nhiều RAM hơn).
+2. Sau khi `up -d`: đăng nhập được, **đăng thử 1 bài** (kiểm orchestrator đăng thật qua
+   Temporal), ảnh media hiển thị (`/uploads` qua nginx volume), AI viết caption (Claude) chạy.
+3. Domain + HTTPS trỏ đúng `FRONTEND_URL` (cookie/media phụ thuộc biến này).
