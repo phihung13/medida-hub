@@ -303,6 +303,7 @@ export const ZaloComponent: FC = () => {
     { id: string; name: string; identifier: string }[]
   >([]);
   const [groups, setGroups] = useState<{ threadId: string; name: string }[]>([]);
+  const [groupsLoading, setGroupsLoading] = useState(false);
   const [logs, setLogs] = useState<{ t: number; line: string }[]>([]);
   const [live, setLive] = useState<LiveThread[]>([]);
   const [pending, setPending] = useState<PendingDraft[]>([]);
@@ -378,15 +379,20 @@ export const ZaloComponent: FC = () => {
     return () => clearInterval(i);
   }, []);
 
-  // Danh sách nhóm Zalo — nạp khi đã đăng nhập Zalo.
+  // Danh sách nhóm Zalo — nạp khi đã đăng nhập Zalo. LẦN ĐẦU chậm: bot phải lấy
+  // tên từng nhóm qua zca-js (có thể >8s nếu nhiều nhóm) → timeout dài 60s, nếu
+  // không request bị hủy giữa chừng và trang tưởng "không có nhóm nào".
   const loadGroups = useCallback(async () => {
+    setGroupsLoading(true);
     try {
-      const g = await bot('/api/postiz/groups');
+      const g = await bot('/api/postiz/groups', undefined, 60000);
       if (Array.isArray(g)) {
         setGroups(g);
       }
     } catch {
-      /* Zalo chưa kết nối — bỏ qua */
+      /* Zalo chưa kết nối hoặc tải quá lâu — giữ danh sách cũ */
+    } finally {
+      setGroupsLoading(false);
     }
   }, []);
 
@@ -988,14 +994,19 @@ export const ZaloComponent: FC = () => {
         >
           {!routes.length && !groups.length && (
             <div className="text-[13px] text-textItemBlur leading-[1.6]">
-              {zaloLogged
+              {!zaloLogged
                 ? t(
-                    'zalo_no_groups_yet',
-                    'Not listening to any group — the group list is loading, click "Refresh" if you don\'t see it.'
-                  )
-                : t(
                     'zalo_login_first',
                     'Log in to Zalo (scan the QR above), then come back here to choose groups to listen to.'
+                  )
+                : groupsLoading
+                ? t(
+                    'zalo_groups_loading',
+                    'Loading the Zalo group list — the first time can take 10–30 seconds…'
+                  )
+                : t(
+                    'zalo_no_groups_yet',
+                    'No groups found yet. Send any message into a Zalo group so the bot can see it, then click "Refresh".'
                   )}
             </div>
           )}
