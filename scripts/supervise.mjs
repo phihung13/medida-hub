@@ -1,9 +1,10 @@
 // ============================================================================
-//  Social Hub — WATCHDOG tự hồi sinh:  node supervise.mjs
+//  Việt Anh Media Hub — WATCHDOG tự hồi sinh:  node scripts/supervise.mjs
+//  (tùy chọn cho chạy 24/7 trên máy Windows — start-postiz.bat KHÔNG dùng cái này)
 //  - Bật Docker + backend(3000) + orchestrator(3002) + frontend(4200) + bot(8088)
 //  - Bật tunnel Cloudflare (URL lưu tunnel-url.txt)
 //  - VÒNG GIÁM SÁT mỗi 30s: cổng/tunnel nào chết → TỰ BẬT LẠI (mất mạng, crash…)
-//  - Đặt start-hub.bat vào Startup của Windows → tự chạy khi đăng nhập máy.
+//  - Muốn tự chạy khi bật máy: tạo shortcut chạy lệnh trên vào thư mục Startup.
 //  Ctrl+C để dừng hẳn.
 // ============================================================================
 import { spawn, spawnSync } from 'node:child_process';
@@ -12,7 +13,9 @@ import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = path.dirname(fileURLToPath(import.meta.url));
+// Script nằm trong scripts/ → repo root là thư mục cha.
+const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(scriptsDir, '..');
 const isWin = process.platform === 'win32';
 const ZALO_DIR = 'D:\\Zalo bot group';
 const c = (n, s) => `\x1b[${n}m${s}\x1b[0m`;
@@ -75,7 +78,7 @@ let tunnelProc = null;
 let tunnelStartedAt = 0;
 function startTunnel() {
   tunnelStartedAt = Date.now();
-  tunnelProc = start('tunnel', 36, process.execPath, ['tunnel.mjs']);
+  tunnelProc = start('tunnel', 36, process.execPath, [path.join(scriptsDir, 'tunnel.mjs')]);
 }
 async function tunnelAlive() {
   const url = (fs.existsSync(path.join(root, 'tunnel-url.txt')) && fs.readFileSync(path.join(root, 'tunnel-url.txt'), 'utf8').trim()) || '';

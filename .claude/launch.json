@@ -4,7 +4,7 @@
     {
       "name": "media-hub",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["run.mjs"],
+      "runtimeArgs": ["scripts/run.mjs"],
       "port": 4200
     }
   ]

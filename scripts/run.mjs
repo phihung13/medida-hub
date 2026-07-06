@@ -1,11 +1,12 @@
 // ============================================================================
-//  Việt Anh Media Hub — chạy bằng MỘT lệnh:  node run.mjs
+//  Việt Anh Media Hub — chạy bằng MỘT lệnh:  node scripts/run.mjs
+//  (thường double-click start-postiz.bat ở gốc repo — đã kèm sẵn --tunnel)
 //  - Tự bật hạ tầng Docker (Postgres, Redis, Temporal)
-//  - Tự build backend/frontend nếu chưa có (không cần xóa tay .next/dist)
-//  - Chạy backend (3000) + frontend (4200) trong MỘT cửa sổ, log gộp
-//  - Ctrl+C tắt gọn cả hai
-//  Cờ:  node run.mjs --rebuild   → build lại từ đầu (khi đổi code)
-//        node run.mjs --tunnel    → mở kèm tunnel public (Cloudflare Quick Tunnel)
+//  - Tự build backend/orchestrator/frontend nếu chưa có (không xóa tay .next/dist)
+//  - Chạy backend(3000)+orchestrator(3002)+frontend(4200)+bot Zalo(8088), log gộp
+//  - Ctrl+C tắt gọn cả cây tiến trình
+//  Cờ:  --rebuild → build lại từ đầu (khi đổi code)
+//        --tunnel  → mở kèm tunnel public (Cloudflare Quick Tunnel, in ra URL)
 // ============================================================================
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -13,7 +14,9 @@ import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = path.dirname(fileURLToPath(import.meta.url));
+// Script nằm trong scripts/ → repo root là thư mục cha (độc lập với cwd).
+const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(scriptsDir, '..');
 const isWin = process.platform === 'win32';
 const REBUILD = process.argv.includes('--rebuild');
 const TUNNEL = process.argv.includes('--tunnel');
@@ -119,12 +122,12 @@ if (TUNNEL) {
     log('Sẽ mở tunnel public khi frontend (:4200) sẵn sàng...');
     for (let i = 0; i < 150; i++) {
       if (await portBusy(4200)) {
-        start('tunnel', 36, process.execPath, ['tunnel.mjs'], root, false);
+        start('tunnel', 36, process.execPath, [path.join(scriptsDir, 'tunnel.mjs')], root, false);
         return;
       }
       await new Promise((r) => setTimeout(r, 2000));
     }
-    log(c(33, 'Frontend không lên sau 5 phút — bỏ qua tunnel (chạy start-tunnel.bat riêng nếu cần).'));
+    log(c(33, 'Frontend không lên sau 5 phút — bỏ qua tunnel.'));
   })();
 }
 

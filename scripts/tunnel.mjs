@@ -1,6 +1,6 @@
 // ============================================================================
-//  Tunnel PUBLIC cho Việt Anh Media Hub — chạy:  node tunnel.mjs
-//  (hoặc double-click start-tunnel.bat)
+//  Tunnel PUBLIC cho Việt Anh Media Hub — chạy:  node scripts/tunnel.mjs
+//  (thường được scripts/run.mjs tự gọi khi chạy start-postiz.bat)
 //
 //  - Dùng Cloudflare Quick Tunnel: MIỄN PHÍ, không cần tài khoản, có HTTPS.
 //  - Lần đầu tự tải cloudflared.exe CHÍNH CHỦ từ GitHub Cloudflare vào tools/.
@@ -15,7 +15,8 @@ import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = path.dirname(fileURLToPath(import.meta.url));
+// Script nằm trong scripts/ → repo root là thư mục cha.
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TOOLS = path.join(root, 'tools');
 const EXE = path.join(TOOLS, 'cloudflared.exe');
 const DL_URL =
