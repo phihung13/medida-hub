@@ -1,0 +1,43 @@
+---
+name: Deploy
+
+# CD cho VPS Coolify — "merge vào main là tự deploy" NHƯNG chỉ deploy code đã
+# qua CI: chạy sau khi workflow "Build" (pnpm install + build 3 app) kết thúc
+# XANH trên main, rồi gọi Deploy Webhook của resource trong Coolify.
+#
+# Cần đặt secret trong GitHub (Settings → Secrets and variables → Actions):
+#   COOLIFY_WEBHOOK — URL "Deploy Webhook" của resource (Coolify → resource
+#                     media-hub → Webhooks → Deploy Webhook, dạng
+#                     https://<coolify>/api/v1/deploy?uuid=...)
+#   COOLIFY_TOKEN   — API token (Coolify → Keys & Tokens → API tokens,
+#                     quyền deploy). Webhook không cần token thì bỏ qua.
+# CHƯA đặt secret → job tự bỏ qua (không báo đỏ) — repo dùng được ngay cả khi
+# chưa dựng Coolify.
+#
+# Cách đơn giản hơn (không cần file này): bật "Auto Deploy" ngay trong Coolify
+# (GitHub App) — deploy mỗi lần push, KHÔNG chờ CI. File này là bản nâng cấp
+# để commit lỗi build không bao giờ lên VPS.
+
+on:
+  workflow_run:
+    workflows: [Build]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Gọi Deploy Webhook của Coolify
+        env:
+          WEBHOOK: ${{ secrets.COOLIFY_WEBHOOK }}
+          TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "Chưa đặt secret COOLIFY_WEBHOOK — bỏ qua bước deploy."
+            exit 0
+          fi
+          curl --fail -sS "$WEBHOOK" ${TOKEN:+-H "Authorization: Bearer $TOKEN"}
+          echo ""
+          echo "✅ Đã kích hoạt deploy trên Coolify (theo dõi log build trong Coolify UI)."
