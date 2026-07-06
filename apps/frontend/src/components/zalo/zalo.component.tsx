@@ -385,7 +385,8 @@ export const ZaloComponent: FC = () => {
 
   const TABS: { key: TabKey; label: string; badge?: number }[] = [
     { key: 'overview', label: t('zalo_tab_overview', 'Overview') },
-    { key: 'posts', label: t('zalo_tab_posts', 'Posts'), badge: overview?.pendingCount || 0 },
+    // Tab Bài viết = lịch sử thuần hiển thị (duyệt ở Calendar) → không badge.
+    { key: 'posts', label: t('zalo_tab_posts', 'Posts') },
     { key: 'routes', label: t('zalo_tab_routes', 'Groups → Pages') },
     { key: 'gbp', label: 'Google Business' },
     { key: 'settings', label: t('zalo_tab_settings', 'Settings') },
@@ -557,19 +558,26 @@ export const ZaloComponent: FC = () => {
             </div>
           </Card>
 
-          {/* Bài chờ xử lý → tab Bài viết */}
+          {/* Bài đã gom (lịch sử) — duyệt/sửa/đăng làm ở Calendar (bài tự vào Nháp) */}
           {!!overview?.pendingCount && (
             <div
               onClick={() => switchTab('posts')}
-              className="border border-amber-400/40 bg-amber-400/10 rounded-[12px] px-[16px] py-[12px] flex items-center gap-[10px] cursor-pointer hover:bg-amber-400/20"
+              className="border border-newTableBorder rounded-[12px] px-[16px] py-[12px] flex items-center gap-[10px] flex-wrap cursor-pointer hover:bg-boxHover transition-colors duration-150"
             >
               <span className="text-[15px]">🗂</span>
-              <span className="text-[13.5px] font-[600] flex-1">
-                {t('zalo_pending_banner', '{{n}} posts are waiting for review').replace('{{n}}', String(overview.pendingCount))}
+              <span className="text-[13.5px] flex-1 min-w-[220px]">
+                {t(
+                  'zalo_history_banner',
+                  '{{n}} posts collected from Zalo groups — each is already a draft in the Calendar'
+                ).replace('{{n}}', String(overview.pendingCount))}
               </span>
-              <span className="text-[13px] font-[600] text-btnPrimary">
-                {t('zalo_pending_banner_open', 'Open Posts tab →')}
-              </span>
+              <a
+                href="/launches"
+                onClick={(e) => e.stopPropagation()}
+                className="text-[13px] font-[600] text-btnPrimary whitespace-nowrap"
+              >
+                {t('zalo_history_banner_open', 'Open Calendar →')}
+              </a>
             </div>
           )}
 
