@@ -31,6 +31,35 @@ function runSync(label, cmd, args) {
   return r.status === 0;
 }
 
+// 0) Dọn tiến trình cũ còn giữ cổng (tránh EADDRINUSE khi khởi động lại khi bản
+//    trước chưa tắt hẳn). CHỈ dọn cổng của 3 dịch vụ script này quản: 3000/3002/4200.
+//    KHÔNG đụng 8088 (bot Zalo) — bot được tái dùng nếu đang chạy để khỏi quét lại QR.
+function freePorts(ports) {
+  if (!isWin) {
+    for (const port of ports) {
+      try { spawnSync('bash', ['-c', `lsof -ti tcp:${port} | xargs -r kill -9`], { stdio: 'ignore' }); } catch {}
+    }
+    return;
+  }
+  let out = '';
+  try { out = spawnSync('netstat', ['-ano'], { encoding: 'utf8' }).stdout || ''; } catch {}
+  const pids = new Set();
+  for (const line of out.split('\n')) {
+    if (!/LISTENING/i.test(line)) continue;
+    const parts = line.trim().split(/\s+/);      // Proto Local Foreign State PID
+    const local = parts[1] || '';
+    const pid = parts[parts.length - 1];
+    const m = local.match(/:(\d+)$/);            // khớp cả 0.0.0.0:4200 lẫn [::]:4200
+    if (m && ports.includes(Number(m[1])) && /^\d+$/.test(pid) && pid !== '0') pids.add(pid);
+  }
+  for (const pid of pids) {
+    try { spawnSync('taskkill', ['/f', '/t', '/pid', pid], { stdio: 'ignore' }); } catch {}
+  }
+}
+log('Dọn tiến trình cũ trên cổng 3000/3002/4200 (nếu còn sót từ lần trước)...');
+if (isWin) { try { spawnSync('taskkill', ['/f', '/im', 'cloudflared.exe'], { stdio: 'ignore' }); } catch {} }
+freePorts([3000, 3002, 4200]);
+
 // 1) Hạ tầng Docker
 runSync(
   'Bật hạ tầng Docker (Postgres, Redis, Temporal)...',
