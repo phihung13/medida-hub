@@ -4,7 +4,7 @@
 > Mỗi khi làm xong một bước, **cập nhật mục "TRẠNG THÁI HIỆN TẠI" và "NHẬT KÝ" bên dưới.**
 > Ngôn ngữ làm việc: tiếng Việt. Người dùng: Phi Hùng (dev), phê duyệt: anh Dương.
 
-Cập nhật lần cuối: **2026-07-03** — Editor ảnh chuyển Polotno→**Filerobot** (MIT, miễn phí, không license/watermark; mục 41). Vừa khôi phục sau sự cố Docker Winsock (`netsh winsock reset`+reboot) — **dữ liệu nguyên vẹn** (1 user/1 org/4 kênh/3 post). Hệ thống đang chạy: backend:3000, frontend:4200, bot:8088, tunnel Cloudflare. Chạy: `start-postiz.bat` (+ `start-tunnel.bat` cho truy cập từ xa). Xem nhật ký (mục 8) từ dòng mới nhất.
+Cập nhật lần cuối: **2026-07-06** — DỌN REPO + **COMMIT LẦN ĐẦU** toàn bộ custom (`1f7a148`, 233 file) + remote đổi `origin`→`upstream` (hết nguy cơ push nhầm lên Postiz public) + build production pass cả 3 app (mục 48). Chạy: `start-postiz.bat` (+ `start-tunnel.bat` cho truy cập từ xa). Xem nhật ký (mục 8) từ dòng mới nhất.
 
 ---
 
@@ -113,7 +113,8 @@ Demo UI tương tác đã dựng (mockup, chưa phải Postiz thật) — cho th
 - ✅ Rebrand xong; AI caption + Agent chạy Claude; Zalo có mục trong sidebar Postiz.
 - ⚠️ **CẦN LÀM (user):** (1) điền `ANTHROPIC_API_KEY` vào `C:\Media_Hub_VietAnh\.env` (cho Agent + composer AI). (2) Trong Postiz tạo API key (Settings→Public API) + kết nối ≥1 kênh. (3) Restart bot Zalo (D:) + build lại Postiz 1 lần → vào Sidebar→Zalo cấu hình. (4) Test luồng thật.
 - ☐ **CHƯA TEST THẬT** nhiều phần (Claude không tự chạy/test app được — user chạy `start-postiz.bat` để kiểm). Agent Claude có thể cần chỉnh (khác format tool-calling).
-- ☐ Git: vẫn remote gốc Postiz. Đã dọn file rác + gom doc vào `docs/` (mục 8 nhật ký 12).
+- ✅ **Git đã gọn (2026-07-06):** toàn bộ custom đã commit (`1f7a148`, 233 file, +16.854/−2.830); remote `origin`→`upstream` (chỉ để pull update Postiz, KHÔNG push). Chưa có remote riêng để push backup — muốn backup lên GitHub private thì tạo repo mới rồi `git remote add origin <url>`.
+- ✅ **Sẵn sàng deploy:** build production pass cả 3 app. Khi deploy máy mới: `corepack pnpm install` → `.env` (theo `.env.example`, có `ANTHROPIC_API_KEY`+`ZALO_*`) → `corepack pnpm run prisma-db-push` (schema có 4 model mới AiCredit/ViralPost/ViralSource/ViralClone + `Integration.postFooter`) → `start-postiz.bat`. Key nhập từ UI nằm ở file runtime KHÔNG commit: `anthropic-key.txt`, `viral-config.json`, `image-gen.json` (cwd = `apps/backend/`) — chuyển máy phải copy tay (hoặc nhập lại qua UI).
 
 ### ⚙️ MÔI TRƯỜNG (gotchas quan trọng)
 
@@ -166,6 +167,7 @@ corepack pnpm -C "D:\Media_Hub_VietAnh" run dev-backend
 
 ## 8. NHẬT KÝ (LOG) — thêm dòng mới nhất lên đầu
 
+- **2026-07-06 (48): 🧹 DỌN REPO + COMMIT LẦN ĐẦU + CHUẨN BỊ DEPLOY.** (1) Xoá 6 log runtime `_*.log` + `tunnel-url.txt`; `.gitignore` thêm `_*.log`, `var/`, và — QUAN TRỌNG — 2 file key runtime chưa được ignore: `viral-config.json` (token Apify/YouTube), `image-gen.json` (key OpenAI/Fal); rà secret toàn code: sạch (key chỉ ở env/file đã ignore). (2) `git remote rename origin upstream` — hết nguy cơ push nhầm lên `gitroomhq/postiz-app` public; muốn backup thì tạo repo private riêng làm `origin` mới. (3) README.md viết lại cho Media Hub (bỏ marketing Postiz); `.env.example` thêm `ANTHROPIC_API_KEY` + `ZALO_APP_ID/SECRET`. (4) Build production `corepack pnpm run build` PASS cả 3 app (frontend đủ route /login /viral /zalo). (5) **Commit `1f7a148`**: 233 file (+16.854/−2.830) — TOÀN BỘ custom từ khi fork giờ mới nằm trong git; working tree sạch. Deploy máy mới: install → .env → prisma-db-push → start-postiz.bat; nhớ copy tay 3 file key runtime (không nằm trong git).
 - **2026-07-04 (47): 🌐 SONG NGỮ ĐÚNG CHUẨN (English = mọi thứ tiếng Anh trừ content; Tiếng Việt = tiếng Việt hết).** Lỗi trước: nhiều chuỗi hardcode `t('key','Tiếng Việt')` (mặc định = tiếng Việt) + 365 dòng tiếng Việt THÔ chưa qua `t()` → English mode vẫn ra tiếng Việt. Sửa bằng **Workflow 25 agent** (mỗi file 1 agent): chuyển default code sang TIẾNG ANH + bọc raw string thành `t('key','English')`, trả `{key,en,vi}`. 20/25 file sửa, **377 chuỗi**; script `i18n-merge.mjs` gộp **311 key mới vào cả vi + en** JSON (không đè key Postiz sẵn có; 8 key trùng giữ bản Postiz). Cơ chế đúng: code default = English → English mode; `vi/translation.json` có bản dịch → Vietnamese mode. GIỮ TIẾNG VIỆT (brand/content): brand.showcase (MỘT ĐỘI NGŨ/KỂ CHUYỆN VIỆT ANH), "sản phẩm của Trường Việt Anh", tên riêng, AI system prompt. Build FE exit 0 (không vỡ file nào). Verify: `viral_title` code='Winning Post Forge', vi='Lò Bài Thắng', en='Winning Post Forge'.
 - **2026-07-04 (46): 🏆 TRANG MỚI "LÒ BÀI THẮNG" (/viral) — bắt bài viral giáo dục → AI mổ công thức → nhân bản thành bản nháp.** Thước đo chính: LƯỢT SHARE. Nguồn dữ liệu (đã khảo sát: share của người khác KHÔNG free qua API — BuzzSumo $199, Fanpage Karma $69; nên):
   - **FREE:** dán tay Link/Text/Ảnh → `OpenaiService.viralAnalyze` (Claude vision đọc số share ngay trên ảnh); RSS báo/blog (`crawlRss`, parse XML regex) + tra `share_count` 1 URL qua Graph API app-token (`fbShareCount`, free); YouTube Data API (`crawlYoutube`, cần key free Google, xếp theo view — YouTube KHÔNG có share ở đâu). Link nhanh chính chủ: TikTok Creative Center, FB Ad Library, Google Trends, YouTube Trending.
