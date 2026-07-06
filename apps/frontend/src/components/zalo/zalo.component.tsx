@@ -23,25 +23,23 @@ import {
 } from './zalo.shared';
 import { ZaloPostsTab } from './zalo.posts';
 import { ZaloRoutesTab } from './zalo.routes';
-import { ZaloTokenTab } from './zalo.token';
 import { ZaloGbpTab } from './zalo.gbp';
 import { ZaloLogsTab, ZaloSettingsTab } from './zalo.settings';
 
 // ============================================================================
 //  Trang Zalo — TRUNG TÂM ĐIỀU KHIỂN thay thế hoàn toàn dashboard bot :8088.
-//  7 tab: Tổng quan (QR, cầu nối, nhóm nghe + trạng thái gom realtime),
+//  6 tab: Tổng quan (QR, cầu nối, nhóm nghe + trạng thái gom realtime),
 //  Bài viết (thẻ duyệt + đã đăng), Nhóm → Trang (chân bài, thời gian chờ,
-//  bình luận, hướng dẫn viết, GBP, tự đăng), Token Facebook, Google Business,
-//  Cài đặt, Nhật ký. Mọi API đi qua proxy /botapi (JWT + HUB_BOT_TOKEN).
+//  bình luận, hướng dẫn viết, GBP, tự đăng — Trang FB lấy từ Add Channel),
+//  Google Business, Cài đặt, Nhật ký. Mọi API đi qua proxy /botapi (JWT + HUB_BOT_TOKEN).
 // ============================================================================
 
-type TabKey = 'overview' | 'posts' | 'routes' | 'token' | 'gbp' | 'settings' | 'logs';
+type TabKey = 'overview' | 'posts' | 'routes' | 'gbp' | 'settings' | 'logs';
 
 const TAB_HASH: Record<TabKey, string> = {
   overview: 'tong-quan',
   posts: 'bai-viet',
   routes: 'nhom-trang',
-  token: 'token-facebook',
   gbp: 'google-business',
   settings: 'cai-dat',
   logs: 'nhat-ky',
@@ -389,7 +387,6 @@ export const ZaloComponent: FC = () => {
     { key: 'overview', label: t('zalo_tab_overview', 'Overview') },
     { key: 'posts', label: t('zalo_tab_posts', 'Posts'), badge: overview?.pendingCount || 0 },
     { key: 'routes', label: t('zalo_tab_routes', 'Groups → Pages') },
-    { key: 'token', label: t('zalo_tab_token', 'Facebook Tokens') },
     { key: 'gbp', label: 'Google Business' },
     { key: 'settings', label: t('zalo_tab_settings', 'Settings') },
     { key: 'logs', label: t('zalo_tab_logs', 'Log') },
@@ -743,7 +740,6 @@ export const ZaloComponent: FC = () => {
       {/* ============================ CÁC TAB KHÁC ============================ */}
       {tab === 'posts' && <ZaloPostsTab onChanged={loadAll} />}
       {tab === 'routes' && <ZaloRoutesTab zaloLogged={zaloLogged} onChanged={loadAll} />}
-      {tab === 'token' && <ZaloTokenTab onChanged={loadAll} />}
       {tab === 'gbp' && <ZaloGbpTab />}
       {tab === 'settings' && <ZaloSettingsTab onChanged={loadAll} />}
       {tab === 'logs' && <ZaloLogsTab />}

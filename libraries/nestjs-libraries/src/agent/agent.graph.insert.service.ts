@@ -12,7 +12,7 @@ import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/po
 const getModel = () =>
   new ChatAnthropic({
     apiKey: process.env.ANTHROPIC_API_KEY || 'placeholder-set-in-settings',
-    model: 'claude-sonnet-4-6',
+    model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
     temperature: 0,
   });
 

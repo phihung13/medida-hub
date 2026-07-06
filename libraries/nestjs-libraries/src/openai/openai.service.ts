@@ -14,7 +14,8 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || 'sk-proj-',
 });
 
-const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
+// Đọc model LÚC GỌI — model chọn từ UI Settings (ANTHROPIC_MODEL) ăn ngay.
+const CLAUDE_MODEL = () => process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
 
 // Tone chung cho toàn hệ thống — truyền thông Trường Việt Anh.
 const VIET_ANH_SYSTEM =
@@ -42,7 +43,7 @@ async function claudeText(
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: CLAUDE_MODEL,
+      model: CLAUDE_MODEL(),
       max_tokens: maxTokens,
       system,
       messages: [{ role: 'user', content: user }],
@@ -115,7 +116,7 @@ async function claudeVision(
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: CLAUDE_MODEL,
+      model: CLAUDE_MODEL(),
       max_tokens: maxTokens,
       system,
       messages: [{ role: 'user', content: blocks }],
@@ -594,7 +595,7 @@ export class OpenaiService {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: CLAUDE_MODEL,
+        model: CLAUDE_MODEL(),
         max_tokens: 1200,
         system,
         messages,

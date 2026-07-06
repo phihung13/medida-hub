@@ -11,8 +11,11 @@ import {
   HttpException,
 } from '@nestjs/common';
 import {
+  ANTHROPIC_MODELS,
   getAnthropicKey,
+  getAnthropicModel,
   setAnthropicKey,
+  setAnthropicModel,
 } from '@gitroom/nestjs-libraries/openai/anthropic.key';
 import {
   getImageGenStatus,
@@ -62,21 +65,45 @@ export class CopilotController {
   anthropicKeyStatus(@GetUserFromRequest() user: User) {
     this.assertSuperAdmin(user);
     const k = getAnthropicKey();
-    return { hasKey: !!k, masked: k ? k.slice(0, 12) + '…' : '' };
+    return {
+      hasKey: !!k,
+      masked: k ? k.slice(0, 12) + '…' : '',
+      model: getAnthropicModel(),
+      models: ANTHROPIC_MODELS,
+    };
   }
 
   // Lưu key Claude nhập từ UI Settings (ghi file + set runtime, không cần .env).
   @Post('/anthropic-key')
   saveAnthropicKey(
     @GetUserFromRequest() user: User,
-    @Body() body: { key?: string; clear?: boolean }
+    @Body() body: { key?: string; model?: string; clear?: boolean }
   ) {
     this.assertSuperAdmin(user);
     if (body?.clear) {
       setAnthropicKey('');
       return { ok: true, cleared: true };
     }
+    // Đổi model (có thể gửi riêng, không kèm key) — đồng bộ luôn sang bot Zalo
+    // (best-effort: bot tắt thì model Hub vẫn đổi, bot nhận khi sync kế tiếp).
+    if (body?.model) {
+      if (!(ANTHROPIC_MODELS as readonly string[]).includes(body.model)) {
+        throw new HttpException({ msg: 'Model không hợp lệ' }, 400);
+      }
+      setAnthropicModel(body.model);
+      const botUrl = process.env.ZALO_BOT_URL || 'http://localhost:8088';
+      fetch(`${botUrl}/api/claude/key`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: body.model }),
+        signal: AbortSignal.timeout(5000),
+      }).catch(() => {});
+    }
     const key = (body?.key || '').trim();
+    if (!key) {
+      if (body?.model) return { ok: true, model: getAnthropicModel() };
+      throw new HttpException({ msg: 'Thiếu key hoặc model' }, 400);
+    }
     if (!key.startsWith('sk-ant-')) {
       throw new HttpException(
         { msg: 'Key không hợp lệ (phải bắt đầu bằng sk-ant-)' },
@@ -84,7 +111,7 @@ export class CopilotController {
       );
     }
     setAnthropicKey(key);
-    return { ok: true };
+    return { ok: true, model: getAnthropicModel() };
   }
 
   // Kiểm tra key Claude có chạy không (gọi thử API thật) — cho nút "Kiểm tra" ở UI.
@@ -100,7 +127,7 @@ export class CopilotController {
       const { default: Anthropic } = await import('@anthropic-ai/sdk');
       const client = new Anthropic({ apiKey: key });
       const msg = await client.messages.create({
-        model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
+        model: getAnthropicModel(),
         max_tokens: 8,
         messages: [{ role: 'user', content: 'ping' }],
       });
@@ -134,7 +161,7 @@ export class CopilotController {
       const save = await fetch(`${botUrl}/api/claude/key`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ key }),
+        body: JSON.stringify({ key, model: getAnthropicModel() }),
         signal: AbortSignal.timeout(8000), // bot treo → không chờ 5 phút
       });
       if (!save.ok) {
@@ -192,7 +219,7 @@ export class CopilotController {
       endpoint: '/copilot/chat',
       runtime: new CopilotRuntime(),
       serviceAdapter: new AnthropicAdapter({
-        model: 'claude-sonnet-4-6',
+        model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
       }),
     });
 
@@ -268,7 +295,7 @@ export class CopilotController {
       runtime,
       // properties: req.body.variables.properties,
       serviceAdapter: new AnthropicAdapter({
-        model: 'claude-sonnet-4-6',
+        model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
       }),
     });
 

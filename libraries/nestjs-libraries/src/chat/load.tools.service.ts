@@ -87,7 +87,7 @@ export class LoadToolsService {
       )}
 `;
       },
-      model: anthropic('claude-sonnet-4-6'),
+      model: anthropic(process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6'),
       tools,
       memory: new Memory({
         storage: pStore,

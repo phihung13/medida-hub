@@ -150,6 +150,29 @@ export class IntegrationService {
     return this._integrationRepository.getIntegrationsList(org);
   }
 
+  // Trang Facebook đã kết nối (Add Channel) KÈM page token — cho bot Zalo đăng
+  // thẳng lên Trang mà không phải cấp token riêng lần hai. Chỉ trả kênh facebook
+  // còn hoạt động; caller (public API) đã xác thực bằng API key của org.
+  async getFacebookPagesWithTokens(org: string) {
+    const list = await this._integrationRepository.getIntegrationsList(org);
+    return list
+      .filter(
+        (i) =>
+          i.providerIdentifier === 'facebook' &&
+          !i.disabled &&
+          !i.refreshNeeded &&
+          i.token
+      )
+      .map((i) => ({
+        // internalId = ID Trang thật trên Facebook (dùng gọi Graph API)
+        pageId: i.internalId,
+        name: i.name,
+        token: i.token,
+        picture: i.picture,
+        expiresAt: i.tokenExpiration ? i.tokenExpiration.getTime() : null,
+      }));
+  }
+
   getIntegrationForOrder(id: string, order: string, user: string, org: string) {
     return this._integrationRepository.getIntegrationForOrder(
       id,

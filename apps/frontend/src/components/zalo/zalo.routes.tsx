@@ -92,7 +92,7 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
     } catch {
       toast.show(t('zalo_bot_unreachable', 'Cannot reach the Zalo bot'), 'warning');
     }
-    bot('/api/fb/pages', undefined, 30000).then((p) => Array.isArray(p) && setPages(p)).catch(() => setPages([]));
+    bot('/api/fb/pages?force=1', undefined, 30000).then((p) => Array.isArray(p) && setPages(p)).catch(() => setPages([]));
     bot('/api/gbp/businesses').then((b) => Array.isArray(b) && setBusinesses(b)).catch(() => {});
     bot('/api/postiz/integrations')
       .then((r) => r?.ok && setChannels(r.integrations || []))
@@ -148,7 +148,7 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
         const pg = pages.find((x) => x.fanpageId === r.fanpageId);
         if (pg && !pg.hasToken) {
           toast.show(
-            t('zalo_routes_page_no_token', 'Page "{{name}}" has no token yet — grant it in the Facebook Tokens tab first.').replace('{{name}}', pg.name),
+            t('zalo_routes_page_no_token2', 'Page "{{name}}" has no usable token — reconnect it in Add Channel.').replace('{{name}}', pg.name),
             'warning'
           );
           return;
@@ -227,7 +227,7 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
             <ol className="list-decimal ms-[18px] mt-[6px] flex flex-col gap-[4px]">
               <li>{t('zalo_routes_empty_1', 'Click "+ Add group" below.')}</li>
               <li>{t('zalo_routes_empty_2', 'Pick the source Zalo group and the destination Facebook Page / Google Business / Media Hub channel.')}</li>
-              <li>{t('zalo_routes_empty_3', 'Go to the Facebook Tokens tab to grant Page tokens, then enable auto-publish if you want.')}</li>
+              <li>{t('zalo_routes_empty_3b', 'Facebook Pages come from Add Channel (connect once) — then enable auto-publish here if you want.')}</li>
             </ol>
           </div>
         </Card>
@@ -343,7 +343,7 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
                   </div>
                   <div className="flex flex-col gap-[5px]">
                     <FieldLabel
-                      hint={t('zalo_routes_page_hint', "Don't see the Page? Grant a token in the Facebook Tokens tab.")}
+                      hint={t('zalo_routes_page_hint2', "Don't see the Page? Connect it once in Add Channel — the bot picks up its token automatically.")}
                     >
                       {t('zalo_routes_page', 'Facebook Page (optional)')}
                     </FieldLabel>

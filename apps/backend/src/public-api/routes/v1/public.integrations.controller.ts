@@ -297,6 +297,16 @@ export class PublicIntegrationsController {
       }));
   }
 
+  // Trang Facebook đã kết nối (Add Channel) kèm page token — cho bot Zalo dùng
+  // đăng thẳng Facebook (duyệt trong trang Zalo của Hub), khỏi cấp token riêng.
+  // Bảo mật: yêu cầu API key của org (key này vốn đã có quyền đăng bài lên mọi
+  // kênh của org, nên không mở rộng quyền); bot gọi server→server nội bộ.
+  @Get('/facebook-pages')
+  async facebookPages(@GetOrgFromRequest() org: Organization) {
+    Sentry.metrics.count('public_api-request', 1);
+    return this._integrationService.getFacebookPagesWithTokens(org.id);
+  }
+
   @Get('/social/:integration')
   @CheckPolicies([AuthorizationActions.Create, Sections.CHANNEL])
   async getIntegrationUrl(

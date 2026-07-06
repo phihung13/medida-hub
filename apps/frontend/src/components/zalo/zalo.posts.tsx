@@ -21,12 +21,10 @@ import {
 } from './zalo.shared';
 
 // ============================================================================
-//  Tab "Bài viết" — thay thế hoàn toàn màn Bài viết của dashboard bot :8088.
-//  Thẻ duyệt: ảnh/video, caption (sửa + AI viết lại + tải lại chân bài),
-//  chú thích từng ảnh, sắp xếp/thêm/bỏ ảnh, hẹn giờ, duyệt Facebook (công
-//  khai/nháp), duyệt Google Business, bỏ từng kênh, từ chối, duyệt hàng loạt.
-//  Bài đã xong: đăng công khai bản nháp, xoá FB, đăng nháp lại, xoá khỏi
-//  danh sách, sửa caption bài đã đăng.
+//  Tab "Bài viết" — thẻ duyệt COMPACT thay màn Bài viết của dashboard bot:
+//  1 thẻ = header (tên nhóm + chip trạng thái) → caption → dải media →
+//  "Chi tiết" (chú thích ảnh/bình luận/GBP) → MỘT hàng hành động (nút chính
+//  theo ngữ cảnh + menu ⋯ cho hành động phụ). Sửa bài mở khối dưới thẻ.
 // ============================================================================
 
 type EditImage = {
@@ -38,6 +36,51 @@ type EditImage = {
 };
 
 type RouteInfo = { threadId: string; folder?: string; label?: string };
+
+type MenuItem = { label: string; danger?: boolean; onClick: () => void };
+
+// Menu ⋯ — hành động phụ của thẻ, đóng khi bấm ra ngoài.
+const MoreMenu: FC<{ items: MenuItem[]; label: string }> = ({ items, label }) => {
+  const [open, setOpen] = useState(false);
+  if (!items.length) return null;
+  return (
+    <div className="relative shrink-0">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-label={label}
+        aria-expanded={open}
+        className={clsx(
+          'w-[32px] h-[32px] rounded-[8px] text-[16px] leading-none font-[700] cursor-pointer transition-colors duration-150',
+          open ? 'bg-boxHover text-newTextColor' : 'bg-btnSimple text-btnText hover:bg-boxHover'
+        )}
+      >
+        ⋯
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute z-20 top-[38px] end-0 min-w-[230px] bg-newBgColorInner border border-newTableBorder rounded-[10px] shadow-xl py-[4px] flex flex-col">
+            {items.map((it) => (
+              <button
+                key={it.label}
+                onClick={() => {
+                  setOpen(false);
+                  it.onClick();
+                }}
+                className={clsx(
+                  'text-start px-[12px] h-[34px] text-[13px] whitespace-nowrap cursor-pointer transition-colors duration-150 hover:bg-boxHover',
+                  it.danger && 'text-red-500'
+                )}
+              >
+                {it.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
 
 export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
   const t = useT();
@@ -53,9 +96,10 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [capsOpen, setCapsOpen] = useState<Set<string>>(new Set());
+  const [detail, setDetail] = useState<Set<string>>(new Set());
+  const [schedId, setSchedId] = useState<string | null>(null);
 
-  // Khu sửa bài (1 bài một lúc — giống dashboard cũ mở khối Sửa dưới thẻ)
+  // Khu sửa bài (1 bài một lúc)
   const [editId, setEditId] = useState<string | null>(null);
   const [editCaption, setEditCaption] = useState('');
   const [editImages, setEditImages] = useState<EditImage[]>([]);
@@ -308,7 +352,7 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
         toast.show(t('zalo_posts_time_future', 'The scheduled time must be in the future'), 'warning');
         return;
       }
-      await act(
+      const ok = await act(
         d.id,
         `/api/pending/${d.id}/schedule`,
         { at, published: mode === 'public' },
@@ -316,16 +360,26 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
           ? t('zalo_posts_scheduled_public', 'Scheduled to PUBLISH PUBLICLY')
           : t('zalo_posts_scheduled_draft', 'Scheduled to SAVE AS DRAFT')
       );
+      if (ok) setSchedId(null);
     },
     [act, t]
   );
 
-  // ---- Render 1 thẻ -----------------------------------------------------------
+  const toggleIn = (setter: typeof setDetail) => (id: string) =>
+    setter((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const toggleDetail = toggleIn(setDetail);
+  const toggleExpanded = toggleIn(setExpanded);
+
+  // ---- Render 1 thẻ (compact) ---------------------------------------------------
   const renderCard = (d: BotPost) => {
     const approvals = d.approvals || {};
     const fb = approvals.facebook || {};
     const fbStatus = fb.status || 'pending';
-    const pub = d.published !== undefined ? !!d.published : fb.published !== false;
     const gbp = approvals.gbp;
     const hasGbp = !!gbp || !!d.gbpLocationId;
     const gbpStatus = (gbp && gbp.status) || (hasGbp ? 'pending' : 'none');
@@ -337,32 +391,163 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
     const vids = d.videoUrls || [];
     const isOpen = expanded.has(d.id);
     const longCaption =
-      String(d.caption || '').length > 260 || String(d.caption || '').split('\n').length > 5;
+      String(d.caption || '').length > 220 || String(d.caption || '').split('\n').length > 4;
     const hasImgCaps =
       (d.imageCaptions || []).some((c) => c) || (d.videoCaptions || []).some((c) => c);
+    const hasDetail = hasImgCaps || !!(d.comment || '').trim() || !!d.gbpLocationId || !!d.droppedCount;
     const editing = editId === d.id;
     const thisBusy = busy === d.id;
     const needsPublic = fbStatus === 'posted' && fb.published === false;
+    const fbPendingHere = inPending && fbStatus === 'pending';
+    const gbpPendingHere = inPending && hasGbp && gbpStatus === 'pending';
+    const MAX_TILES = 6;
+    const tiles = imgs.slice(0, MAX_TILES);
+    const moreTiles = imgs.length - tiles.length;
+
+    // ----- hành động phụ (menu ⋯) theo ngữ cảnh --------------------------------
+    const menu: MenuItem[] = [];
+    if (fbPendingHere) {
+      menu.push({
+        label: `✨ ${t('zalo_ai_rewrite', 'AI rewrite')}`,
+        onClick: () => aiRewrite(d),
+      });
+      menu.push({
+        label: `↻ ${t('zalo_posts_reload_footer', 'Reload footer')}`,
+        onClick: () =>
+          act(d.id, `/api/pending/${d.id}/reload-footer`, {}, t('zalo_posts_footer_reloaded', 'Latest footer applied')),
+      });
+      if (!d.pushedToHub) {
+        menu.push({
+          label: `📥 ${t('zalo_push_to_hub', 'Push to Media Hub')}`,
+          onClick: () =>
+            act(d.id, `/api/postiz/pending/${d.id}/push-hub`, {}, t('zalo_pushed_to_hub', 'Pushed to Media Hub — open Calendar to review & schedule')),
+        });
+      }
+      if (d.scheduledAt) {
+        menu.push({
+          label: `⏰ ${t('zalo_posts_cancel_schedule', 'Cancel schedule')}`,
+          onClick: () => act(d.id, `/api/pending/${d.id}/unschedule`, {}, t('zalo_posts_unscheduled', 'Schedule cancelled')),
+        });
+      }
+      menu.push({
+        label: t('zalo_posts_skip_fb', 'Skip Facebook'),
+        danger: true,
+        onClick: () =>
+          act(d.id, `/api/pending/${d.id}/reject/facebook`, {}, t('zalo_posts_fb_removed', 'Facebook removed from this post')),
+      });
+    }
+    if (gbpPendingHere) {
+      menu.push({
+        label: t('zalo_posts_skip_gbp', 'Skip Google'),
+        danger: true,
+        onClick: () =>
+          act(d.id, `/api/pending/${d.id}/reject/gbp`, {}, t('zalo_posts_gbp_removed', 'Google Business removed from this post')),
+      });
+    }
+    if (inPending) {
+      menu.push({
+        label: `🗑 ${t('zalo_reject', 'Reject')}`,
+        danger: true,
+        onClick: () =>
+          act(
+            d.id,
+            `/api/pending/${d.id}/reject`,
+            {},
+            t('zalo_removed_from_queue', 'Removed the post from the queue'),
+            t('zalo_reject_confirm', 'Discard this post? Its images will be deleted from the bot.')
+          ),
+      });
+    }
+    if (needsPublic) {
+      menu.push({
+        label: t('zalo_posts_delete_fb_draft', 'Delete FB draft'),
+        danger: true,
+        onClick: () =>
+          act(
+            d.id,
+            `/api/posted/${d.id}/delete/facebook`,
+            {},
+            t('zalo_posts_fb_deleted', 'Facebook draft deleted'),
+            t('zalo_posts_fb_delete_confirm', 'Delete this post from Facebook?')
+          ),
+      });
+    }
+    if (!inPending && !isActive) {
+      if (fbStatus === 'posted' && !needsPublic) {
+        menu.push({
+          label: `✏️ ${t('zalo_posts_edit_posted', 'Edit published post')}`,
+          onClick: () => editPosted(d),
+        });
+      }
+      menu.push({
+        label: `↻ ${t('zalo_posts_reload_footer', 'Reload footer')}`,
+        onClick: () =>
+          act(d.id, `/api/posted/${d.id}/reload-footer`, {}, t('zalo_posts_footer_reloaded_saved', 'Footer updated (saved copy only)')),
+      });
+      menu.push({
+        label: `🔁 ${t('zalo_posts_redraft', 'Repost as draft')}`,
+        onClick: () =>
+          act(
+            d.id,
+            `/api/posted/${d.id}/redraft`,
+            {},
+            t('zalo_posts_redrafted', 'New draft created — check "Needs action" to approve'),
+            t('zalo_posts_redraft_confirm', 'Create a NEW draft from this post (with the latest footer) to approve & publish again?')
+          ),
+      });
+      if (gbpStatus === 'posted') {
+        menu.push({
+          label: t('zalo_posts_gbp_remove_list', 'Remove Google from list'),
+          danger: true,
+          onClick: () =>
+            act(d.id, `/api/posted/${d.id}/remove/gbp`, {}, t('zalo_posts_gbp_removed_list', 'Google Business removed from the list')),
+        });
+      }
+      if (fbStatus === 'posted' && !needsPublic) {
+        menu.push({
+          label: `🗑 ${t('zalo_posts_delete_fb', 'Delete from Facebook')}`,
+          danger: true,
+          onClick: () =>
+            act(
+              d.id,
+              `/api/posted/${d.id}/delete/facebook`,
+              {},
+              t('zalo_posts_fb_deleted_pub', 'Deleted from Facebook'),
+              t('zalo_posts_fb_delete_pub_confirm', 'Delete this PUBLISHED post from Facebook? This cannot be undone.')
+            ),
+        });
+      }
+      menu.push({
+        label: `🗑 ${t('zalo_posts_remove_from_list', 'Remove from list')}`,
+        danger: true,
+        onClick: () =>
+          act(
+            d.id,
+            `/api/posted/${d.id}/remove`,
+            {},
+            t('zalo_posts_removed_list', 'Removed from the processed list'),
+            t('zalo_posts_remove_confirm', 'Remove this post from the list? Posts on Facebook/Google are NOT affected.')
+          ),
+      });
+    }
 
     return (
-      <div
-        key={d.id}
-        className="border border-newTableBorder rounded-[12px] flex flex-col overflow-hidden"
-      >
-        {/* Header */}
-        <div className="flex items-start gap-[10px] p-[14px] pb-[8px] flex-wrap">
-          <div className="w-[36px] h-[36px] rounded-[8px] bg-btnSimple flex items-center justify-center text-[15px] font-[700] shrink-0">
+      <div key={d.id} className="border border-newTableBorder rounded-[12px]">
+        {/* ---- Header: avatar + tên + meta + chip -------------------------- */}
+        <div className="flex items-start gap-[10px] p-[14px] pb-[10px]">
+          <div className="w-[30px] h-[30px] rounded-[8px] bg-btnSimple flex items-center justify-center text-[13px] font-[700] shrink-0">
             {(String(d.routeLabel || 'Z').trim()[0] || 'Z').toUpperCase()}
           </div>
-          <div className="flex-1 min-w-[160px]">
-            <div className="text-[14px] font-[600] truncate">{d.routeLabel || d.id}</div>
-            <div className="text-[11.5px] text-textItemBlur">
-              {fmtFull(d.postedAt || d.createdAt || 0)} · {imgs.length}{' '}
-              {t('zalo_images_unit', 'images')}
-              {vids.length ? ` + ${vids.length} video` : ''}
-              {d.droppedCount
-                ? ` · ${t('zalo_posts_dropped', 'filtered out')} ${d.droppedCount}`
-                : ''}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-baseline gap-[8px] flex-wrap">
+              <span className="text-[13.5px] font-[600] truncate max-w-full">
+                {d.routeLabel || d.id}
+              </span>
+              <span className="text-[11.5px] text-textItemBlur whitespace-nowrap">
+                {fmtFull(d.postedAt || d.createdAt || 0)}
+                {imgs.length ? ` · ${imgs.length} ${t('zalo_images_unit', 'images')}` : ''}
+                {vids.length ? ` · ${vids.length} video` : ''}
+              </span>
             </div>
             <div className="flex items-center gap-[6px] mt-[4px] flex-wrap">
               <StatusChip tone={isActive ? 'warn' : 'ok'}>
@@ -370,12 +555,10 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
               </StatusChip>
               {fbStatus === 'pending' ? (
                 <StatusChip tone="wait">{t('zalo_posts_fb_waiting', 'Facebook waiting')}</StatusChip>
+              ) : needsPublic ? (
+                <StatusChip tone="warn">{t('zalo_posts_fb_draft', 'Facebook draft')}</StatusChip>
               ) : fbStatus === 'posted' ? (
-                <StatusChip tone={fb.published === false ? 'warn' : 'ok'}>
-                  {fb.published === false
-                    ? t('zalo_posts_fb_draft', 'Facebook draft')
-                    : t('zalo_posts_fb_public', 'Facebook published')}
-                </StatusChip>
+                <StatusChip tone="ok">{t('zalo_posts_fb_public', 'Facebook published')}</StatusChip>
               ) : (
                 <StatusChip tone="off">{t('zalo_posts_fb_skipped', 'Facebook skipped')}</StatusChip>
               )}
@@ -387,9 +570,7 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
                 ) : (
                   <StatusChip tone="off">{t('zalo_posts_gbp_skipped', 'Google skipped')}</StatusChip>
                 ))}
-              {d.pushedToHub && (
-                <StatusChip tone="ok">{t('zalo_posts_in_hub', 'In Media Hub')}</StatusChip>
-              )}
+              {d.pushedToHub && <StatusChip tone="ok">{t('zalo_posts_in_hub', 'In Media Hub')}</StatusChip>}
               {!!d.scheduledAt && (
                 <StatusChip tone="warn">
                   ⏰ {fmtFull(d.scheduledAt)} ·{' '}
@@ -403,7 +584,7 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
           {selectable.has(d.id) && (
             <input
               type="checkbox"
-              className="w-[18px] h-[18px] mt-[4px] cursor-pointer accent-btnPrimary"
+              className="w-[17px] h-[17px] mt-[2px] cursor-pointer accent-btnPrimary shrink-0"
               checked={sel.has(d.id)}
               onChange={(e) =>
                 setSel((cur) => {
@@ -418,117 +599,120 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
           )}
         </div>
 
-        {/* Caption */}
-        <div
-          className={clsx(
-            'px-[14px] text-[13px] leading-[1.6] whitespace-pre-wrap',
-            longCaption && !isOpen && 'line-clamp-5'
-          )}
-        >
-          {d.caption || (
-            <span className="text-textItemBlur">{t('zalo_no_caption_yet', '(no caption yet — click to write)')}</span>
-          )}
-        </div>
-        {longCaption && (
-          <span
-            onClick={() =>
-              setExpanded((cur) => {
-                const next = new Set(cur);
-                if (next.has(d.id)) next.delete(d.id);
-                else next.add(d.id);
-                return next;
-              })
-            }
-            className="px-[14px] text-[12.5px] font-[600] text-btnPrimary cursor-pointer"
-          >
-            {isOpen ? t('zalo_posts_collapse', 'collapse') : t('zalo_posts_see_more', 'see more')}
-          </span>
+        {/* ---- Caption ------------------------------------------------------ */}
+        {!!(d.caption || '').trim() && (
+          <div className="px-[14px] pb-[4px]">
+            <div
+              className={clsx(
+                'text-[13px] leading-[1.6] whitespace-pre-wrap',
+                longCaption && !isOpen && 'line-clamp-3'
+              )}
+            >
+              {d.caption}
+            </div>
+            {longCaption && (
+              <span
+                onClick={() => toggleExpanded(d.id)}
+                className="text-[12px] font-[600] text-textItemBlur hover:text-newTextColor cursor-pointer transition-colors duration-150"
+              >
+                {isOpen ? t('zalo_posts_collapse', 'collapse') : `… ${t('zalo_posts_see_more', 'see more')}`}
+              </span>
+            )}
+          </div>
         )}
 
-        {/* Media */}
+        {/* ---- Media strip ---------------------------------------------------- */}
         {(!!imgs.length || !!vids.length) && (
-          <div className="flex gap-[8px] overflow-x-auto scrollbar scrollbar-thumb-newColColor scrollbar-track-newBgColorInner p-[14px] pb-[6px]">
-            {imgs.map((u, i) => (
+          <div className="flex gap-[6px] overflow-x-auto scrollbar scrollbar-thumb-newColColor scrollbar-track-newBgColorInner px-[14px] py-[8px]">
+            {tiles.map((u, i) => (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 key={i}
                 src={`${botUrl}${u}`}
                 alt={d.imageCaptions?.[i] || `Ảnh ${i + 1}`}
                 title={d.imageCaptions?.[i] || ''}
-                className="h-[110px] w-[110px] object-cover rounded-[8px] border border-newTableBorder shrink-0"
+                className="h-[72px] w-[72px] object-cover rounded-[8px] border border-newTableBorder shrink-0"
                 loading="lazy"
               />
             ))}
+            {moreTiles > 0 && (
+              <div
+                onClick={() => toggleDetail(d.id)}
+                className="h-[72px] w-[72px] rounded-[8px] bg-btnSimple flex items-center justify-center text-[12.5px] font-[700] shrink-0 cursor-pointer hover:bg-boxHover transition-colors duration-150"
+                title={t('zalo_posts_detail', 'Details')}
+              >
+                +{moreTiles}
+              </div>
+            )}
             {vids.map((u, i) => (
               <video
                 key={`v${i}`}
                 src={`${botUrl}${u}`}
                 controls
-                className="h-[110px] rounded-[8px] border border-newTableBorder shrink-0"
+                preload="metadata"
+                className="h-[72px] rounded-[8px] border border-newTableBorder shrink-0"
               />
             ))}
           </div>
         )}
 
-        {/* Chú thích từng ảnh */}
-        {hasImgCaps && (
-          <div className="px-[14px] pt-[6px]">
+        {/* ---- Chi tiết (chú thích ảnh · bình luận · GBP) --------------------- */}
+        {hasDetail && (
+          <div className="px-[14px] pb-[6px]">
             <span
-              onClick={() =>
-                setCapsOpen((cur) => {
-                  const next = new Set(cur);
-                  if (next.has(d.id)) next.delete(d.id);
-                  else next.add(d.id);
-                  return next;
-                })
-              }
-              className="text-[12.5px] font-[600] text-btnPrimary cursor-pointer"
+              onClick={() => toggleDetail(d.id)}
+              className="text-[12px] font-[600] text-textItemBlur hover:text-newTextColor cursor-pointer transition-colors duration-150"
             >
-              {capsOpen.has(d.id)
-                ? `▾ ${t('zalo_posts_img_caps', 'Per-image captions (AI)')}`
-                : `▸ ${t('zalo_posts_img_caps', 'Per-image captions (AI)')}`}
+              {detail.has(d.id) ? '▾' : '▸'} {t('zalo_posts_detail', 'Details')}
             </span>
-            {capsOpen.has(d.id) && (
-              <div className="flex flex-col gap-[6px] mt-[6px]">
-                {imgs.map((u, i) => (
-                  <div key={i} className="flex gap-[10px] items-center">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={`${botUrl}${u}`}
-                      alt=""
-                      className="w-[38px] h-[38px] object-cover rounded-[6px] border border-newTableBorder shrink-0"
-                      loading="lazy"
-                    />
-                    <div className="text-[12.5px] text-textItemBlur leading-[1.5]">
-                      <b className="text-newTextColor">
-                        {t('zalo_posts_image_n', 'Image {{n}}').replace('{{n}}', String(i + 1))}
-                      </b>{' '}
-                      {(d.imageCaptions && d.imageCaptions[i]) || t('zalo_posts_no_cap', '(none)')}
-                    </div>
+            {detail.has(d.id) && (
+              <div className="flex flex-col gap-[8px] mt-[8px]">
+                {!!(d.comment || '').trim() && (
+                  <div className="text-[12.5px] bg-btnSimple rounded-[8px] px-[10px] py-[7px]">
+                    <b>{t('zalo_posts_first_comment', 'First comment:')}</b> {d.comment}
                   </div>
-                ))}
+                )}
+                {!!d.gbpLocationId && (
+                  <div className="text-[12px] text-textItemBlur">Google Business ID: {d.gbpLocationId}</div>
+                )}
+                {!!d.droppedCount && (
+                  <div className="text-[12px] text-textItemBlur">
+                    {t('zalo_posts_dropped', 'filtered out')}: {d.droppedCount}
+                  </div>
+                )}
+                {hasImgCaps &&
+                  [...imgs.entries()].map(([i, u]) => (
+                    <div key={i} className="flex gap-[10px] items-center">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`${botUrl}${u}`}
+                        alt=""
+                        className="w-[36px] h-[36px] object-cover rounded-[6px] border border-newTableBorder shrink-0"
+                        loading="lazy"
+                      />
+                      <div className="text-[12.5px] text-textItemBlur leading-[1.5]">
+                        <b className="text-newTextColor">
+                          {t('zalo_posts_image_n', 'Image {{n}}').replace('{{n}}', String(i + 1))}
+                        </b>{' '}
+                        {(d.imageCaptions && d.imageCaptions[i]) || t('zalo_posts_no_cap', '(none)')}
+                      </div>
+                    </div>
+                  ))}
               </div>
             )}
           </div>
         )}
 
-        {/* Bình luận đầu tự động */}
-        {!!(d.comment || '').trim() && (
-          <div className="mx-[14px] mt-[8px] text-[12.5px] bg-btnSimple rounded-[8px] px-[10px] py-[7px]">
-            <b>{t('zalo_posts_first_comment', 'First comment:')}</b> {d.comment}
-          </div>
-        )}
-
-        {/* Link đã đăng */}
+        {/* ---- Link đã đăng ---------------------------------------------------- */}
         {(!!fbLinks.length || !!gbpLinks.length) && (
-          <div className="flex gap-[8px] flex-wrap px-[14px] pt-[10px]">
+          <div className="flex gap-[8px] flex-wrap px-[14px] pb-[8px]">
             {fbLinks.map((l) => (
               <a
                 key={l}
                 href={l}
                 target="_blank"
                 rel="noreferrer"
-                className="text-[12.5px] font-[600] text-btnPrimary border border-newTableBorder rounded-[6px] px-[10px] h-[28px] inline-flex items-center hover:bg-boxHover"
+                className="text-[12px] font-[600] text-btnPrimary border border-newTableBorder rounded-full px-[10px] h-[26px] inline-flex items-center hover:bg-boxHover transition-colors duration-150"
               >
                 Facebook ↗
               </a>
@@ -539,7 +723,7 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
                 href={l}
                 target="_blank"
                 rel="noreferrer"
-                className="text-[12.5px] font-[600] text-btnPrimary border border-newTableBorder rounded-[6px] px-[10px] h-[28px] inline-flex items-center hover:bg-boxHover"
+                className="text-[12px] font-[600] text-btnPrimary border border-newTableBorder rounded-full px-[10px] h-[26px] inline-flex items-center hover:bg-boxHover transition-colors duration-150"
               >
                 Google ↗
               </a>
@@ -547,328 +731,112 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
           </div>
         )}
 
-        {/* Kênh: Facebook + Google Business */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-[10px] p-[14px]">
-          <div className="border border-newTableBorder rounded-[10px] p-[12px] flex flex-col gap-[8px]">
-            <div className="flex items-center justify-between">
-              <b className="text-[13px]">Facebook</b>
-              {fbStatus === 'pending' ? (
-                <StatusChip tone="wait">{t('zalo_posts_waiting', 'Waiting')}</StatusChip>
-              ) : needsPublic ? (
-                <StatusChip tone="warn">{t('zalo_posts_fb_draft', 'Facebook draft')}</StatusChip>
-              ) : fbStatus === 'posted' ? (
-                <StatusChip tone="ok">{t('zalo_posts_posted', 'Posted')}</StatusChip>
-              ) : (
-                <StatusChip tone="off">{t('zalo_posts_skipped', 'Skipped')}</StatusChip>
-              )}
-            </div>
-            {inPending && fbStatus === 'pending' && (
-              <div className="flex gap-[8px] flex-wrap items-center">
-                <PrimaryButton
-                  className="!h-[32px] text-[12.5px]"
-                  disabled={thisBusy}
-                  onClick={() =>
-                    act(
-                      d.id,
-                      `/api/pending/${d.id}/approve`,
-                      { published: true },
-                      t('zalo_fb_published', 'Published publicly to Facebook'),
-                      t('zalo_fb_publish_confirm', 'Publish this post PUBLICLY to Facebook now?')
-                    )
-                  }
-                >
-                  {t('zalo_posts_fb_go_public', 'Publish publicly')}
-                </PrimaryButton>
-                <SimpleButton
-                  className="!h-[32px] text-[12.5px]"
-                  disabled={thisBusy}
-                  onClick={() =>
-                    act(
-                      d.id,
-                      `/api/pending/${d.id}/approve`,
-                      { published: false },
-                      t('zalo_posts_fb_saved_draft', 'Saved as a Facebook draft')
-                    )
-                  }
-                >
-                  {t('zalo_posts_fb_save_draft', 'Save draft')}
-                </SimpleButton>
-                <DangerLink
-                  onClick={() =>
-                    act(
-                      d.id,
-                      `/api/pending/${d.id}/reject/facebook`,
-                      {},
-                      t('zalo_posts_fb_removed', 'Facebook removed from this post')
-                    )
-                  }
-                >
-                  {t('zalo_posts_skip_fb', 'Skip Facebook')}
-                </DangerLink>
-              </div>
-            )}
-            {needsPublic && (
-              <div className="flex gap-[8px] flex-wrap items-center">
-                <PrimaryButton
-                  className="!h-[32px] text-[12.5px]"
-                  disabled={thisBusy}
-                  onClick={() =>
-                    act(
-                      d.id,
-                      `/api/posted/${d.id}/publish`,
-                      {},
-                      t('zalo_posts_now_public', 'The draft is now PUBLIC on Facebook'),
-                      t('zalo_posts_publish_confirm', 'Publish this Facebook draft publicly?')
-                    )
-                  }
-                >
-                  {t('zalo_posts_fb_go_public', 'Publish publicly')}
-                </PrimaryButton>
-                <DangerLink
-                  onClick={() =>
-                    act(
-                      d.id,
-                      `/api/posted/${d.id}/delete/facebook`,
-                      {},
-                      t('zalo_posts_fb_deleted', 'Facebook draft deleted'),
-                      t('zalo_posts_fb_delete_confirm', 'Delete this post from Facebook?')
-                    )
-                  }
-                >
-                  {t('zalo_posts_delete_fb_draft', 'Delete FB draft')}
-                </DangerLink>
-              </div>
-            )}
-            {fbStatus === 'posted' && !needsPublic && (
-              <div className="flex gap-[10px] flex-wrap items-center">
-                <SimpleButton className="!h-[32px] text-[12.5px]" onClick={() => editPosted(d)}>
-                  ✏️ {t('zalo_posts_edit_posted', 'Edit published post')}
-                </SimpleButton>
-                <DangerLink
-                  onClick={() =>
-                    act(
-                      d.id,
-                      `/api/posted/${d.id}/delete/facebook`,
-                      {},
-                      t('zalo_posts_fb_deleted_pub', 'Deleted from Facebook'),
-                      t('zalo_posts_fb_delete_pub_confirm', 'Delete this PUBLISHED post from Facebook? This cannot be undone.')
-                    )
-                  }
-                >
-                  {t('zalo_posts_delete_fb', 'Delete from Facebook')}
-                </DangerLink>
-              </div>
-            )}
-            {fbStatus === 'rejected' && (
-              <div className="text-[12.5px] text-textItemBlur">
-                {t('zalo_posts_fb_was_skipped', 'Facebook was skipped for this post.')}
-              </div>
-            )}
-          </div>
-
-          {hasGbp && (
-            <div className="border border-newTableBorder rounded-[10px] p-[12px] flex flex-col gap-[8px]">
-              <div className="flex items-center justify-between">
-                <b className="text-[13px]">Google Business</b>
-                {gbpStatus === 'pending' ? (
-                  <StatusChip tone="wait">{t('zalo_posts_waiting', 'Waiting')}</StatusChip>
-                ) : gbpStatus === 'posted' ? (
-                  <StatusChip tone="ok">{t('zalo_posts_posted', 'Posted')}</StatusChip>
-                ) : (
-                  <StatusChip tone="off">{t('zalo_posts_skipped', 'Skipped')}</StatusChip>
-                )}
-              </div>
-              {!!d.gbpLocationId && (
-                <div className="text-[11.5px] text-textItemBlur">ID: {d.gbpLocationId}</div>
-              )}
-              {inPending && gbpStatus === 'pending' && (
-                <div className="flex gap-[8px] flex-wrap items-center">
-                  <PrimaryButton
-                    className="!h-[32px] text-[12.5px]"
-                    disabled={thisBusy}
-                    onClick={() =>
-                      act(
-                        d.id,
-                        `/api/pending/${d.id}/approve/gbp`,
-                        {},
-                        t('zalo_posts_gbp_published', 'Posted to Google Business'),
-                        t('zalo_posts_gbp_confirm', 'Post to Google Business now?')
-                      )
-                    }
-                  >
-                    {t('zalo_posts_gbp_publish', 'Post to Google Business')}
-                  </PrimaryButton>
-                  <DangerLink
-                    onClick={() =>
-                      act(
-                        d.id,
-                        `/api/pending/${d.id}/reject/gbp`,
-                        {},
-                        t('zalo_posts_gbp_removed', 'Google Business removed from this post')
-                      )
-                    }
-                  >
-                    {t('zalo_posts_skip_gbp', 'Skip Google')}
-                  </DangerLink>
-                </div>
-              )}
-              {gbpStatus === 'posted' && (
-                <DangerLink
-                  onClick={() =>
-                    act(
-                      d.id,
-                      `/api/posted/${d.id}/remove/gbp`,
-                      {},
-                      t('zalo_posts_gbp_removed_list', 'Google Business removed from the list')
-                    )
-                  }
-                >
-                  {t('zalo_posts_gbp_remove_list', 'Remove Google from list')}
-                </DangerLink>
-              )}
-              {gbpStatus === 'rejected' && (
-                <div className="text-[12.5px] text-textItemBlur">
-                  {t('zalo_posts_gbp_was_skipped', 'Google Business was skipped.')}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Hẹn giờ (chỉ bài chờ, FB còn pending) */}
-        {inPending && fbStatus === 'pending' && (
+        {/* ---- Hẹn giờ (mở từ nút ⏰) ------------------------------------------ */}
+        {fbPendingHere && schedId === d.id && !d.scheduledAt && (
           <div className="mx-[14px] mb-[10px] border border-dashed border-newTableBorder rounded-[10px] p-[10px]">
-            {d.scheduledAt ? (
-              <div className="flex items-center gap-[10px] flex-wrap text-[12.5px]">
-                <span>
-                  ⏰{' '}
-                  {t('zalo_posts_will_auto', 'Will automatically {{mode}} at {{time}}')
-                    .replace(
-                      '{{mode}}',
-                      d.scheduledPublished !== false
-                        ? t('zalo_posts_sched_public_chip', 'publish')
-                        : t('zalo_posts_sched_draft_chip', 'draft')
-                    )
-                    .replace('{{time}}', fmtFull(d.scheduledAt))}
-                </span>
-                <DangerLink
-                  onClick={() =>
-                    act(d.id, `/api/pending/${d.id}/unschedule`, {}, t('zalo_posts_unscheduled', 'Schedule cancelled'))
-                  }
-                >
-                  {t('zalo_posts_cancel_schedule', 'Cancel schedule')}
-                </DangerLink>
-              </div>
-            ) : (
-              <ScheduleRow
-                onSchedule={(at, mode) => schedule(d, at, mode)}
-                busy={thisBusy}
-              />
-            )}
+            <ScheduleRow onSchedule={(at, mode) => schedule(d, at, mode)} busy={thisBusy} />
           </div>
         )}
 
-        {/* Hàng tiện ích */}
-        <div className="flex items-center gap-[14px] flex-wrap px-[14px] pb-[14px] text-[12.5px]">
-          {inPending ? (
+        {/* ---- MỘT hàng hành động ---------------------------------------------- */}
+        <div className="flex items-center gap-[8px] px-[14px] py-[10px] border-t border-newTableBorder flex-wrap">
+          {fbPendingHere && (
             <>
-              <span
-                onClick={() => (editing ? setEditId(null) : openEdit(d))}
-                className="cursor-pointer font-[600] text-btnPrimary"
-              >
-                ✏️ {editing ? t('zalo_close', 'Close') : t('zalo_posts_edit', 'Edit')}
-              </span>
-              <span
-                onClick={() => !rewriting && aiRewrite(d)}
-                className={clsx('cursor-pointer font-[600] text-btnPrimary', rewriting && 'opacity-50')}
-              >
-                ✨ {rewriting && editing ? t('zalo_posts_rewriting', 'Rewriting…') : t('zalo_ai_rewrite', 'AI rewrite')}
-              </span>
-              <span
-                onClick={() =>
-                  act(d.id, `/api/pending/${d.id}/reload-footer`, {}, t('zalo_posts_footer_reloaded', 'Latest footer applied'))
-                }
-                className="cursor-pointer font-[600] text-btnPrimary"
-                title={t('zalo_posts_footer_title', 'Apply the latest footer/contact block from Groups → Pages')}
-              >
-                ↻ {t('zalo_posts_reload_footer', 'Reload footer')}
-              </span>
-              {!d.pushedToHub && (
-                <span
-                  onClick={() =>
-                    act(
-                      d.id,
-                      `/api/postiz/pending/${d.id}/push-hub`,
-                      {},
-                      t('zalo_pushed_to_hub', 'Pushed to Media Hub — open Calendar to review & schedule')
-                    )
-                  }
-                  className="cursor-pointer font-[600] text-btnPrimary"
-                >
-                  📥 {t('zalo_push_to_hub', 'Push to Media Hub')}
-                </span>
-              )}
-              <div className="flex-1" />
-              <DangerLink
+              <PrimaryButton
+                className="!h-[32px] !px-[14px] text-[12.5px]"
+                disabled={thisBusy}
                 onClick={() =>
                   act(
                     d.id,
-                    `/api/pending/${d.id}/reject`,
-                    {},
-                    t('zalo_removed_from_queue', 'Removed the post from the queue'),
-                    t('zalo_reject_confirm', 'Discard this post? Its images will be deleted from the bot.')
+                    `/api/pending/${d.id}/approve`,
+                    { published: true },
+                    t('zalo_fb_published', 'Published publicly to Facebook'),
+                    t('zalo_fb_publish_confirm', 'Publish this post PUBLICLY to Facebook now?')
                   )
                 }
               >
-                🗑 {t('zalo_reject', 'Reject')}
-              </DangerLink>
-            </>
-          ) : (
-            <>
-              <span
-                onClick={() =>
-                  act(d.id, `/api/posted/${d.id}/reload-footer`, {}, t('zalo_posts_footer_reloaded_saved', 'Footer updated (saved copy only)'))
-                }
-                className="cursor-pointer font-[600] text-btnPrimary"
-                title={t('zalo_posts_footer_posted_title', 'Updates the saved copy only — the Facebook post is not modified')}
-              >
-                ↻ {t('zalo_posts_reload_footer', 'Reload footer')}
-              </span>
-              <span
+                {t('zalo_posts_fb_go_public', 'Publish publicly')}
+              </PrimaryButton>
+              <SimpleButton
+                className="!h-[32px] !px-[14px] text-[12.5px]"
+                disabled={thisBusy}
                 onClick={() =>
                   act(
                     d.id,
-                    `/api/posted/${d.id}/redraft`,
-                    {},
-                    t('zalo_posts_redrafted', 'New draft created — check "Needs action" to approve'),
-                    t('zalo_posts_redraft_confirm', 'Create a NEW draft from this post (with the latest footer) to approve & publish again?')
-                  )
-                }
-                className="cursor-pointer font-[600] text-btnPrimary"
-              >
-                🔁 {t('zalo_posts_redraft', 'Repost as draft')}
-              </span>
-              <div className="flex-1" />
-              <DangerLink
-                onClick={() =>
-                  act(
-                    d.id,
-                    `/api/posted/${d.id}/remove`,
-                    {},
-                    t('zalo_posts_removed_list', 'Removed from the processed list'),
-                    t('zalo_posts_remove_confirm', 'Remove this post from the list? Posts on Facebook/Google are NOT affected.')
+                    `/api/pending/${d.id}/approve`,
+                    { published: false },
+                    t('zalo_posts_fb_saved_draft', 'Saved as a Facebook draft')
                   )
                 }
               >
-                🗑 {t('zalo_posts_remove_from_list', 'Remove from list')}
-              </DangerLink>
+                {t('zalo_posts_fb_save_draft', 'Save draft')}
+              </SimpleButton>
             </>
           )}
+          {needsPublic && (
+            <PrimaryButton
+              className="!h-[32px] !px-[14px] text-[12.5px]"
+              disabled={thisBusy}
+              onClick={() =>
+                act(
+                  d.id,
+                  `/api/posted/${d.id}/publish`,
+                  {},
+                  t('zalo_posts_now_public', 'The draft is now PUBLIC on Facebook'),
+                  t('zalo_posts_publish_confirm', 'Publish this Facebook draft publicly?')
+                )
+              }
+            >
+              {t('zalo_posts_fb_go_public', 'Publish publicly')}
+            </PrimaryButton>
+          )}
+          {gbpPendingHere && (
+            <SimpleButton
+              className="!h-[32px] !px-[14px] text-[12.5px]"
+              disabled={thisBusy}
+              onClick={() =>
+                act(
+                  d.id,
+                  `/api/pending/${d.id}/approve/gbp`,
+                  {},
+                  t('zalo_posts_gbp_published', 'Posted to Google Business'),
+                  t('zalo_posts_gbp_confirm', 'Post to Google Business now?')
+                )
+              }
+            >
+              {t('zalo_posts_gbp_publish', 'Post to Google Business')}
+            </SimpleButton>
+          )}
+          <div className="flex-1" />
+          {fbPendingHere && !d.scheduledAt && (
+            <button
+              onClick={() => setSchedId((cur) => (cur === d.id ? null : d.id))}
+              title={t('zalo_posts_schedule_label', 'Schedule (instead of posting now)')}
+              className={clsx(
+                'h-[32px] px-[10px] rounded-[8px] text-[12.5px] font-[600] cursor-pointer transition-colors duration-150',
+                schedId === d.id ? 'bg-boxHover text-newTextColor' : 'bg-btnSimple text-btnText hover:bg-boxHover'
+              )}
+            >
+              ⏰ {t('zalo_posts_schedule_btn', 'Schedule')}
+            </button>
+          )}
+          {inPending && (
+            <button
+              onClick={() => (editing ? setEditId(null) : openEdit(d))}
+              className={clsx(
+                'h-[32px] px-[10px] rounded-[8px] text-[12.5px] font-[600] cursor-pointer transition-colors duration-150',
+                editing ? 'bg-boxHover text-newTextColor' : 'bg-btnSimple text-btnText hover:bg-boxHover'
+              )}
+            >
+              ✏️ {editing ? t('zalo_close', 'Close') : t('zalo_posts_edit', 'Edit')}
+            </button>
+          )}
+          <MoreMenu items={menu} label={t('zalo_posts_more_actions', 'More actions')} />
         </div>
 
-        {/* Khu sửa bài */}
+        {/* ---- Khu sửa bài ------------------------------------------------------ */}
         {editing && (
-          <div className="border-t border-newTableBorder p-[14px] flex flex-col gap-[10px] bg-boxHover/30">
+          <div className="border-t border-newTableBorder p-[14px] flex flex-col gap-[10px]">
             <div className="text-[13px] font-[700]">{t('zalo_posts_edit_area', 'Edit post')}</div>
             <textarea
               value={editCaption}
@@ -888,7 +856,7 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
                       <img
                         src={it.origIndex != null ? `${botUrl}${it.url}` : it.url}
                         alt=""
-                        className="w-[52px] h-[52px] object-cover rounded-[8px] border border-newTableBorder shrink-0"
+                        className="w-[48px] h-[48px] object-cover rounded-[8px] border border-newTableBorder shrink-0"
                       />
                       <input
                         value={it.caption}
@@ -898,17 +866,15 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
                           )
                         }
                         placeholder={t('zalo_posts_img_cap_placeholder', 'Caption for this image (optional)')}
-                        className={clsx(inputCls, 'flex-1 !h-[34px]')}
+                        className={clsx(inputCls, 'flex-1 !h-[32px]')}
                       />
-                      <SimpleButton className="!h-[34px] !px-[10px]" onClick={() => moveImage(i, -1)}>
+                      <SimpleButton className="!h-[32px] !px-[10px]" onClick={() => moveImage(i, -1)}>
                         ↑
                       </SimpleButton>
-                      <SimpleButton className="!h-[34px] !px-[10px]" onClick={() => moveImage(i, 1)}>
+                      <SimpleButton className="!h-[32px] !px-[10px]" onClick={() => moveImage(i, 1)}>
                         ↓
                       </SimpleButton>
-                      <DangerLink
-                        onClick={() => setEditImages((cur) => cur.filter((_, j) => j !== i))}
-                      >
+                      <DangerLink onClick={() => setEditImages((cur) => cur.filter((_, j) => j !== i))}>
                         ✕
                       </DangerLink>
                     </div>
@@ -933,12 +899,8 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
               <PrimaryButton className="!h-[34px] text-[13px]" disabled={thisBusy} onClick={saveEdit}>
                 {t('zalo_posts_save_edit', 'Save changes')}
               </PrimaryButton>
-              <SimpleButton
-                className="!h-[34px] text-[13px]"
-                disabled={rewriting}
-                onClick={() => aiRewrite(d)}
-              >
-                ✨ {t('zalo_ai_rewrite', 'AI rewrite')}
+              <SimpleButton className="!h-[34px] text-[13px]" disabled={rewriting} onClick={() => aiRewrite(d)}>
+                ✨ {rewriting ? t('zalo_posts_rewriting', 'Rewriting…') : t('zalo_ai_rewrite', 'AI rewrite')}
               </SimpleButton>
               <SimpleButton className="!h-[34px] text-[13px]" onClick={() => setEditId(null)}>
                 {t('zalo_close', 'Close')}
@@ -975,7 +937,7 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
               key={k}
               onClick={() => setFilter(k)}
               className={clsx(
-                'h-[34px] px-[14px] text-[12.5px] font-[600] cursor-pointer',
+                'h-[34px] px-[14px] text-[12.5px] font-[600] cursor-pointer transition-colors duration-150',
                 filter === k ? 'bg-btnPrimary text-white' : 'bg-newBgColorInner text-textItemBlur hover:bg-boxHover'
               )}
             >
@@ -1050,12 +1012,12 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
         </Card>
       )}
 
-      <div className="flex flex-col gap-[14px]">{shown.map(renderCard)}</div>
+      <div className="flex flex-col gap-[12px]">{shown.map(renderCard)}</div>
     </div>
   );
 };
 
-// Hàng hẹn giờ — tách component để giữ state datetime cục bộ cho từng thẻ.
+// Hàng hẹn giờ — state datetime cục bộ cho từng thẻ.
 const ScheduleRow: FC<{ onSchedule: (at: string, mode: string) => void; busy?: boolean }> = ({
   onSchedule,
   busy,

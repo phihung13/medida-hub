@@ -30,3 +30,37 @@ export function setAnthropicKey(key: string): void {
     /* ghi file lỗi — vẫn set env cho phiên hiện tại */
   }
 }
+
+// ---- Model Claude (chọn từ UI Settings, dùng cho AI viết bài + Agent) -------
+const MODEL_FILE = configPath('anthropic-model.txt');
+export const ANTHROPIC_MODELS = [
+  'claude-sonnet-4-6',
+  'claude-haiku-4-5-20251001',
+  'claude-opus-4-8',
+] as const;
+export const DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-4-6';
+
+// Nạp model đã chọn từ file (env thật vẫn ưu tiên nếu đã đặt).
+try {
+  if (!process.env.ANTHROPIC_MODEL) {
+    const m = fs.readFileSync(MODEL_FILE, 'utf8').trim();
+    if (m) process.env.ANTHROPIC_MODEL = m;
+  }
+} catch {
+  /* chưa có file — dùng mặc định */
+}
+
+export function getAnthropicModel(): string {
+  return process.env.ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL;
+}
+
+export function setAnthropicModel(model: string): void {
+  const m = String(model || '').trim();
+  if (!(ANTHROPIC_MODELS as readonly string[]).includes(m)) return;
+  process.env.ANTHROPIC_MODEL = m;
+  try {
+    fs.writeFileSync(MODEL_FILE, m);
+  } catch {
+    /* ghi file lỗi — vẫn set env cho phiên hiện tại */
+  }
+}

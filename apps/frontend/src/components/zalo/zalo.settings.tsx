@@ -9,12 +9,10 @@ import {
   bot,
   Card,
   DangerLink,
-  FieldLabel,
   fmtFull,
   getBotUrl,
   inputCls,
   PrimaryButton,
-  selectCls,
   SimpleButton,
   StatusChip,
   textareaCls,
@@ -25,15 +23,9 @@ import {
 // ============================================================================
 //  Tab "Cài đặt" — thay tab Settings của dashboard bot: tạm dừng nhận ảnh,
 //  lọc nhóm hiển thị (allowlist), tài khoản Zalo (QR / kết nối lại / đăng xuất
-//  giữ-hay-xoá dữ liệu), Claude AI (key + model + kiểm tra).
-//  + Tab "Nhật ký" (log hoạt động của bot).
+//  giữ-hay-xoá dữ liệu). Key & model Claude nằm ở Settings CHUNG (tự đồng bộ
+//  sang bot). + Tab "Nhật ký" (log hoạt động của bot).
 // ============================================================================
-
-const CLAUDE_MODELS = [
-  { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6 — cân bằng (khuyên dùng)' },
-  { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5 — nhanh, rẻ' },
-  { id: 'claude-opus-4-8', label: 'Opus 4.8 — mạnh nhất' },
-];
 
 export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
   const t = useT();
@@ -50,9 +42,6 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
     hasCreds?: boolean;
     qr?: boolean;
   } | null>(null);
-  const [claude, setClaude] = useState<{ hasKey?: boolean; masked?: string; model?: string }>({});
-  const [claudeKey, setClaudeKey] = useState('');
-  const [claudeResult, setClaudeResult] = useState('');
   const [allowText, setAllowText] = useState('');
   const [allGroups, setAllGroups] = useState<ZaloGroup[] | null>(null);
   const [revealPass, setRevealPass] = useState('');
@@ -71,7 +60,6 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
       /* bot chưa phản hồi */
     }
     bot('/api/zalo/status').then((z) => z && setZalo(z)).catch(() => {});
-    bot('/api/claude/status').then((c) => c && setClaude(c)).catch(() => {});
     setQrTick((v) => v + 1);
   }, []);
 
@@ -141,38 +129,6 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
     },
     [load, onChanged, t]
   );
-
-  const saveAndTestClaude = useCallback(async () => {
-    const k = claudeKey.trim();
-    if (k && !k.startsWith('sk-ant-')) {
-      setClaudeResult(t('zalo_settings_claude_bad_key', 'The key must start with sk-ant- — clear the field and paste the real key.'));
-      return;
-    }
-    setBusy(true);
-    setClaudeResult(t('zalo_settings_claude_testing', 'Saving & testing…'));
-    try {
-      if (k) {
-        const s = await bot('/api/claude/key', { method: 'POST', body: JSON.stringify({ key: k }) });
-        if (s?.error) {
-          setClaudeResult(s.error);
-          setBusy(false);
-          return;
-        }
-        setClaudeKey('');
-      }
-      const r = await bot('/api/claude/test', undefined, 60000);
-      setClaudeResult(
-        r?.ok
-          ? t('zalo_settings_claude_ok', 'Connected — test model: {{model}}').replace('{{model}}', r.model || '')
-          : r?.error || t('zalo_error', 'Error')
-      );
-      load();
-    } catch {
-      setClaudeResult(t('zalo_bot_unreachable', 'Cannot reach the Zalo bot'));
-    } finally {
-      setBusy(false);
-    }
-  }, [claudeKey, load, t]);
 
   if (settings === null) {
     return (
@@ -331,76 +287,18 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
         </div>
       </Card>
 
-      {/* Claude AI */}
-      <Card
-        title={
-          <div className="flex items-center gap-[10px] w-full">
-            <span className="flex-1">Claude AI</span>
-            <StatusChip tone={claude.hasKey ? 'ok' : 'off'}>
-              {claude.hasKey
-                ? `${t('zalo_settings_has_key', 'key saved')} (${claude.masked || ''})`
-                : t('zalo_settings_no_key', 'no key')}
-            </StatusChip>
-          </div>
-        }
-      >
-        <div className="text-[12.5px] text-textItemBlur leading-[1.6]">
-          {t(
-            'zalo_settings_claude_hint',
-            'The bot uses this key to write captions. It is auto-synced from Media Hub Settings; you can also set it manually here.'
-          )}
-        </div>
-        <div className="flex items-center gap-[8px] flex-wrap">
-          <input
-            type="password"
-            value={claudeKey}
-            onChange={(e) => setClaudeKey(e.target.value)}
-            placeholder="sk-ant-api03-…"
-            autoComplete="off"
-            className={clsx(inputCls, 'flex-1 min-w-[200px] !w-auto')}
-          />
-          <PrimaryButton className="!h-[36px] text-[13px]" disabled={busy} onClick={saveAndTestClaude}>
-            ⚡ {t('zalo_settings_save_test', 'Save & test')}
-          </PrimaryButton>
-          {claude.hasKey && (
-            <DangerLink
-              onClick={async () => {
-                if (
-                  !(await deleteDialog(
-                    t('zalo_settings_clear_key_confirm', 'Delete the Claude API key? AI caption writing stops until a new key is set.'),
-                    t('zalo_token_clear', 'Delete')
-                  ))
-                )
-                  return;
-                await bot('/api/claude/key', { method: 'POST', body: JSON.stringify({ clear: true }) });
-                toast.show(t('zalo_settings_key_cleared', 'Key deleted'), 'success');
-                load();
-              }}
-            >
-              🗑 {t('zalo_settings_clear_key', 'Delete key')}
-            </DangerLink>
-          )}
-        </div>
-        <div className="flex items-center gap-[8px] flex-wrap">
-          <FieldLabel>{t('zalo_settings_model', 'Caption model')}</FieldLabel>
-          <select
-            value={claude.model || 'claude-sonnet-4-6'}
-            onChange={async (e) => {
-              await bot('/api/claude/key', { method: 'POST', body: JSON.stringify({ model: e.target.value }) });
-              toast.show(t('zalo_settings_model_saved', 'Model saved: {{m}}').replace('{{m}}', e.target.value), 'success');
-              load();
-            }}
-            className={clsx(selectCls, '!w-auto min-w-[240px]')}
-          >
-            {CLAUDE_MODELS.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        {!!claudeResult && <div className="text-[12.5px] text-textItemBlur">{claudeResult}</div>}
-      </Card>
+      {/* Key & model Claude đặt ở Settings CHUNG của Hub — tự đồng bộ sang bot,
+          không quản lý key riêng ở đây nữa. */}
+      <div className="text-[12.5px] text-textItemBlur leading-[1.6]">
+        🤖{' '}
+        {t(
+          'zalo_settings_claude_moved',
+          'The Claude API key & model are managed in the main Settings and sync to the bot automatically.'
+        )}{' '}
+        <a href="/settings" className="text-btnPrimary font-[600] hover:underline">
+          {t('zalo_settings_open_settings', 'Open Settings')} →
+        </a>
+      </div>
     </div>
   );
 };

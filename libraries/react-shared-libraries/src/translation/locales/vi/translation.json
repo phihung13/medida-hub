@@ -1452,5 +1452,17 @@
   "zalo_settings_model_saved": "Đã chọn model: {{m}}",
   "zalo_logs_loading": "Đang tải nhật ký…",
   "zalo_logs_title": "Nhật ký hoạt động của bot",
-  "zalo_logs_empty": "Chưa có nhật ký."
+  "zalo_logs_empty": "Chưa có nhật ký.",
+  "zalo_posts_detail": "Chi tiết",
+  "zalo_posts_more_actions": "Thêm hành động",
+  "zalo_routes_page_no_token2": "Trang \"{{name}}\" chưa có token dùng được — kết nối lại Trang ở Thêm kênh (Add Channel).",
+  "zalo_routes_empty_3b": "Trang Facebook lấy từ Thêm kênh (Add Channel — kết nối một lần); muốn tự đăng thì bật ở đây.",
+  "zalo_routes_page_hint2": "Chưa thấy Trang? Kết nối một lần ở Thêm kênh (Add Channel) — bot tự nhận token.",
+  "zalo_routes_guide_ph": "Viết CHỈ DẪN cho AI (không phải bài mẫu để chép), VD:\n- Phong cách: gần gũi, nhiều cảm xúc.\n- Xưng hô: gọi 'ba mẹ', xưng 'nhà trường'.\n- Chương trình đang chạy: Ưu đãi học phí tháng 7.\n- Lead magnet: mời để lại SĐT nhận lịch tham quan.\nĐể trống = phong cách mặc định.",
+  "zalo_settings_claude_moved": "Key & model Claude quản lý ở Cài đặt chung của Media Hub — tự đồng bộ sang bot.",
+  "zalo_settings_open_settings": "Mở Cài đặt",
+  "anthropic_model": "Model",
+  "anthropic_model_error": "Không lưu được model",
+  "anthropic_model_saved": "Đã lưu model — áp dụng cho AI viết bài, Agent và bot Zalo",
+  "anthropic_model_hint": "Có hiệu lực ngay — không cần khởi động lại."
 }

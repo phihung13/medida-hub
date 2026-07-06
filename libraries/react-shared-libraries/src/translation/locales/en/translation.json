@@ -1452,5 +1452,17 @@
   "zalo_settings_model_saved": "Model saved: {{m}}",
   "zalo_logs_loading": "Loading activity log…",
   "zalo_logs_title": "Bot activity log",
-  "zalo_logs_empty": "No log entries yet."
+  "zalo_logs_empty": "No log entries yet.",
+  "zalo_posts_detail": "Details",
+  "zalo_posts_more_actions": "More actions",
+  "zalo_routes_page_no_token2": "Page \"{{name}}\" has no usable token — reconnect it in Add Channel.",
+  "zalo_routes_empty_3b": "Facebook Pages come from Add Channel (connect once) — then enable auto-publish here if you want.",
+  "zalo_routes_page_hint2": "Don't see the Page? Connect it once in Add Channel — the bot picks up its token automatically.",
+  "zalo_routes_guide_ph": "Write DIRECTIONS for the AI, e.g.:\n- Style: warm, emotional.\n- Addressing: call readers 'ba mẹ', sign as 'nhà trường'.\n- Running campaign: July tuition offer.\n- Lead magnet: invite to leave a phone number for a tour.\nLeave empty = default style.",
+  "zalo_settings_claude_moved": "The Claude API key & model are managed in the main Settings and sync to the bot automatically.",
+  "zalo_settings_open_settings": "Open Settings",
+  "anthropic_model": "Model",
+  "anthropic_model_error": "Could not save the model",
+  "anthropic_model_saved": "Model saved — applies to AI writing, Agent and the Zalo bot",
+  "anthropic_model_hint": "Applies immediately — no restart needed."
 }

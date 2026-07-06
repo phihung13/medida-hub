@@ -9,12 +9,23 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 
 // Nhập Claude (Anthropic) API key ngay trong UI Settings — không cần sửa .env.
 // Dùng cho AI viết bài + Agent của Postiz.
+// Model khả dụng (khớp ANTHROPIC_MODELS phía backend).
+const MODELS = [
+  { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6 — cân bằng (khuyên dùng)' },
+  { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5 — nhanh, rẻ' },
+  { id: 'claude-opus-4-8', label: 'Opus 4.8 — mạnh nhất' },
+];
+
 export const AnthropicComponent: FC = () => {
   const t = useT();
   const fetch = useFetch();
   const toast = useToaster();
   const [key, setKey] = useState('');
-  const [status, setStatus] = useState<{ hasKey: boolean; masked: string }>({
+  const [status, setStatus] = useState<{
+    hasKey: boolean;
+    masked: string;
+    model?: string;
+  }>({
     hasKey: false,
     masked: '',
   });
@@ -125,6 +136,41 @@ export const AnthropicComponent: FC = () => {
             ? t('anthropic_checking', 'Checking...')
             : t('anthropic_check_key', 'Check key')}
         </Button>
+      </div>
+      {/* Chọn model — dùng cho AI viết bài + Agent + caption bot Zalo (tự đồng bộ). */}
+      <div className="flex items-center gap-[10px] flex-wrap mt-[14px]">
+        <div className="text-[13px] font-[600]">
+          {t('anthropic_model', 'Model')}
+        </div>
+        <select
+          value={status.model || 'claude-sonnet-4-6'}
+          onChange={async (e) => {
+            const model = e.target.value;
+            const res = await fetch('/copilot/anthropic-key', {
+              method: 'POST',
+              body: JSON.stringify({ model }),
+            });
+            if (res.status >= 400) {
+              toast.show(t('anthropic_model_error', 'Could not save the model'), 'warning');
+              return;
+            }
+            setStatus((cur) => ({ ...cur, model }));
+            toast.show(
+              t('anthropic_model_saved', 'Model saved — applies to AI writing, Agent and the Zalo bot'),
+              'success'
+            );
+          }}
+          className="bg-sixth border-fifth border rounded-[4px] h-[40px] px-[10px] text-[13px] outline-none cursor-pointer min-w-[250px]"
+        >
+          {MODELS.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+        <div className="text-[12px] opacity-70">
+          {t('anthropic_model_hint', 'Applies immediately — no restart needed.')}
+        </div>
       </div>
     </div>
   );
