@@ -44,6 +44,15 @@ services:
       UPLOAD_DIRECTORY: '/uploads'
       NEXT_PUBLIC_UPLOAD_DIRECTORY: '/uploads'
       RUN_VIRAL_CRAWLER: '1'
+      # === Key nhập QUA UI được lưu vào /config (volume) → sống qua rebuild.
+      #     (anthropic-key.txt, image-gen.json, viral-config.json, social-keys.env)
+      CONFIG_DIR: '/config'
+      # === Bot Zalo (service riêng, KHÔNG cần domain riêng) ===
+      # Trang Zalo trong Hub gọi bot qua proxy /botapi → địa chỉ nội bộ này.
+      ZALO_BOT_URL: '${ZALO_BOT_URL:-http://zalo-bot:8088}'
+      # Bí mật chung Hub ↔ bot (bot từ chối request thiếu/lệch token). Tạo:
+      #   openssl rand -hex 24  — và đặt CÙNG GIÁ TRỊ cho service/app bot.
+      HUB_BOT_TOKEN: '${HUB_BOT_TOKEN}'
     volumes:
       - media-hub-config:/config/
       - media-hub-uploads:/uploads/
@@ -59,6 +68,38 @@ services:
         condition: service_healthy
       temporal:
         condition: service_started
+
+  # -----------------------------------------------------------------
+  #  Bot Zalo (zca-js) — nguồn ảnh từ nhóm Zalo. KHÔNG expose cổng/domain:
+  #  chỉ Hub gọi nội bộ qua /botapi (auth HUB_BOT_TOKEN). Toàn bộ thao tác
+  #  (QR, duyệt bài, token FB, GBP…) làm trong trang Zalo của Hub.
+  #  Build từ repo bot (đã có Dockerfile). Nếu deploy bot bằng app Coolify
+  #  RIÊNG (như hiện tại): XÓA service này, đặt ZALO_BOT_URL trỏ địa chỉ nội
+  #  bộ của app đó và set env cho app bot: WEB_HOST=0.0.0.0 + HUB_BOT_TOKEN.
+  # -----------------------------------------------------------------
+  zalo-bot:
+    build:
+      context: 'https://github.com/phihung13/zalo-bot-group-put-image-video.git'
+    image: viet-anh-zalo-bot:latest
+    container_name: zalo-bot
+    restart: always
+    environment:
+      # Bind ra mạng nội bộ compose để container media-hub gọi được
+      # (image mặc định 127.0.0.1; auth bằng HUB_BOT_TOKEN nên an toàn).
+      WEB_HOST: '0.0.0.0'
+      HUB_BOT_TOKEN: '${HUB_BOT_TOKEN}'
+      DASHBOARD_USER: '${ZALO_DASHBOARD_USER:-admin}'
+      DASHBOARD_PASS: '${ZALO_DASHBOARD_PASS}'
+      # Cầu nối đẩy bài vào Hub: backend nằm trong container media-hub.
+      POSTIZ_API_URL: 'http://media-hub:3000'
+    volumes:
+      # Image đã gom MỌI dữ liệu ghi-runtime về /app/data (DATA_DIR):
+      # phiên Zalo, QR, routes.json, tokens.json, bài chờ, ảnh output.
+      - zalo-bot-data:/app/data
+    expose:
+      - 8088
+    networks:
+      - postiz-network
 
   postiz-postgres:
     image: postgres:17-alpine
@@ -158,6 +199,7 @@ volumes:
   postiz-redis-data:
   media-hub-config:
   media-hub-uploads:
+  zalo-bot-data:
   temporal-es-data:
   temporal-pg-data:
 

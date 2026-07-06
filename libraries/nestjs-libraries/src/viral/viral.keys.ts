@@ -1,10 +1,11 @@
 import * as fs from 'fs';
-import * as path from 'path';
+import { configPath } from '@gitroom/nestjs-libraries/keys/config.dir';
 
 // Cấu hình "Lò Bài Thắng": token Apify (cào FB/IG/TikTok theo share — TRẢ PHÍ,
 // tùy chọn), key YouTube Data (FREE — Google Cloud), và chu kỳ cào tự động (giờ).
 // Lưu file để bền qua restart.
-const FILE = path.join(process.cwd(), 'viral-config.json');
+// File nằm trong CONFIG_DIR (Docker mount volume) — local mặc định = cwd cũ.
+const FILE = configPath('viral-config.json');
 
 interface ViralConfig {
   apifyToken: string;

@@ -2,6 +2,9 @@
 import '@gitroom/nestjs-libraries/openai/anthropic.key';
 // Nạp cấu hình tạo ảnh AI (nhà cung cấp + key) từ file vào env.
 import '@gitroom/nestjs-libraries/openai/image.key';
+// Nạp OAuth keys các kênh (nhập qua UI Settings) từ CONFIG_DIR/social-keys.env
+// — bền qua rebuild container, trước khi provider nào đọc env.
+import '@gitroom/nestjs-libraries/keys/social.keys';
 import { initializeSentry } from '@gitroom/nestjs-libraries/sentry/initialize.sentry';
 initializeSentry('backend', true);
 import compression from 'compression';

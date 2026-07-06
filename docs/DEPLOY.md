@@ -10,21 +10,29 @@ official Postiz, không có custom).
 ## 1. Kiến trúc deploy
 
 ```
-Internet ──HTTPS──▶ Reverse proxy (Caddy/nginx/Cloudflare) ──▶ container media-hub:5000
-                                                                 │ nginx
-                                                                 ├─ /api/     → backend :3000
-                                                                 ├─ /uploads/ → volume tĩnh
-                                                                 └─ /         → frontend :4200
-                                                          (pm2 chạy backend + frontend + orchestrator)
+Internet ──HTTPS──▶ Reverse proxy (Caddy/nginx/Coolify) ──▶ container media-hub:5000
+                                                              │ nginx
+                                                              ├─ /api/     → backend :3000
+                                                              ├─ /uploads/ → volume tĩnh
+                                                              └─ /         → frontend :4200
+                                                       (pm2 chạy backend + frontend + orchestrator)
+        frontend /botapi ──(JWT + HUB_BOT_TOKEN)──▶ container zalo-bot:8088 (KHÔNG có domain riêng)
         Postgres ─ Redis ─ Temporal(+ES+PG) : các container hạ tầng cùng compose
 ```
 
 - **1 container `media-hub`** (all-in-one): nginx + pm2 chạy backend + frontend +
   **orchestrator** (worker Temporal — bắt buộc để bài lên lịch được đăng).
+- **1 container `zalo-bot`** (zca-js, build từ repo bot): nguồn ảnh từ nhóm Zalo.
+  **Không expose cổng/domain** — mọi thao tác (QR đăng nhập, duyệt bài, token
+  Facebook, Google Business, chân bài, thời gian chờ…) làm ngay trong **trang
+  Zalo của Hub** (proxy `/botapi`, xác thực JWT + bí mật `HUB_BOT_TOKEN`).
+  → Domain cũ của bot (vd `autopost.vietanh.org`) **bỏ được** — 1 domain duy nhất.
 - `prisma-db-push` **tự chạy** mỗi lần container khởi động (tạo/cập nhật bảng, gồm
   4 model mới: AiCredit/ViralPost/ViralSource/ViralClone + cột Integration.postFooter).
 - Media lưu **local** trong volume `media-hub-uploads`, nginx phục vụ `/uploads/`
   trực tiếp (không qua Next — nhanh, bền).
+- **API key nhập QUA UI** (không cần trong `.env`): Hub lưu vào volume `/config`
+  (`CONFIG_DIR`), bot lưu vào volume `/app/data` → sống qua restart/rebuild.
 
 ## 2. Yêu cầu VPS
 
@@ -39,10 +47,11 @@ Internet ──HTTPS──▶ Reverse proxy (Caddy/nginx/Cloudflare) ──▶ c
 # 1) Đưa code lên VPS (khuyến nghị: push repo lên GitHub PRIVATE rồi clone)
 git clone <repo-private-cua-ban> media-hub && cd media-hub
 
-# 2) Tạo .env từ mẫu rồi điền domain/JWT/mật khẩu/API keys
+# 2) Tạo .env từ mẫu — CHỈ hạ tầng (API key nhập qua UI sau khi đăng nhập)
 cp .env.production.example .env
-nano .env            # điền FRONTEND_URL, JWT_SECRET, POSTGRES_PASSWORD, ANTHROPIC_API_KEY…
+nano .env            # FRONTEND_URL, JWT_SECRET, POSTGRES_PASSWORD, HUB_BOT_TOKEN, ZALO_DASHBOARD_PASS
 #   JWT_SECRET:       openssl rand -hex 32
+#   HUB_BOT_TOKEN:    openssl rand -hex 24
 #   POSTGRES_PASSWORD: đặt mạnh
 
 # 3) Build image + chạy toàn bộ (lần đầu build ~15–30 phút)
@@ -93,15 +102,27 @@ Máy không có SMTP nên quản lý tài khoản là admin-driven. Lần đầu
 
 ## 7. Lưu ý quan trọng (đọc trước khi deploy)
 
-- **API keys đặt qua `.env`, KHÔNG qua ô nhập-key trên UI.** Trên máy Windows, key
-  nhập từ UI lưu file runtime (`anthropic-key.txt`, `viral-config.json`,
-  `image-gen.json`) — trong container các file này **ephemeral, mất khi rebuild**.
-  Production hãy đặt `ANTHROPIC_API_KEY`, `ZALO_*`, `YOUTUBE_API_KEY`, `APIFY_TOKEN`… trong `.env`.
-- **Bot Zalo (nhận ảnh/video từ nhóm Zalo) CHƯA nằm trong Docker.** Nó là hệ riêng
-  (`D:\Zalo bot group`, zca-js cần session sống, hiện chạy trên máy Windows). Core
-  Media Hub deploy độc lập được; bot Zalo là giai đoạn sau (chạy ở máy Windows hoặc
-  VPS riêng, trỏ API về domain). Không bật bot ⇒ chỉ thiếu nguồn ảnh tự động từ Zalo,
-  mọi thứ khác chạy bình thường.
+- **API keys nhập QUA UI, không cần `.env`.** Key được lưu bền trên volume:
+  Hub → `/config` (`CONFIG_DIR`: `anthropic-key.txt`, `image-gen.json`,
+  `viral-config.json`, `social-keys.env`); bot → `/app/data` (`tokens.json`).
+  Sau khi đăng nhập lần đầu: **Settings** (Claude AI, Tạo ảnh, Social keys gồm
+  Zalo OA/Facebook/Telegram…) và **trang Zalo** (token Trang FB, Google Business,
+  key Claude của bot). Ngoại lệ: `NEXT_PUBLIC_POLOTNO` là biến build-time của
+  frontend — muốn dùng Design Media thì đặt trong `.env` trước khi build image.
+- **Bot Zalo nằm trong compose (service `zalo-bot`)** — build từ repo
+  `github.com/phihung13/zalo-bot-group-put-image-video`. Sau khi `up -d`:
+  mở **trang Zalo trong Hub → quét QR** đăng nhập tài khoản Zalo (session lưu
+  volume `zalo-bot-data`). Lưu ý bot dùng **zca-js không chính thức** — dùng
+  tài khoản Zalo phụ.
+  - **Nếu bot đang chạy bằng app Coolify riêng** (deploy từ repo bot): giữ app đó
+    cũng được — chỉ cần (1) set env cho app bot: `WEB_HOST=0.0.0.0` +
+    `HUB_BOT_TOKEN=<cùng giá trị với Hub>`; (2) nối 2 app vào cùng Docker
+    network trong Coolify; (3) đặt `ZALO_BOT_URL=http://<tên-container-bot>:8088`
+    cho Hub; (4) **xoá domain riêng của bot** (autopost.vietanh.org) — không cần
+    nữa, tránh lộ dashboard ra ngoài. Khi đó xoá service `zalo-bot` khỏi compose.
+- **Cấu hình "cầu nối → Media Hub" của bot trong Docker:** ở trang Zalo, địa chỉ
+  Media Hub backend phải là `http://media-hub:3000` (mặc định đã đúng qua env
+  `POSTIZ_API_URL` — đừng sửa thành localhost).
 - **`prisma-db-push` dùng `--accept-data-loss`** (Postiz mặc định): push schema trực
   tiếp, phù hợp khi schema chỉ thêm bảng/cột. Trước khi update lớn nên **backup DB** (mục 6).
 - **Lưu trữ media:** mặc định `local` (volume). Muốn bền + CDN cho traffic lớn, cân
@@ -111,13 +132,31 @@ Máy không có SMTP nên quản lý tài khoản là admin-driven. Lần đầu
   trước khi deploy (`git remote add origin <url-private>` — remote `upstream` đang trỏ
   Postiz gốc, chỉ để pull update, KHÔNG push lên đó).
 
-## 8. Trạng thái kiểm chứng + việc cần verify trên VPS
+## 8. Deploy bằng Coolify (khuyến nghị của dự án)
+
+Coolify deploy kiểu **Docker Compose**: tạo Resource → *Docker Compose* → trỏ repo
+`medida-hub` + file `docker-compose.prod.yaml`.
+
+1. Điền **Environment Variables** trong Coolify đúng như `.env.production.example`
+   (FRONTEND_URL, JWT_SECRET, POSTGRES_PASSWORD, HUB_BOT_TOKEN, ZALO_DASHBOARD_PASS).
+2. Gán domain duy nhất (vd `hub.truongvietanh.com`) cho service `media-hub`
+   cổng **5000** — Coolify tự lo HTTPS. **KHÔNG gán domain cho `zalo-bot`.**
+3. Deploy → chờ build (lần đầu 15–30 phút). Log phải thấy pm2 online 3 app.
+4. Vào domain → tạo admin (mục 5) → nhập key qua UI (mục 7) → trang Zalo quét QR.
+5. Nếu trước đó bot có app Coolify riêng + domain `autopost.vietanh.org`:
+   sau khi xác nhận trang Zalo trong Hub điều khiển được bot → **xoá domain đó**
+   (hoặc xoá luôn app cũ nếu dùng service `zalo-bot` trong compose — nhớ việc
+   này làm MẤT session Zalo cũ, phải quét QR lại; cấu hình nhóm/chân bài thì
+   thiết lập lại trong trang Zalo, hoặc copy volume `/app/data` sang trước).
+
+## 9. Trạng thái kiểm chứng + việc cần verify trên VPS
 
 - ✅ **Compose validate OK** (`docker compose config`).
-- ✅ **Image ĐÃ BUILD THỬ THÀNH CÔNG** với custom code (Docker Desktop, image Linux
-  `viet-anh-media-hub:latest` ~5.66 GB; `nest build` backend+orchestrator và
-  `pnpm run build` frontend đều exit 0). Native module (`bcrypt`/`sharp`/`canvas`)
-  build được nhờ `g++ make python3-pip` trong Dockerfile.dev.
+- ✅ **Image media-hub ĐÃ BUILD THỬ THÀNH CÔNG** với custom code (Docker Desktop,
+  image Linux `viet-anh-media-hub:latest` ~5.66 GB; cả 3 app build exit 0).
+  Native module (`bcrypt`/`sharp`/`canvas`) build OK nhờ `g++ make python3-pip`.
+- ✅ Trang Zalo trong Hub = FULL dashboard bot (duyệt bài/FB/GBP/hẹn giờ/chân
+  bài/thời gian chờ/token/nhật ký) qua `/botapi` — verify trên máy dev.
 
 Còn lại cần verify **khi chạy container thật trên VPS** (chưa chạy thử end-to-end):
 
@@ -126,3 +165,7 @@ Còn lại cần verify **khi chạy container thật trên VPS** (chưa chạy 
 2. Sau khi `up -d`: đăng nhập được, **đăng thử 1 bài** (kiểm orchestrator đăng thật qua
    Temporal), ảnh media hiển thị (`/uploads` qua nginx volume), AI viết caption (Claude) chạy.
 3. Domain + HTTPS trỏ đúng `FRONTEND_URL` (cookie/media phụ thuộc biến này).
+4. **Bot trong Docker**: quét QR từ trang Zalo của Hub, bot giữ session qua restart
+   (volume `zalo-bot-data`), ảnh nhóm Zalo → bản nháp trên Calendar; GBP trong
+   container cần đăng nhập Google qua **upload session** (trình duyệt không mở
+   được trong container — xem tab Google Business).

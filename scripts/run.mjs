@@ -9,6 +9,7 @@
 //        --tunnel  → mở kèm tunnel public (Cloudflare Quick Tunnel, in ra URL)
 // ============================================================================
 import { spawn, spawnSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
@@ -20,6 +21,7 @@ const root = path.resolve(scriptsDir, '..');
 const isWin = process.platform === 'win32';
 const REBUILD = process.argv.includes('--rebuild');
 const TUNNEL = process.argv.includes('--tunnel');
+const ZALO_DIR = 'D:\\Zalo bot group';
 
 const c = (code, s) => `\x1b[${code}m${s}\x1b[0m`;
 const log = (m) => process.stdout.write(c(36, '[hub] ') + m + '\n');
@@ -59,6 +61,40 @@ function freePorts(ports) {
 log('Dọn tiến trình cũ trên cổng 3000/3002/4200 (nếu còn sót từ lần trước)...');
 if (isWin) { try { spawnSync('taskkill', ['/f', '/im', 'cloudflared.exe'], { stdio: 'ignore' }); } catch {} }
 freePorts([3000, 3002, 4200]);
+
+// 0b) Bí mật chung Hub ↔ bot Zalo (HUB_BOT_TOKEN): trang Zalo trong Hub gọi
+//     toàn bộ API dashboard của bot qua proxy /botapi kèm token này (bot từ
+//     chối nếu lệch). Tự sinh 1 lần rồi ghi vào .env CẢ HAI bên — bot chạy
+//     riêng bằng start.bat vẫn có; ở đây còn truyền qua env cho tiến trình con.
+function ensureHubBotToken() {
+  const hubEnv = path.join(root, '.env');
+  const botEnv = path.join(ZALO_DIR, '.env');
+  const readVar = (file) => {
+    try {
+      const m = fs.readFileSync(file, 'utf8').match(/^HUB_BOT_TOKEN\s*=\s*"?([^"\r\n]+)"?\s*$/m);
+      return m ? m[1].trim() : '';
+    } catch { return ''; }
+  };
+  let token = readVar(hubEnv);
+  if (!token) {
+    token = crypto.randomBytes(24).toString('hex');
+    try {
+      fs.appendFileSync(hubEnv, `\n# Bí mật chung để Media Hub gọi API bot Zalo qua /botapi (tự sinh, đừng chia sẻ)\nHUB_BOT_TOKEN="${token}"\n`);
+      log('Đã sinh HUB_BOT_TOKEN mới (ghi vào .env).');
+    } catch (e) { log(c(33, 'Không ghi được HUB_BOT_TOKEN vào .env: ' + e.message)); }
+  }
+  try {
+    if (fs.existsSync(botEnv) && readVar(botEnv) !== token) {
+      let txt = fs.readFileSync(botEnv, 'utf8');
+      if (/^HUB_BOT_TOKEN\s*=/m.test(txt)) txt = txt.replace(/^HUB_BOT_TOKEN\s*=.*$/m, `HUB_BOT_TOKEN="${token}"`);
+      else txt += `${txt.endsWith('\n') ? '' : '\n'}HUB_BOT_TOKEN="${token}"\n`;
+      fs.writeFileSync(botEnv, txt);
+      log('Đã đồng bộ HUB_BOT_TOKEN sang .env của bot Zalo.');
+    }
+  } catch (e) { log(c(33, 'Không đồng bộ được HUB_BOT_TOKEN sang bot: ' + e.message)); }
+  process.env.HUB_BOT_TOKEN = token;
+}
+ensureHubBotToken();
 
 // 1) Hạ tầng Docker
 runSync(
@@ -132,7 +168,6 @@ start('orchestrator', 34, 'corepack', ['pnpm', '--filter', './apps/orchestrator'
 start('frontend', 32, 'corepack', ['pnpm', '--filter', './apps/frontend', 'run', 'start']);
 
 // 4) Bot Zalo (D:\Zalo bot group) — nguồn ảnh từ nhóm Zalo + dashboard :8088
-const ZALO_DIR = 'D:\\Zalo bot group';
 if (fs.existsSync(path.join(ZALO_DIR, 'src', 'service.mjs'))) {
   if (await portBusy(8088)) {
     log(c(33, 'Bot Zalo đã chạy sẵn (:8088) — dùng bản đang chạy, không khởi động thêm.'));

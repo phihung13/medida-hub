@@ -1,3 +1,7 @@
+// Nạp key nhập-qua-UI từ CONFIG_DIR vào env TRƯỚC khi provider nào đọc:
+// worker đăng bài cần OAuth keys (FB/Telegram/Zalo…) + ANTHROPIC (caption AI).
+import '@gitroom/nestjs-libraries/openai/anthropic.key';
+import '@gitroom/nestjs-libraries/keys/social.keys';
 import { initializeSentry } from '@gitroom/nestjs-libraries/sentry/initialize.sentry';
 initializeSentry('orchestrator', true);
 import 'source-map-support/register';

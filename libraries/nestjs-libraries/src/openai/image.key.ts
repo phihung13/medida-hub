@@ -1,10 +1,11 @@
 import * as fs from 'fs';
-import * as path from 'path';
+import { configPath } from '@gitroom/nestjs-libraries/keys/config.dir';
 
 // Cấu hình tạo ảnh AI (nhập qua UI Settings): chọn nhà cung cấp + key.
 // Lưu file để bền qua restart, đồng thời set vào process.env để openai.service /
 // fal.service dùng ngay. Hỗ trợ nhiều nhà cung cấp (không chỉ OpenAI).
-const FILE = path.join(process.cwd(), 'image-gen.json');
+// File nằm trong CONFIG_DIR (Docker mount volume) — local mặc định = cwd cũ.
+const FILE = configPath('image-gen.json');
 
 export type ImageProvider = 'openai' | 'fal';
 

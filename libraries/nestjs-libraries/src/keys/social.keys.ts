@@ -1,9 +1,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { configPath } from '@gitroom/nestjs-libraries/keys/config.dir';
 
 // ============================================================================
 //  Lưu OAuth keys các kênh (FB/LinkedIn/GBP/Telegram...) NHẬP TỪ UI Settings.
-//  - Ghi vào file .env gốc của repo (bền qua restart, frontend cũng đọc được)
+//  - Ghi vào file .env gốc của repo NẾU CÓ (local dev — frontend cũng đọc được)
+//  - LUÔN ghi thêm CONFIG_DIR/social-keys.env (Docker mount volume → key nhập
+//    qua UI sống qua restart/rebuild container, không cần .env).
+//  - File overrides được NẠP vào process.env ngay khi module load (main.ts của
+//    backend + orchestrator import sớm) — env thật (compose/coolify) vẫn ưu tiên.
 //  - Set luôn process.env → backend (generateAuthUrl các provider) ăn NGAY.
 //  - Whitelist cứng: không cho ghi biến env tuỳ ý (an toàn).
 // ============================================================================
@@ -42,7 +47,7 @@ export const SOCIAL_KEY_WHITELIST = [
   'NEXT_PUBLIC_POLOTNO',
 ] as const;
 
-function envFilePath(): string {
+function envFilePath(): string | null {
   // backend chạy với cwd = apps/backend (dotenv -e ../../.env)
   const candidates = [
     path.resolve(process.cwd(), '../../.env'),
@@ -51,7 +56,50 @@ function envFilePath(): string {
   for (const p of candidates) {
     if (fs.existsSync(p)) return p;
   }
-  return candidates[0];
+  // Docker: không có .env — chỉ dùng file overrides bền bên dưới.
+  return null;
+}
+
+// File overrides bền (định dạng .env đơn giản KEY="value").
+const OVERRIDES_FILE = configPath('social-keys.env');
+
+function parseEnvText(text: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const line of text.split(/\r?\n/)) {
+    const m = line.match(/^([A-Z0-9_]+)\s*=\s*"?([^"\r\n]*)"?\s*$/);
+    if (m) out[m[1]] = m[2];
+  }
+  return out;
+}
+
+function upsertEnvText(content: string, key: string, value: string): string {
+  const line = `${key}="${value}"`;
+  const re = new RegExp(`^${key}=.*$`, 'm');
+  return re.test(content)
+    ? content.replace(re, line)
+    : content + (content.endsWith('\n') || !content ? '' : '\n') + line + '\n';
+}
+
+// Nạp overrides vào process.env NGAY khi module load. Env thật (đặt từ
+// compose/coolify/.env) ƯU TIÊN hơn — chỉ điền chỗ trống.
+try {
+  const saved = parseEnvText(fs.readFileSync(OVERRIDES_FILE, 'utf8'));
+  for (const [k, v] of Object.entries(saved)) {
+    if (
+      (SOCIAL_KEY_WHITELIST as readonly string[]).includes(k) &&
+      !(process.env[k] || '').trim() &&
+      v
+    ) {
+      process.env[k] = v;
+    }
+  }
+} catch {
+  /* chưa có file — bỏ qua */
+}
+
+// Cho main.ts import gọi tường minh (import module là đã nạp ở trên).
+export function loadPersistedSocialKeys(): void {
+  /* việc nạp diễn ra lúc import — hàm này chỉ để giữ import không bị tree-shake */
 }
 
 export type SocialKeyStatus = Record<string, { has: boolean; masked: string }>;
@@ -72,10 +120,18 @@ export function setSocialKeys(vars: Record<string, string>): {
   const saved: string[] = [];
   const file = envFilePath();
   let content = '';
+  if (file) {
+    try {
+      content = fs.readFileSync(file, 'utf8');
+    } catch {
+      content = '';
+    }
+  }
+  let overrides = '';
   try {
-    content = fs.readFileSync(file, 'utf8');
+    overrides = fs.readFileSync(OVERRIDES_FILE, 'utf8');
   } catch {
-    content = '';
+    overrides = '';
   }
 
   for (const [key, raw] of Object.entries(vars || {})) {
@@ -83,13 +139,10 @@ export function setSocialKeys(vars: Record<string, string>): {
     const value = String(raw ?? '')
       .replace(/[\r\n"]/g, '')
       .trim();
-    if (!value) continue; // không ghi đè bằng rỗng — muốn xoá thì sửa .env tay
+    if (!value) continue; // không ghi đè bằng rỗng — muốn xoá thì sửa file tay
 
-    const line = `${key}="${value}"`;
-    const re = new RegExp(`^${key}=.*$`, 'm');
-    content = re.test(content)
-      ? content.replace(re, line)
-      : content + (content.endsWith('\n') || !content ? '' : '\n') + line + '\n';
+    if (file) content = upsertEnvText(content, key, value);
+    overrides = upsertEnvText(overrides, key, value);
 
     process.env[key] = value; // hiệu lực NGAY cho backend
     saved.push(key);
@@ -97,7 +150,12 @@ export function setSocialKeys(vars: Record<string, string>): {
 
   if (saved.length) {
     try {
-      fs.writeFileSync(file, content);
+      if (file) fs.writeFileSync(file, content);
+    } catch {
+      /* ghi .env lỗi — file overrides bên dưới vẫn giữ key */
+    }
+    try {
+      fs.writeFileSync(OVERRIDES_FILE, overrides);
     } catch {
       /* ghi file lỗi — env runtime vẫn hoạt động tới khi restart */
     }

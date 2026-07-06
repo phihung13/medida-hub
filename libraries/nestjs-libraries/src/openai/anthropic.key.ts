@@ -1,9 +1,10 @@
 import * as fs from 'fs';
-import * as path from 'path';
+import { configPath } from '@gitroom/nestjs-libraries/keys/config.dir';
 
 // Lưu ANTHROPIC_API_KEY (nhập qua UI) vào file để bền qua restart, đồng thời
 // set vào process.env để dùng ngay (không cần sửa .env tay).
-const KEY_FILE = path.join(process.cwd(), 'anthropic-key.txt');
+// File nằm trong CONFIG_DIR (Docker mount volume) — local mặc định = cwd cũ.
+const KEY_FILE = configPath('anthropic-key.txt');
 
 // Nạp key từ file vào process.env lúc module load (nếu env chưa có).
 // (File này được import ĐẦU TIÊN trong main.ts để env sẵn sàng trước khi các

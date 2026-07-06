@@ -65,13 +65,13 @@ const nextConfig = {
       // nhất phục vụ cả backend lẫn bot — trình duyệt bên ngoài không thể gọi
       // thẳng cổng 3000/8088). Client tự chuyển sang các path này khi hostname
       // không phải localhost/LAN (xem resolveBaseUrl + getBotUrl).
+      // LƯU Ý: /botapi KHÔNG còn rewrite ở đây — nay là route handler
+      // src/app/botapi/[[...path]]/route.ts, đọc ZALO_BOT_URL lúc RUNTIME
+      // (rewrites bị đóng băng lúc build nên không đổi được theo môi trường
+      // local ↔ Docker) và gắn bí mật HUB_BOT_TOKEN khi gọi bot.
       {
         source: '/hubapi/:path*',
         destination: 'http://127.0.0.1:3000/:path*',
-      },
-      {
-        source: '/botapi/:path*',
-        destination: 'http://127.0.0.1:8088/:path*',
       },
     ];
   },
