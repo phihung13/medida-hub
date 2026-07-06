@@ -42,9 +42,9 @@ const nextConfig = {
   async redirects() {
     return [
       {
+        // URL cũ /api/uploads → /uploads (media URL nay luôn dạng /uploads/…)
         source: '/api/uploads/:path*',
-        destination:
-          process.env.STORAGE_PROVIDER === 'local' ? '/uploads/:path*' : '/404',
+        destination: '/uploads/:path*',
         permanent: true,
       },
     ];
@@ -52,11 +52,14 @@ const nextConfig = {
   async rewrites() {
     return [
       {
+        // Media local LUÔN phục vụ qua route handler (app)/api/uploads.
+        // KHÔNG phụ thuộc process.env.STORAGE_PROVIDER: giá trị này chỉ có ở
+        // runtime (dotenv), nhưng next.config đóng băng rewrites vào
+        // routes-manifest lúc BUILD → nếu build thiếu env thì mọi /uploads/*
+        // bị đóng băng thành /404 (ảnh chết hàng loạt). Dự án tự host local nên
+        // map vô điều kiện; cloud storage sinh URL công khai, không đi qua đây.
         source: '/uploads/:path*',
-        destination:
-          process.env.STORAGE_PROVIDER === 'local'
-            ? '/api/uploads/:path*'
-            : '/404',
+        destination: '/api/uploads/:path*',
       },
       // Proxy same-origin cho truy cập TỪ XA qua tunnel (1 URL công khai duy
       // nhất phục vụ cả backend lẫn bot — trình duyệt bên ngoài không thể gọi
