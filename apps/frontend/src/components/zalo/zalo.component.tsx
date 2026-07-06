@@ -382,10 +382,16 @@ export const ZaloComponent: FC = () => {
   // Danh sách nhóm Zalo — nạp khi đã đăng nhập Zalo. LẦN ĐẦU chậm: bot phải lấy
   // tên từng nhóm qua zca-js (có thể >8s nếu nhiều nhóm) → timeout dài 60s, nếu
   // không request bị hủy giữa chừng và trang tưởng "không có nhóm nào".
-  const loadGroups = useCallback(async () => {
+  const loadGroups = useCallback(async (force?: boolean) => {
     setGroupsLoading(true);
     try {
-      const g = await bot('/api/postiz/groups', undefined, 60000);
+      // force=true (nút Refresh): bỏ qua cache của bot, lấy danh sách MỚI theo
+      // tài khoản Zalo đang đăng nhập — cần thiết sau khi đổi nick.
+      const g = await bot(
+        `/api/postiz/groups${force ? '?force=1' : ''}`,
+        undefined,
+        60000
+      );
       if (Array.isArray(g)) {
         setGroups(g);
       }
@@ -983,7 +989,7 @@ export const ZaloComponent: FC = () => {
               </span>
               {zaloLogged && (
                 <span
-                  onClick={loadGroups}
+                  onClick={() => loadGroups(true)}
                   className="cursor-pointer normal-case tracking-normal font-[600] text-btnPrimary"
                 >
                   ↻ {t('zalo_refresh', 'Refresh')}
