@@ -94,7 +94,9 @@ export const hours = Array.from(
 );
 
 // Shared hook for post actions (edit, delete, statistics)
-const usePostActions = (onMutate?: () => void) => {
+// (export: trang Zalo mở trình soạn bài qua /launches?openpost=<id> — xem
+//  open.post.from.query.tsx)
+export const usePostActions = (onMutate?: () => void) => {
   const t = useT();
   const fetch = useFetch();
   const modal = useModals();

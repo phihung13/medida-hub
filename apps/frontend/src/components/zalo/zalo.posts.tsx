@@ -1,6 +1,7 @@
 'use client';
 
 import { FC, useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import clsx from 'clsx';
 import { useToaster } from '@gitroom/react/toaster/toaster';
 import { deleteDialog } from '@gitroom/react/helpers/delete.dialog';
@@ -82,12 +83,30 @@ const MoreMenu: FC<{ items: MenuItem[]; label: string }> = ({ items, label }) =>
   );
 };
 
+// Xem lớn ảnh/video của bài — media strip 72px chỉ là thumbnail.
+type LightboxMedia = { url: string; video?: boolean; caption?: string };
+
 export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
   const t = useT();
   const toast = useToaster();
+  const router = useRouter();
 
   const [botUrl, setBotUrl] = useState('/botapi');
   useEffect(() => setBotUrl(getBotUrl()), []);
+
+  // ---- Lightbox xem ảnh/video lớn -------------------------------------------
+  const [lightbox, setLightbox] = useState<LightboxMedia | null>(null);
+  const [lightboxError, setLightboxError] = useState(false);
+  const openLightbox = useCallback((m: LightboxMedia) => {
+    setLightboxError(false);
+    setLightbox(m);
+  }, []);
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setLightbox(null);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [lightbox]);
 
   const [posts, setPosts] = useState<BotPost[] | null>(null);
   const [routes, setRoutes] = useState<RouteInfo[]>([]);
@@ -205,6 +224,41 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
       }
     },
     [refresh, t]
+  );
+
+  // "Soạn & đăng ở Calendar": đẩy bài sang Hub (draft + media) rồi mở THẲNG
+  // trình soạn bài của Calendar (y hệt Add Post) qua /launches?openpost=<id>.
+  // Bài đã đẩy trước đó (có hubPostId) thì mở luôn, không đẩy lại.
+  const composeInCalendar = useCallback(
+    async (d: BotPost) => {
+      if (d.hubPostId) {
+        router.push(`/launches?openpost=${d.hubPostId}`);
+        return;
+      }
+      setBusy(d.id);
+      try {
+        const r = await bot(
+          `/api/postiz/pending/${d.id}/push-hub`,
+          { method: 'POST', body: '{}' },
+          180000
+        );
+        if (r?.error) {
+          toast.show(r.error, 'warning');
+          return;
+        }
+        toast.show(
+          t('zalo_pushed_opening', 'Pushed to Media Hub — opening the composer…'),
+          'success'
+        );
+        refresh();
+        router.push(r?.postId ? `/launches?openpost=${r.postId}` : '/launches');
+      } catch {
+        toast.show(t('zalo_bot_unreachable', 'Cannot reach the Zalo bot'), 'warning');
+      } finally {
+        setBusy(null);
+      }
+    },
+    [router, refresh, t]
   );
 
   const bulk = useCallback(
@@ -416,13 +470,6 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
         onClick: () =>
           act(d.id, `/api/pending/${d.id}/reload-footer`, {}, t('zalo_posts_footer_reloaded', 'Latest footer applied')),
       });
-      if (!d.pushedToHub) {
-        menu.push({
-          label: `📥 ${t('zalo_push_to_hub', 'Push to Media Hub')}`,
-          onClick: () =>
-            act(d.id, `/api/postiz/pending/${d.id}/push-hub`, {}, t('zalo_pushed_to_hub', 'Pushed to Media Hub — open Calendar to review & schedule')),
-        });
-      }
       if (d.scheduledAt) {
         menu.push({
           label: `⏰ ${t('zalo_posts_cancel_schedule', 'Cancel schedule')}`,
@@ -630,8 +677,11 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
                 key={i}
                 src={`${botUrl}${u}`}
                 alt={d.imageCaptions?.[i] || `Ảnh ${i + 1}`}
-                title={d.imageCaptions?.[i] || ''}
-                className="h-[72px] w-[72px] object-cover rounded-[8px] border border-newTableBorder shrink-0"
+                title={d.imageCaptions?.[i] || t('zalo_posts_view_large', 'View large')}
+                onClick={() =>
+                  openLightbox({ url: `${botUrl}${u}`, caption: d.imageCaptions?.[i] })
+                }
+                className="h-[72px] w-[72px] object-cover rounded-[8px] border border-newTableBorder shrink-0 cursor-pointer hover:opacity-80 transition-opacity duration-150"
                 loading="lazy"
               />
             ))}
@@ -645,13 +695,32 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
               </div>
             )}
             {vids.map((u, i) => (
-              <video
+              // Thumbnail video (frame đầu) + nút ▶ — bấm mở lightbox player lớn.
+              <div
                 key={`v${i}`}
-                src={`${botUrl}${u}`}
-                controls
-                preload="metadata"
-                className="h-[72px] rounded-[8px] border border-newTableBorder shrink-0"
-              />
+                onClick={() =>
+                  openLightbox({
+                    url: `${botUrl}${u}`,
+                    video: true,
+                    caption: d.videoCaptions?.[i],
+                  })
+                }
+                title={d.videoCaptions?.[i] || t('zalo_posts_play_video', 'Play video')}
+                className="relative h-[72px] w-[72px] rounded-[8px] border border-newTableBorder shrink-0 cursor-pointer overflow-hidden bg-black/70 hover:opacity-80 transition-opacity duration-150"
+              >
+                <video
+                  src={`${botUrl}${u}#t=0.1`}
+                  preload="metadata"
+                  muted
+                  playsInline
+                  className="h-full w-full object-cover pointer-events-none"
+                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="w-[28px] h-[28px] rounded-full bg-black/60 text-white text-[12px] flex items-center justify-center ps-[2px]">
+                    ▶
+                  </span>
+                </div>
+              </div>
             ))}
           </div>
         )}
@@ -770,6 +839,17 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
                 }
               >
                 {t('zalo_posts_fb_save_draft', 'Save draft')}
+              </SimpleButton>
+              <SimpleButton
+                className="!h-[32px] !px-[14px] text-[12.5px]"
+                disabled={thisBusy}
+                title={t(
+                  'zalo_compose_calendar_hint',
+                  'Push this post to Media Hub and open the Calendar composer (pick channels, edit & schedule)'
+                )}
+                onClick={() => composeInCalendar(d)}
+              >
+                📅 {t('zalo_compose_calendar', 'Compose in Calendar')}
               </SimpleButton>
             </>
           )}
@@ -1013,6 +1093,57 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
       )}
 
       <div className="flex flex-col gap-[12px]">{shown.map(renderCard)}</div>
+
+      {/* ---- Lightbox xem ảnh/video lớn (đóng: bấm nền / ✕ / Esc) ---------- */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-[20px]"
+          onClick={() => setLightbox(null)}
+        >
+          <button
+            aria-label={t('zalo_close', 'Close')}
+            className="absolute top-[14px] end-[20px] w-[36px] h-[36px] rounded-full bg-white/10 hover:bg-white/25 text-white text-[17px] leading-none cursor-pointer transition-colors duration-150"
+          >
+            ✕
+          </button>
+          <div
+            className="max-w-[92vw] max-h-[88vh] flex flex-col items-center gap-[10px]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {lightboxError ? (
+              <div className="bg-newBgColorInner border border-newTableBorder rounded-[12px] px-[24px] py-[20px] text-[13.5px] leading-[1.6] max-w-[420px] text-center">
+                ⚠️{' '}
+                {t(
+                  'zalo_media_missing',
+                  'This file is no longer on the bot — it may have been cleaned up after posting or rejecting.'
+                )}
+              </div>
+            ) : lightbox.video ? (
+              <video
+                src={lightbox.url}
+                controls
+                autoPlay
+                playsInline
+                onError={() => setLightboxError(true)}
+                className="max-w-[92vw] max-h-[82vh] rounded-[10px] bg-black"
+              />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={lightbox.url}
+                alt={lightbox.caption || ''}
+                onError={() => setLightboxError(true)}
+                className="max-w-[92vw] max-h-[82vh] object-contain rounded-[10px]"
+              />
+            )}
+            {!!lightbox.caption && !lightboxError && (
+              <div className="text-white/85 text-[13px] leading-[1.5] text-center max-w-[640px]">
+                {lightbox.caption}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

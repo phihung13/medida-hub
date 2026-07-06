@@ -131,6 +131,7 @@ export type BotPost = {
   inPending?: boolean;
   queueStatus?: 'pending' | 'done';
   pushedToHub?: boolean;
+  hubPostId?: string; // id bài draft trong Hub (mở thẳng trình soạn ở Calendar)
 };
 
 export type BotRoute = {

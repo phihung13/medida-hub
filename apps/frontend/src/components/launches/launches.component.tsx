@@ -27,6 +27,7 @@ import { useIntegrationList } from '@gitroom/frontend/components/launches/helper
 import useCookie from 'react-use-cookie';
 import { Onboarding } from '@gitroom/frontend/components/onboarding/onboarding';
 import { ZaloPendingBanner } from '@gitroom/frontend/components/launches/zalo.pending.banner';
+import { OpenPostFromQuery } from '@gitroom/frontend/components/launches/open.post.from.query';
 
 export const SVGLine = () => {
   return (
@@ -596,6 +597,7 @@ export const LaunchesComponent = () => {
         </div>
         <div className="bg-newBgColorInner flex-1 flex-col flex p-[20px] gap-[12px]">
           <ZaloPendingBanner />
+          <OpenPostFromQuery />
           <Filters />
           <div className="flex-1 flex">
             <Calendar />
