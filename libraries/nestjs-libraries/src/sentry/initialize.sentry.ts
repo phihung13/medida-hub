@@ -1,11 +1,15 @@
 import * as Sentry from '@sentry/nestjs';
-import { nodeProfilingIntegration } from '@sentry/profiling-node';
 import { capitalize } from 'lodash';
 
 export const initializeSentry = (appName: string, allowLogs = false) => {
   if (!process.env.NEXT_PUBLIC_SENTRY_DSN) {
     return null;
   }
+
+  // Lazy-load: '@sentry/profiling-node' nạp native binding lúc require, sẽ crash
+  // trên Node ngoài range hỗ trợ. Chỉ nạp khi thật sự init Sentry (có DSN).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { nodeProfilingIntegration } = require('@sentry/profiling-node');
 
   try {
     Sentry.init({

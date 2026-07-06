@@ -77,11 +77,23 @@ export class OrganizationService {
     return this._organizationRepository.getOrgByCustomerId(customerId);
   }
 
-  async inviteTeamMember(orgId: string, body: AddTeamMemberDto) {
+  // origin: địa chỉ admin đang truy cập (tunnel/LAN) — để link mở được từ xa,
+  // KHÔNG kẹt localhost. Chỉ nhận origin http(s) hợp lệ, còn lại fallback env.
+  private safeBase(origin?: string) {
+    const o = (origin || '').trim();
+    if (/^https?:\/\/[^\s]+$/i.test(o)) return o.replace(/\/+$/, '');
+    return process.env.FRONTEND_URL || '';
+  }
+
+  async inviteTeamMember(
+    orgId: string,
+    body: AddTeamMemberDto,
+    origin?: string
+  ) {
     const timeLimit = dayjs().add(2, 'day').format('YYYY-MM-DD HH:mm:ss');
     const id = makeId(5);
     const url =
-      process.env.FRONTEND_URL +
+      this.safeBase(origin) +
       `/?org=${AuthService.signJWT({ ...body, orgId, timeLimit, id })}`;
     if (body.sendEmail) {
       await this._notificationsService.sendEmail(
@@ -91,6 +103,30 @@ export class OrganizationService {
       );
     }
     return { url };
+  }
+
+  // Admin đặt lại mật khẩu cho 1 thành viên: sinh link đặt mật khẩu (dùng đúng
+  // token mà /auth/forgot/<token> + /forgot-return chấp nhận) để admin đưa cho
+  // người đó. KHÔNG cần email. Verify userId đúng là thành viên org trước.
+  async generateMemberResetLink(
+    org: Organization,
+    userId: string,
+    origin?: string
+  ) {
+    const userOrgs = await this._organizationRepository.getOrgsByUserId(userId);
+    const isMember = userOrgs.some((o) => o.id === org.id);
+    if (!isMember) {
+      return null;
+    }
+    const token = AuthService.signJWT({
+      id: userId,
+      expires: dayjs().add(2, 'day').format('YYYY-MM-DD HH:mm:ss'),
+    });
+    return { url: `${this.safeBase(origin)}/login/forgot/${token}` };
+  }
+
+  isUserOnlyInSoloOrgs(userId: string) {
+    return this._organizationRepository.isUserOnlyInSoloOrgs(userId);
   }
 
   async deleteTeamMember(org: Organization, userId: string) {

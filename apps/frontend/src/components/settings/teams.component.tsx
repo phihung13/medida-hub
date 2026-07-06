@@ -3,14 +3,13 @@
 import { Button } from '@gitroom/react/form/button';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import useSWR from 'swr';
-import React, { useCallback, useMemo } from 'react';
+import React, { FC, useCallback, useMemo, useState } from 'react';
 import { useUser } from '@gitroom/frontend/components/layout/user.context';
 import { capitalize } from 'lodash';
 import { useModals } from '@gitroom/frontend/components/layout/new-modal';
 import { Input } from '@gitroom/react/form/input';
-import { useForm, FormProvider, useWatch } from 'react-hook-form';
+import { useForm, FormProvider } from 'react-hook-form';
 import { Select } from '@gitroom/react/form/select';
-import { Checkbox } from '@gitroom/react/form/checkbox';
 import { classValidatorResolver } from '@hookform/resolvers/class-validator';
 import { AddTeamMemberDto } from '@gitroom/nestjs-libraries/dtos/settings/add.team.member.dto';
 import { useToaster } from '@gitroom/react/toaster/toaster';
@@ -19,210 +18,615 @@ import copy from 'copy-to-clipboard';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 
 const roles = [
-  {
-    name: 'User',
-    value: 'USER',
-  },
-  {
-    name: 'Admin',
-    value: 'ADMIN',
-  },
+  { name: 'Member (User)', value: 'USER' },
+  { name: 'Admin', value: 'ADMIN' },
 ];
-export const AddMember = () => {
-  const modals = useModals();
+
+// Thông tin cá nhân của chính mình (tên hiển thị) — dùng cho mục "Tài khoản của tôi"
+const usePersonal = () => {
   const fetch = useFetch();
+  return useSWR(
+    '/user/personal',
+    async () => (await fetch('/user/personal')).json(),
+    { revalidateOnFocus: false }
+  );
+};
+
+// Đọc message lỗi từ HttpException của backend ({message, statusCode})
+const readError = async (response: Response) => {
+  try {
+    const json = await response.json();
+    return Array.isArray(json?.message)
+      ? json.message.join(', ')
+      : json?.message || '';
+  } catch {
+    return '';
+  }
+};
+
+const origin = () =>
+  typeof window === 'undefined' ? '' : window.location.origin;
+
+// Hiển thị link (mời / đặt lại mật khẩu) để admin copy — vì máy chưa cấu hình
+// email nên không gửi tự động được.
+const LinkResult: FC<{ title: string; note: string; url: string }> = ({
+  title,
+  note,
+  url,
+}) => {
   const toast = useToaster();
-  const resolver = useMemo(() => {
-    return classValidatorResolver(AddTeamMemberDto);
-  }, []);
-  const form = useForm({
-    values: {
-      email: '',
-      role: '',
-      sendEmail: true,
-    },
-    resolver,
-    mode: 'onChange',
-  });
-  const sendEmail = useWatch({
-    control: form.control,
-    name: 'sendEmail',
-  });
+  const t = useT();
+  const [copied, setCopied] = useState(false);
+  const doCopy = useCallback(() => {
+    copy(url);
+    setCopied(true);
+    toast.show(t('link_copied', 'Link copied'), 'success');
+  }, [url]);
+  return (
+    <div className="flex flex-col gap-[12px] p-[16px] pt-0">
+      <div className="text-[14px] font-[600]">{title}</div>
+      <div className="text-[13px] opacity-70">{note}</div>
+      <div className="flex gap-[8px] items-center">
+        <input
+          readOnly
+          value={url}
+          onFocus={(e) => e.currentTarget.select()}
+          className="flex-1 bg-input border border-fifth rounded-[6px] px-[12px] h-[42px] text-[13px] text-inputText outline-none"
+        />
+        <Button onClick={doCopy} className="h-[42px] whitespace-nowrap">
+          {copied ? t('copied', 'Copied ✓') : t('copy', 'Copy')}
+        </Button>
+      </div>
+      <div className="text-[12px] opacity-50">
+        {t('link_expires_2days', 'This link expires in 2 days.')}
+      </div>
+    </div>
+  );
+};
+
+// Sửa tên hiển thị của chính mình
+const EditName: FC<{ personal: any; reload: () => void }> = ({
+  personal,
+  reload,
+}) => {
+  const fetch = useFetch();
+  const modals = useModals();
+  const toast = useToaster();
+  const t = useT();
+  const [loading, setLoading] = useState(false);
+  const form = useForm({ values: { fullname: personal?.name || '' } });
   const submit = useCallback(
-    async (values: { email: string; role: string; sendEmail: boolean }) => {
-      const { url } = await (
-        await fetch('/settings/team', {
-          method: 'POST',
-          body: JSON.stringify(values),
-        })
-      ).json();
-      if (values.sendEmail) {
-        modals.closeAll();
-        toast.show(t('invitation_link_sent', 'Invitation link sent'));
+    async (values: { fullname: string }) => {
+      const fullname = (values.fullname || '').trim();
+      if (fullname.length < 3) {
+        form.setError('fullname', {
+          message: t('name_too_short', 'Name must be at least 3 characters'),
+        });
         return;
       }
-      copy(url);
-      modals.closeAll();
-      toast.show(t('link_copied_to_clipboard', 'Link copied to clipboard'));
+      setLoading(true);
+      try {
+        await fetch('/user/personal', {
+          method: 'POST',
+          body: JSON.stringify({
+            fullname,
+            bio: personal?.bio || '',
+            ...(personal?.picture ? { picture: personal.picture } : {}),
+          }),
+        });
+        toast.show(t('saved', 'Saved'), 'success');
+        reload();
+        modals.closeAll();
+      } finally {
+        setLoading(false);
+      }
     },
-    []
+    [personal, reload]
   );
-
-  const t = useT();
-
   return (
     <FormProvider {...form}>
       <form onSubmit={form.handleSubmit(submit)}>
-        <div className="relative flex gap-[10px] flex-col flex-1 p-[16px] pt-0">
-          {sendEmail && (
-            <Input
-              label="Email"
-              placeholder={t('enter_email', 'Enter email')}
-              name="email"
-            />
-          )}
-          <Select label="Role" name="role">
-            <option value="">{t('select_role', 'Select Role')}</option>
-            {roles.map((role) => (
-              <option key={role.value} value={role.value}>
-                {role.name}
-              </option>
-            ))}
-          </Select>
-          <div className="flex gap-[5px]">
-            <div>
-              <Checkbox name="sendEmail" />
-            </div>
-            <div>
-              {t('send_invitation_via_email', 'Send invitation via email?')}
-            </div>
-          </div>
-          <Button type="submit" className="mt-[18px]">
-            {sendEmail ? t('send_invitation_link', 'Send Invitation Link') : t('copy_link', 'Copy Link')}
+        <div className="relative flex gap-[12px] flex-col flex-1 p-[16px] pt-0">
+          <Input
+            label={t('display_name', 'Display name')}
+            placeholder={t('display_name', 'Display name')}
+            name="fullname"
+          />
+          <Button type="submit" loading={loading}>
+            {t('save', 'Save')}
           </Button>
         </div>
       </form>
     </FormProvider>
   );
 };
+
+// Tự đổi mật khẩu (phải nhập mật khẩu hiện tại)
+const ChangeMyPassword: FC = () => {
+  const fetch = useFetch();
+  const modals = useModals();
+  const toast = useToaster();
+  const t = useT();
+  const [loading, setLoading] = useState(false);
+  const form = useForm({
+    values: { currentPassword: '', newPassword: '', confirmPassword: '' },
+  });
+  const submit = useCallback(
+    async (values: {
+      currentPassword: string;
+      newPassword: string;
+      confirmPassword: string;
+    }) => {
+      if (values.newPassword.length < 3) {
+        form.setError('newPassword', {
+          message: t(
+            'password_too_short',
+            'Password must be at least 3 characters'
+          ),
+        });
+        return;
+      }
+      if (values.newPassword !== values.confirmPassword) {
+        form.setError('confirmPassword', {
+          message: t('password_mismatch', 'Passwords do not match'),
+        });
+        return;
+      }
+      setLoading(true);
+      try {
+        const response = await fetch('/user/change-password', {
+          method: 'POST',
+          body: JSON.stringify({
+            currentPassword: values.currentPassword,
+            newPassword: values.newPassword,
+          }),
+        });
+        if (response.status !== 200) {
+          form.setError('currentPassword', {
+            message:
+              (await readError(response)) ||
+              t('wrong_password', 'Wrong password'),
+          });
+          return;
+        }
+        toast.show(t('password_changed', 'Password changed'), 'success');
+        modals.closeAll();
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+  return (
+    <FormProvider {...form}>
+      <form onSubmit={form.handleSubmit(submit)}>
+        <div className="relative flex gap-[12px] flex-col flex-1 p-[16px] pt-0">
+          <Input
+            label={t('current_password', 'Current password')}
+            placeholder={t('current_password', 'Current password')}
+            name="currentPassword"
+            type="password"
+            autoComplete="off"
+          />
+          <Input
+            label={t('label_new_password', 'New Password')}
+            placeholder={t('label_new_password', 'New Password')}
+            name="newPassword"
+            type="password"
+            autoComplete="off"
+          />
+          <Input
+            label={t('confirm_password', 'Confirm new password')}
+            placeholder={t('confirm_password', 'Confirm new password')}
+            name="confirmPassword"
+            type="password"
+            autoComplete="off"
+          />
+          <Button type="submit" loading={loading}>
+            {t('change_password', 'Change Password')}
+          </Button>
+        </div>
+      </form>
+    </FormProvider>
+  );
+};
+
+// Admin tự đổi email của chính mình (email = tên đăng nhập).
+// KHÔNG reload trang sau khi đổi — reload làm trang "chết" vài giây (nhất là qua
+// tunnel) và nuốt mất modal nếu người dùng thao tác tiếp; chỉ cần mutate SWR.
+const ChangeMyEmail: FC<{ currentEmail: string; reload: () => void }> = ({
+  currentEmail,
+  reload,
+}) => {
+  const fetch = useFetch();
+  const modals = useModals();
+  const toast = useToaster();
+  const t = useT();
+  const [loading, setLoading] = useState(false);
+  const form = useForm({ values: { email: '', password: '' } });
+  const submit = useCallback(
+    async (values: { email: string; password: string }) => {
+      setLoading(true);
+      try {
+        const response = await fetch('/user/change-email', {
+          method: 'POST',
+          body: JSON.stringify(values),
+        });
+        if (response.status !== 200) {
+          form.setError('password', {
+            message:
+              (await readError(response)) ||
+              t('wrong_password', 'Wrong password'),
+          });
+          return;
+        }
+        toast.show(
+          t('email_changed', 'Email changed — use the new email to sign in'),
+          'success'
+        );
+        reload();
+        modals.closeAll();
+      } finally {
+        setLoading(false);
+      }
+    },
+    [reload]
+  );
+  return (
+    <FormProvider {...form}>
+      <form onSubmit={form.handleSubmit(submit)}>
+        <div className="relative flex gap-[12px] flex-col flex-1 p-[16px] pt-0">
+          <div className="text-[13px] opacity-70">
+            {t(
+              'change_email_note',
+              'Your email is also your login. Current email:'
+            )}{' '}
+            <span className="font-[600]">{currentEmail}</span>
+          </div>
+          <Input
+            label={t('new_email', 'New email')}
+            placeholder={t('new_email', 'New email')}
+            name="email"
+            type="email"
+          />
+          <Input
+            label={t('confirm_with_password', 'Password (to confirm)')}
+            placeholder={t('confirm_with_password', 'Password (to confirm)')}
+            name="password"
+            type="password"
+            autoComplete="off"
+          />
+          <Button type="submit" loading={loading}>
+            {t('change_email', 'Change email')}
+          </Button>
+        </div>
+      </form>
+    </FormProvider>
+  );
+};
+
+const AddMember: FC<{ reload: () => void }> = ({ reload }) => {
+  const modals = useModals();
+  const fetch = useFetch();
+  const toast = useToaster();
+  const t = useT();
+  const resolver = useMemo(() => classValidatorResolver(AddTeamMemberDto), []);
+  const form = useForm({
+    values: { email: '', role: '', sendEmail: false },
+    resolver,
+    mode: 'onChange',
+  });
+
+  const submit = useCallback(
+    async (values: { email: string; role: string; sendEmail: boolean }) => {
+      const { url } = await (
+        await fetch('/settings/team', {
+          method: 'POST',
+          body: JSON.stringify({ ...values, sendEmail: false, origin: origin() }),
+        })
+      ).json();
+      copy(url);
+      reload();
+      modals.closeAll();
+      modals.openModal({
+        title: t('invite_created', 'Invitation created'),
+        withCloseButton: true,
+        classNames: { modal: 'w-[100%] max-w-[560px]' },
+        children: (
+          <LinkResult
+            title={t('send_this_link', 'Send this link to the invited person')}
+            note={t(
+              'invite_note',
+              'The recipient opens the link → sets a password → gets in right away with the chosen role. (The link has been copied to your clipboard.)'
+            )}
+            url={url}
+          />
+        ),
+      });
+      toast.show(t('link_copied', 'Link copied'), 'success');
+    },
+    [reload]
+  );
+
+  return (
+    <FormProvider {...form}>
+      <form onSubmit={form.handleSubmit(submit)}>
+        <div className="relative flex gap-[12px] flex-col flex-1 p-[16px] pt-0">
+          <div className="text-[13px] opacity-70">
+            {t(
+              'add_member_desc',
+              'Enter the email of the person you want to give an account to and pick a role. The system generates a link for you to send them.'
+            )}
+          </div>
+          <Input
+            label="Email"
+            placeholder={t('enter_email', 'Enter email')}
+            name="email"
+          />
+          <Select label={t('role', 'Role')} name="role">
+            <option value="">{t('select_role', 'Select a role')}</option>
+            {roles.map((role) => (
+              <option key={role.value} value={role.value}>
+                {role.name}
+              </option>
+            ))}
+          </Select>
+          <Button type="submit" className="mt-[10px]">
+            {t('create_invite_link', 'Create invite link')}
+          </Button>
+        </div>
+      </form>
+    </FormProvider>
+  );
+};
+
 export const TeamsComponent = () => {
   const fetch = useFetch();
   const user = useUser();
   const modals = useModals();
+  const toast = useToaster();
   const t = useT();
   const myLevel = user?.role === 'USER' ? 0 : user?.role === 'ADMIN' ? 1 : 2;
+  const isAdmin = myLevel >= 1;
   const getLevel = useCallback(
     (role: 'USER' | 'ADMIN' | 'SUPERADMIN') =>
       role === 'USER' ? 0 : role === 'ADMIN' ? 1 : 2,
     []
   );
+  const { data: personal, mutate: mutatePersonal } = usePersonal();
   const loadTeam = useCallback(async () => {
     return (await (await fetch('/settings/team')).json()).users as Array<{
       id: string;
       role: 'SUPERADMIN' | 'ADMIN' | 'USER';
-      user: {
-        email: string;
-        id: string;
-      };
+      user: { email: string; id: string };
     }>;
   }, []);
-  const addMember = useCallback(() => {
-    modals.openModal({
-      classNames: {
-        modal: 'bg-transparent text-textColor',
-      },
-      title: t('top_title_add_member', 'Add Member'),
-      withCloseButton: true,
-      children: <AddMember />,
-    });
-  }, [t]);
   const { data, mutate } = useSWR('/api/teams', loadTeam, {
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
     revalidateIfStale: false,
   });
-  const remove = useCallback(
-    (toRemove: {
-        user: {
-          id: string;
-        };
-      }) =>
-      async () => {
-        if (
-          !(await deleteDialog(
-            t('are_you_sure_remove_team_member', 'Are you sure you want to remove this team member?')
-          ))
-        ) {
-          return;
-        }
-        await fetch(`/settings/team/${toRemove.user.id}`, {
-          method: 'DELETE',
-        });
-        await mutate();
-      },
+
+  const addMember = useCallback(() => {
+    modals.openModal({
+      classNames: { modal: 'bg-transparent text-textColor w-[100%] max-w-[520px]' },
+      title: t('add_account', 'Add new account'),
+      withCloseButton: true,
+      children: <AddMember reload={mutate} />,
+    });
+  }, [t, mutate]);
+
+  const resetPassword = useCallback(
+    (p: { user: { id: string; email: string } }) => async () => {
+      const res = await (
+        await fetch(`/settings/team/${p.user.id}/reset-password`, {
+          method: 'POST',
+          body: JSON.stringify({ origin: origin() }),
+        })
+      ).json();
+      if (!res?.url) {
+        toast.show(t('reset_failed', 'Could not create reset link'), 'warning');
+        return;
+      }
+      copy(res.url);
+      modals.openModal({
+        title: t('reset_link_created', 'Password reset link'),
+        withCloseButton: true,
+        classNames: { modal: 'w-[100%] max-w-[560px]' },
+        children: (
+          <LinkResult
+            title={`${t('for', 'For')}: ${p.user.email}`}
+            note={t(
+              'reset_note',
+              'Send this link to that person so they can set a new password. (The link has been copied to your clipboard.)'
+            )}
+            url={res.url}
+          />
+        ),
+      });
+    },
     [t]
   );
 
+  const remove = useCallback(
+    (toRemove: { user: { id: string } }) => async () => {
+      if (
+        !(await deleteDialog(
+          t('confirm_remove_member', 'Remove this member from the organization?'),
+          t('remove', 'Remove')
+        ))
+      ) {
+        return;
+      }
+      await fetch(`/settings/team/${toRemove.user.id}`, { method: 'DELETE' });
+      await mutate();
+    },
+    [t]
+  );
+
+  const name = (email: string) =>
+    capitalize(email.split('@')[0]).split('.')[0];
+
+  const editMyName = useCallback(() => {
+    modals.openModal({
+      classNames: { modal: 'bg-transparent text-textColor w-[100%] max-w-[480px]' },
+      title: t('edit_name', 'Edit display name'),
+      withCloseButton: true,
+      children: <EditName personal={personal} reload={mutatePersonal} />,
+    });
+  }, [t, personal, mutatePersonal]);
+
+  const changeMyPassword = useCallback(() => {
+    modals.openModal({
+      classNames: { modal: 'bg-transparent text-textColor w-[100%] max-w-[480px]' },
+      title: t('change_password', 'Change Password'),
+      withCloseButton: true,
+      children: <ChangeMyPassword />,
+    });
+  }, [t]);
+
+  const myEmail = personal?.email || user?.email || '';
+
+  const changeMyEmail = useCallback(() => {
+    modals.openModal({
+      classNames: { modal: 'bg-transparent text-textColor w-[100%] max-w-[480px]' },
+      title: t('change_email', 'Change email'),
+      withCloseButton: true,
+      children: (
+        <ChangeMyEmail currentEmail={myEmail} reload={mutatePersonal} />
+      ),
+    });
+  }, [t, myEmail, mutatePersonal]);
+
+  const myDisplayName =
+    personal?.name && !personal.name.includes('###')
+      ? personal.name
+      : name(user?.email || '');
+
   return (
     <div className="flex flex-col">
-      <h3 className="text-[20px]">{t('team_members', 'Team Members')}</h3>
-      <div className="text-customColor18 mt-[4px]">
+      <h3 className="text-[20px]">{t('my_account', 'My account')}</h3>
+      <div className="text-customColor18 mt-[4px] text-[13px]">
         {t(
-          'invite_your_assistant_or_team_member_to_manage_your_account',
-          'Invite your assistant or team member to manage your account'
+          'my_account_desc',
+          'Your own account: display name, password'
         )}
+        {isAdmin ? ` ${t('and_email', 'and login email')}` : ''}
+        .
       </div>
-      <div className="my-[16px] mt-[16px] bg-sixth border-fifth border rounded-[4px] p-[24px] flex flex-col gap-[24px]">
-        <div className="flex flex-col gap-[16px]">
-          {(data || []).map((p) => (
-            <div key={p.user.id} className="flex items-center">
-              <div className="flex-1">
-                {capitalize(p.user.email.split('@')[0]).split('.')[0]}
-              </div>
-              <div className="flex-1">
-                {p.role === 'USER'
-                  ? t('user', 'User')
-                  : p.role === 'ADMIN'
-                  ? t('admin', 'Admin')
-                  : t('super_admin', 'Super Admin')}
-              </div>
-              {+myLevel > +getLevel(p.role) ? (
-                <div className="flex-1 flex justify-end">
-                  <Button
-                    className={`!bg-customColor3 !h-[24px] border border-customColor21 rounded-[4px] text-[12px]`}
-                    onClick={remove(p)}
-                    secondary={true}
-                  >
-                    <div className="flex justify-center items-center gap-[4px]">
-                      <div>
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="14"
-                          height="15"
-                          viewBox="0 0 14 15"
-                          fill="none"
-                        >
-                          <path
-                            d="M11.8125 3.125H9.625V2.6875C9.625 2.3394 9.48672 2.00556 9.24058 1.75942C8.99444 1.51328 8.6606 1.375 8.3125 1.375H5.6875C5.3394 1.375 5.00556 1.51328 4.75942 1.75942C4.51328 2.00556 4.375 2.3394 4.375 2.6875V3.125H2.1875C2.07147 3.125 1.96019 3.17109 1.87814 3.25314C1.79609 3.33519 1.75 3.44647 1.75 3.5625C1.75 3.67853 1.79609 3.78981 1.87814 3.87186C1.96019 3.95391 2.07147 4 2.1875 4H2.625V11.875C2.625 12.1071 2.71719 12.3296 2.88128 12.4937C3.04538 12.6578 3.26794 12.75 3.5 12.75H10.5C10.7321 12.75 10.9546 12.6578 11.1187 12.4937C11.2828 12.3296 11.375 12.1071 11.375 11.875V4H11.8125C11.9285 4 12.0398 3.95391 12.1219 3.87186C12.2039 3.78981 12.25 3.67853 12.25 3.5625C12.25 3.44647 12.2039 3.33519 12.1219 3.25314C12.0398 3.17109 11.9285 3.125 11.8125 3.125ZM5.25 2.6875C5.25 2.57147 5.29609 2.46019 5.37814 2.37814C5.46019 2.29609 5.57147 2.25 5.6875 2.25H8.3125C8.42853 2.25 8.53981 2.29609 8.62186 2.37814C8.70391 2.46019 8.75 2.57147 8.75 2.6875V3.125H5.25V2.6875ZM10.5 11.875H3.5V4H10.5V11.875ZM6.125 6.1875V9.6875C6.125 9.80353 6.07891 9.91481 5.99686 9.99686C5.91481 10.0789 5.80353 10.125 5.6875 10.125C5.57147 10.125 5.46019 10.0789 5.37814 9.99686C5.29609 9.91481 5.25 9.80353 5.25 9.6875V6.1875C5.25 6.07147 5.29609 5.96019 5.37814 5.87814C5.46019 5.79609 5.57147 5.75 5.6875 5.75C5.80353 5.75 5.91481 5.79609 5.99686 5.87814C6.07891 5.96019 6.125 6.07147 6.125 6.1875ZM8.75 6.1875V9.6875C8.75 9.80353 8.70391 9.91481 8.62186 9.99686C8.53981 10.0789 8.42853 10.125 8.3125 10.125C8.19647 10.125 8.08519 10.0789 8.00314 9.99686C7.92109 9.91481 7.875 9.80353 7.875 9.6875V6.1875C7.875 6.07147 7.92109 5.96019 8.00314 5.87814C8.08519 5.79609 8.19647 5.75 8.3125 5.75C8.42853 5.75 8.53981 5.79609 8.62186 5.87814C8.70391 5.96019 8.75 6.07147 8.75 6.1875Z"
-                            fill="currentColor"
-                          />
-                        </svg>
-                      </div>
-                      <div>{t('remove', 'Remove')}</div>
-                    </div>
-                  </Button>
+      <div className="my-[16px] bg-sixth border-fifth border rounded-[8px] p-[24px] flex items-center gap-[12px] flex-wrap">
+        <div className="w-[36px] h-[36px] rounded-full bg-btnPrimary/20 text-btnPrimary flex items-center justify-center text-[14px] font-[700] uppercase">
+          {(myDisplayName || '?').slice(0, 2)}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[14px] font-[600] truncate">{myDisplayName}</div>
+          <div className="text-[12px] opacity-60 truncate">{myEmail}</div>
+        </div>
+        <div className="flex gap-[6px] flex-wrap">
+          <button
+            type="button"
+            onClick={editMyName}
+            className="text-[12px] rounded-[6px] px-[10px] py-[6px] bg-newColColor border border-fifth hover:bg-boxHover"
+          >
+            {t('edit_name', 'Edit display name')}
+          </button>
+          <button
+            type="button"
+            onClick={changeMyPassword}
+            className="text-[12px] rounded-[6px] px-[10px] py-[6px] bg-newColColor border border-fifth hover:bg-boxHover"
+          >
+            {t('change_password', 'Change Password')}
+          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={changeMyEmail}
+              className="text-[12px] rounded-[6px] px-[10px] py-[6px] bg-newColColor border border-fifth hover:bg-boxHover"
+            >
+              {t('change_email', 'Change email')}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <h3 className="text-[20px]">{t('team_members', 'Accounts & members')}</h3>
+      <div className="text-customColor18 mt-[4px] text-[13px]">
+        {isAdmin
+          ? t(
+              'team_desc_admin',
+              'Only admins can create accounts and invite others. Create a link → send it to them → they set a password and get in right away.'
+            )
+          : t(
+              'team_desc_user',
+              'List of members in the organization. Only admins can create or remove accounts.'
+            )}
+      </div>
+
+      <div className="my-[16px] bg-sixth border-fifth border rounded-[8px] p-[24px] flex flex-col gap-[18px]">
+        <div className="flex flex-col gap-[10px]">
+          {(data || []).map((p) => {
+            const canManage = +myLevel > +getLevel(p.role);
+            return (
+              <div
+                key={p.user.id}
+                className="flex items-center gap-[12px] py-[8px] border-b border-fifth/40 last:border-0"
+              >
+                <div className="w-[36px] h-[36px] rounded-full bg-btnPrimary/20 text-btnPrimary flex items-center justify-center text-[14px] font-[700] uppercase">
+                  {name(p.user.email).slice(0, 2)}
                 </div>
-              ) : (
-                <div className="flex-1" />
-              )}
-            </div>
-          ))}
+                <div className="flex-1 min-w-0">
+                  <div className="text-[14px] font-[600] truncate">
+                    {name(p.user.email)}
+                  </div>
+                  <div className="text-[12px] opacity-60 truncate">
+                    {p.user.email}
+                  </div>
+                </div>
+                <div
+                  className={
+                    'text-[11px] font-[600] rounded-[6px] px-[8px] py-[3px] ' +
+                    (p.role === 'USER'
+                      ? 'bg-newColColor text-textItemBlur'
+                      : 'bg-btnPrimary/15 text-btnPrimary')
+                  }
+                >
+                  {p.role === 'USER'
+                    ? t('user', 'Member')
+                    : p.role === 'ADMIN'
+                    ? t('admin', 'Admin')
+                    : t('super_admin', 'Super Admin')}
+                </div>
+                {isAdmin && canManage ? (
+                  <div className="flex gap-[6px]">
+                    <button
+                      type="button"
+                      onClick={resetPassword(p)}
+                      className="text-[12px] rounded-[6px] px-[10px] py-[6px] bg-newColColor border border-fifth hover:bg-boxHover"
+                    >
+                      {t('reset_password', 'Reset password')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={remove(p)}
+                      className="text-[12px] rounded-[6px] px-[10px] py-[6px] text-red-500 hover:bg-red-500/10"
+                    >
+                      {t('remove', 'Remove')}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="w-[1px]" />
+                )}
+              </div>
+            );
+          })}
         </div>
-        <div>
-          <Button onClick={addMember}>
-            {t('add_another_member', 'Add another member')}
-          </Button>
-        </div>
+        {isAdmin && (
+          <div>
+            <Button onClick={addMember}>
+              {t('add_account', 'Add new account')}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

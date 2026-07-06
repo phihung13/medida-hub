@@ -13,7 +13,18 @@ import TelegramBot from 'node-telegram-bot-api';
 import { Integration } from '@prisma/client';
 import striptags from 'striptags';
 
-const telegramBot = new TelegramBot(process.env.TELEGRAM_TOKEN!);
+// Lazy proxy: TELEGRAM_TOKEN có thể được nhập qua UI Settings SAU khi backend
+// khởi động — chỉ tạo bot khi dùng lần đầu (đọc env lúc đó), giữ nguyên call-site.
+let _telegramBot: TelegramBot | undefined;
+const telegramBot = new Proxy({} as TelegramBot, {
+  get(_target, prop) {
+    if (!_telegramBot) {
+      _telegramBot = new TelegramBot(process.env.TELEGRAM_TOKEN!);
+    }
+    const value = (_telegramBot as any)[prop];
+    return typeof value === 'function' ? value.bind(_telegramBot) : value;
+  },
+});
 // Added to support local storage posting
 const frontendURL = process.env.FRONTEND_URL || 'http://localhost:5000';
 const mediaStorage = process.env.STORAGE_PROVIDER || 'local';

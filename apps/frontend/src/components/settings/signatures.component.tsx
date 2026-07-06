@@ -73,8 +73,8 @@ export const SignaturesComponent: FC<{
             <div
               className={`grid ${
                 !!appendSignature
-                  ? 'grid-cols-[1fr,1fr,1fr,1fr,1fr]'
-                  : 'grid-cols-[1fr,1fr,1fr,1fr]'
+                  ? 'grid-cols-[1fr,1fr,1fr,1fr,1fr] mobile:grid-cols-[1fr,1fr]'
+                  : 'grid-cols-[1fr,1fr,1fr,1fr] mobile:grid-cols-[1fr,1fr]'
               } w-full gap-y-[10px]`}
             >
               <div>{t('content', 'Content')}</div>

@@ -373,6 +373,25 @@ export class OrganizationRepository {
     });
   }
 
+  // User chỉ còn nằm trong các nhóm "một mình" (nhóm cá nhân tự sinh khi
+  // đăng ký)? Dùng làm rào an toàn khi cho phép mời-lại đặt mật khẩu mới.
+  async isUserOnlyInSoloOrgs(userId: string) {
+    const orgs = await this._userOrg.model.userOrganization.findMany({
+      where: { userId },
+      select: { organizationId: true },
+    });
+    if (!orgs.length) {
+      return true;
+    }
+    const others = await this._userOrg.model.userOrganization.count({
+      where: {
+        organizationId: { in: orgs.map((o) => o.organizationId) },
+        userId: { not: userId },
+      },
+    });
+    return others === 0;
+  }
+
   async deleteTeamMember(orgId: string, userId: string) {
     return this._userOrg.model.userOrganization.delete({
       where: {

@@ -222,9 +222,9 @@ export const PlatformAnalytics = () => {
                 setCurrent(index);
               }}
               className={clsx(
-                'flex gap-[12px] items-center group/profile justify-center hover:bg-boxHover rounded-e-[8px]',
+                'flex gap-[12px] items-center group/profile justify-center hover:bg-boxHover rounded-e-[8px] transition-opacity',
                 currentIntegration.id !== integration.id &&
-                  'opacity-20 hover:opacity-100 cursor-pointer'
+                  'opacity-65 hover:opacity-100 cursor-pointer'
               )}
             >
               <div
@@ -241,7 +241,14 @@ export const PlatformAnalytics = () => {
                     <div className="bg-primary/60 w-[39px] h-[46px] start-0 top-0 absolute rounded-full z-[199]" />
                   </div>
                 )}
-                <div className="h-full w-[4px] -ms-[12px] rounded-s-[3px] opacity-0 group-hover/profile:opacity-100 transition-opacity">
+                <div
+                  className={clsx(
+                    'h-full w-[4px] -ms-[12px] rounded-s-[3px] group-hover/profile:opacity-100 transition-opacity',
+                    currentIntegration.id === integration.id
+                      ? 'opacity-100'
+                      : 'opacity-0'
+                  )}
+                >
                   <SVGLine />
                 </div>
                 <ImageWithFallback

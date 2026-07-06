@@ -36,6 +36,7 @@ export const LinkedinContinue = withContinueProvider<
   getItemId: (item) => item.id,
   getSelectionValue: (item) => ({ id: item.id, pageId: item.pageId }),
   transformSaveData: (selection) => ({ page: selection.id }),
+  multiple: true,
   isSelected: (item, selection) => selection?.id === item.id,
   renderItem: (item) => (
     <>

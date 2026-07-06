@@ -25,13 +25,18 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
   identifier = 'facebook';
   name = 'Facebook Page';
   isBetweenSteps = true;
+  // read_insights + pages_read_user_content đã bật trong use case "Manage
+  // everything on your Page" + app để Development mode + tài khoản có App Role
+  // → cấp được KHÔNG cần App Review. read_insights: biểu đồ analytics.
+  // pages_read_user_content: đọc reactions/comments của bài (mục "Bài nổi bật").
+  // Nếu app chuyển Live hoặc tài khoản không có vai trò → 2 quyền này cần review.
   scopes = [
     'pages_show_list',
     'business_management',
     'pages_manage_posts',
-    'pages_manage_engagement',
     'pages_read_engagement',
     'read_insights',
+    'pages_read_user_content',
   ];
   override maxConcurrentJob = 500; // Facebook has reasonable rate limits
   editor = 'normal' as const;
@@ -700,20 +705,28 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
     const until = dayjs().endOf('day').unix();
     const since = dayjs().subtract(date, 'day').unix();
 
-    // Reach/impression metrics (page_impressions_unique, page_posts_impressions_unique,
-    // page_video_views) were deprecated by Meta on 2026-06-15 and now return an
-    // "invalid metric" error. They are replaced by the Media Views metrics, which
-    // require Graph API v23.0+:
-    //   - page_total_media_view_unique: total unique views on the page's media (reach)
-    //   - page_media_view: total media views, broken down between paid and organic
+    // Chỉ dùng metric v23 CÒN SỐNG & trả DỮ LIỆU THẬT (đã probe 2026-07-05).
+    // Metric cũ (page_impressions*, page_fans, page_engaged_users…) đã bị Meta
+    // gỡ → KHÔNG dùng (tránh số giả/lỗi). Thứ tự = thứ tự hiện trên dashboard.
+    const METRICS: { name: string; label: string; cumulative?: boolean }[] = [
+      { name: 'page_total_media_view_unique', label: 'Reach' },
+      { name: 'page_media_view', label: 'Media views' },
+      { name: 'page_video_views', label: 'Video views' },
+      { name: 'page_post_engagements', label: 'Post engagement' },
+      { name: 'page_views_total', label: 'Profile views' },
+      { name: 'page_actions_post_reactions_total', label: 'Reactions' },
+      { name: 'page_daily_follows', label: 'New followers' },
+      { name: 'page_follows', label: 'Total followers', cumulative: true },
+    ];
     const { data } = await (
       await fetch(
-        `https://graph.facebook.com/v23.0/${id}/insights?metric=page_total_media_view_unique,page_media_view,page_post_engagements,page_daily_follows&access_token=${accessToken}&period=day&since=${since}&until=${until}`
+        `https://graph.facebook.com/v23.0/${id}/insights?metric=${METRICS.map(
+          (m) => m.name
+        ).join(',')}&access_token=${accessToken}&period=day&since=${since}&until=${until}`
       )
     ).json();
 
-    // page_media_view returns paid/organic breakdowns as an object; sum them to
-    // keep the single-total UI working.
+    // Nhiều metric trả object (paid/organic hoặc {like,love,...}); cộng lại thành 1 số.
     const sumValue = (value: any): number => {
       if (value && typeof value === 'object') {
         return Object.values(value as Record<string, number>).reduce(
@@ -724,23 +737,43 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
       return Number(value) || 0;
     };
 
-    return (
-      data?.map((d: any) => ({
-        label:
-          d.name === 'page_total_media_view_unique'
-            ? 'Page Impressions'
-            : d.name === 'page_post_engagements'
-            ? 'Posts Engagement'
-            : d.name === 'page_daily_follows'
-            ? 'Page followers'
-            : 'Media views',
-        percentageChange: 5,
-        data: d?.values?.map((v: any) => ({
+    // % thay đổi THẬT: trung bình nửa sau kỳ so với nửa đầu kỳ.
+    const trend = (points: { total: number }[]): number => {
+      if (!points || points.length < 2) return 0;
+      const mid = Math.floor(points.length / 2);
+      const avg = (arr: { total: number }[]) =>
+        arr.length ? arr.reduce((s, p) => s + (p.total || 0), 0) / arr.length : 0;
+      const first = avg(points.slice(0, mid));
+      const second = avg(points.slice(mid));
+      if (first === 0) return second > 0 ? 100 : 0;
+      return Math.round(((second - first) / first) * 1000) / 10;
+    };
+
+    const byName: Record<string, any> = {};
+    for (const d of data || []) byName[d.name] = d;
+
+    // Trả theo THỨ TỰ METRICS, kèm meta để frontend xếp KPI/biểu đồ. Không bịa:
+    // metric nào Graph không trả thì bỏ qua.
+    return METRICS.filter((m) => byName[m.name]).map((m) => {
+      const d = byName[m.name];
+      const points =
+        d?.values?.map((v: any) => ({
           total: sumValue(v.value),
           date: dayjs(v.end_time).format('YYYY-MM-DD'),
-        })),
-      })) || []
-    );
+          // giữ breakdown reaction để vẽ donut (nếu là object)
+          breakdown:
+            v.value && typeof v.value === 'object' ? v.value : undefined,
+        })) || [];
+      return {
+        label: m.label,
+        key: m.name,
+        cumulative: !!m.cumulative,
+        percentageChange: trend(points),
+        // với metric tích luỹ, "tổng" nên là giá trị MỚI NHẤT, không phải cộng dồn
+        latest: points.length ? points[points.length - 1].total : 0,
+        data: points,
+      } as any;
+    });
   }
 
   async postAnalytics(

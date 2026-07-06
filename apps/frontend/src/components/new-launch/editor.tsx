@@ -67,6 +67,7 @@ import {
   DelayIcon,
 } from '@gitroom/frontend/components/ui/icons';
 import { DelayComponent } from '@gitroom/frontend/components/new-launch/delay.component';
+import { MagicCaption } from '@gitroom/frontend/components/new-launch/magic.caption';
 
 const MAX_UPLOAD_SIZE = 1024 * 1024 * 1024; // 1 GB
 
@@ -776,7 +777,16 @@ export const Editor: FC<{
                     />
                   }
                   toolBar={
-                    <div className="flex gap-[5px]">
+                    <div className="flex flex-wrap gap-[5px]">
+                      <MagicCaption
+                        pictures={pictures || []}
+                        context={valueWithoutHtml}
+                        num={num || 0}
+                        onCaption={(html) => {
+                          editorRef?.current?.editor?.commands?.setContent(html);
+                          props.onChange(html);
+                        }}
+                      />
                       <SignatureBox editor={editorRef?.current?.editor} />
                       {editorType !== 'none' && (
                         <>
@@ -818,7 +828,7 @@ export const Editor: FC<{
                       <div className="relative">
                         <div
                           className={clsx(
-                            'absolute z-[500] -start-[50px]',
+                            'absolute z-[500] -start-[50px] mobile:fixed mobile:start-[10px] mobile:end-[10px] mobile:bottom-[90px] mobile:top-auto',
                             num === 0 && allValues?.length > 1
                               ? 'top-[35px]'
                               : 'bottom-[35px]'

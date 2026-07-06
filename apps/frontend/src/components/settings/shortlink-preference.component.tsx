@@ -88,7 +88,7 @@ const ShortlinkPreferenceComponent = () => {
             )}
           </div>
         </div>
-        <div className="w-[200px]">
+        <div className="w-[200px] mobile:w-full">
           <Select
             name="shortlink"
             label=""

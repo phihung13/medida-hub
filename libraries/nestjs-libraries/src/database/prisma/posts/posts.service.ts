@@ -873,6 +873,31 @@ export class PostsService {
     return '';
   }
 
+  // Chèn footer vào nội dung: đặt DƯỚI caption và TRÊN khối hashtag ở cuối.
+  // Idempotent — nếu nội dung đã chứa footer thì giữ nguyên (tránh lặp khi sửa bài).
+  private applyPostFooter(content: string, footer: string): string {
+    const body = content || '';
+    const footerBlock = (footer || '').trim();
+    if (!footerBlock) return body;
+    if (body.includes(footerBlock)) return body;
+
+    const lines = body.split('\n');
+    const isHashtagLine = (l: string) => {
+      const t = l.trim();
+      return t === '' || /^#[^\s#]+(\s+#[^\s#]+)*$/.test(t);
+    };
+    let idx = lines.length;
+    while (idx > 0 && isHashtagLine(lines[idx - 1])) idx--;
+
+    const head = lines.slice(0, idx).join('\n').replace(/\s+$/, '');
+    const tail = lines.slice(idx).join('\n').trim();
+
+    if (tail) {
+      return `${head}\n\n${footerBlock}\n\n${tail}`;
+    }
+    return head ? `${head}\n\n${footerBlock}` : footerBlock;
+  }
+
   async createPost(
     orgId: string,
     body: CreatePostDto,
@@ -899,6 +924,25 @@ export class PostsService {
         ...p,
         content: removeLinks ? stripLinks(updateContent[i]) : updateContent[i],
       }));
+
+      // Chân bài (footer) cố định của kênh: chèn DƯỚI caption, TRÊN hashtag ở
+      // phần nội dung cuối cùng. Idempotent (không chèn lại nếu đã có).
+      try {
+        const integ = await this._integrationService.getIntegrationById(
+          orgId,
+          post.integration.id
+        );
+        const footer = ((integ as any)?.postFooter || '').trim();
+        if (footer && post.value.length) {
+          const last = post.value.length - 1;
+          post.value[last] = {
+            ...post.value[last],
+            content: this.applyPostFooter(post.value[last].content, footer),
+          };
+        }
+      } catch {
+        /* không lấy được footer — vẫn đăng bình thường */
+      }
 
       const { posts } = await this._postRepository.createOrUpdatePost(
         body.type,

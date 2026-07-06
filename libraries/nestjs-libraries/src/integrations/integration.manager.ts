@@ -36,8 +36,10 @@ import { MoltbookProvider } from '@gitroom/nestjs-libraries/integrations/social/
 import { SkoolProvider } from '@gitroom/nestjs-libraries/integrations/social/skool.provider';
 import { WhopProvider } from '@gitroom/nestjs-libraries/integrations/social/whop.provider';
 import { MeweProvider } from '@gitroom/nestjs-libraries/integrations/social/mewe.provider';
+import { ZaloProvider } from '@gitroom/nestjs-libraries/integrations/social/zalo.provider';
 
 export const socialIntegrationList: Array<SocialAbstract & SocialProvider> = [
+  new ZaloProvider(),
   new XProvider(),
   new LinkedinProvider(),
   new LinkedinPageProvider(),
@@ -76,10 +78,24 @@ export const socialIntegrationList: Array<SocialAbstract & SocialProvider> = [
 
 @Injectable()
 export class IntegrationManager {
+  // Ẩn các kênh không dùng khỏi màn "Thêm kênh" (và mọi nơi lấy từ danh sách
+  // này, gồm cả gửi link mời). KHÔNG gỡ provider khỏi hệ thống → kênh đang kết
+  // nối vẫn đăng bài bình thường.
+  static readonly HIDDEN_SOCIAL = new Set([
+    'dribbble', 'slack', 'kick', 'twitch', 'mastodon', 'bluesky', 'lemmy',
+    'wrapcast', 'nostr', 'vk', 'medium', 'devto', 'hashnode', 'wordpress',
+    'listmonk', 'moltbook', 'whop', 'mewe',
+    // Instagram Standalone: Meta khai tử Basic Display API (4/12/2024) → luồng
+    // đăng nhập độc lập không còn hoạt động. Ẩn đi, dùng Instagram (business qua FB).
+    'instagram-standalone',
+  ]);
+
   async getAllIntegrations() {
     return {
       social: await Promise.all(
-        socialIntegrationList.map(async (p) => ({
+        socialIntegrationList
+          .filter((p) => !IntegrationManager.HIDDEN_SOCIAL.has(p.identifier))
+          .map(async (p) => ({
           name: p.name,
           identifier: p.identifier,
           toolTip: p.toolTip,

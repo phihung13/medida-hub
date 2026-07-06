@@ -26,6 +26,7 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useIntegrationList } from '@gitroom/frontend/components/launches/helpers/use.integration.list';
 import useCookie from 'react-use-cookie';
 import { Onboarding } from '@gitroom/frontend/components/onboarding/onboarding';
+import { ZaloPendingBanner } from '@gitroom/frontend/components/launches/zalo.pending.banner';
 
 export const SVGLine = () => {
   return (
@@ -499,13 +500,14 @@ export const LaunchesComponent = () => {
       <CalendarWeekProvider integrations={sortedIntegrations}>
         <div
           className={clsx(
-            'flex relative flex-col',
-            collapseMenu === '1' ? 'group sidebar w-[100px]' : 'w-[260px]'
+            'flex relative flex-col mobile:w-full',
+            collapseMenu === '1' ? 'group sidebar w-[100px] mobile:w-full' : 'w-[260px]'
           )}
         >
           <div
             className={clsx(
-              'bg-newBgColorInner p-[20px] flex flex-col gap-[15px] transition-all absolute start-0 top-0 w-full h-full overflow-x-hidden overflow-y-auto scrollbar scrollbar-thumb-fifth scrollbar-track-newBgColor'
+              'bg-newBgColorInner p-[20px] flex flex-col gap-[15px] transition-all absolute start-0 top-0 w-full h-full overflow-x-hidden overflow-y-auto scrollbar scrollbar-thumb-fifth scrollbar-track-newBgColor',
+              'mobile:relative mobile:h-auto mobile:max-h-[38vh] mobile:p-[12px]'
             )}
           >
             <div className="flex items-center">
@@ -593,6 +595,7 @@ export const LaunchesComponent = () => {
           </div>
         </div>
         <div className="bg-newBgColorInner flex-1 flex-col flex p-[20px] gap-[12px]">
+          <ZaloPendingBanner />
           <Filters />
           <div className="flex-1 flex">
             <Calendar />

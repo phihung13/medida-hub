@@ -3,6 +3,7 @@ import { useCopilotContext, useCopilotReadable } from '@copilotkit/react-core';
 import AutoResizingTextarea from '@gitroom/frontend/components/agents/agent.textarea';
 import { useChatContext } from '@copilotkit/react-ui';
 import { InputProps } from '@copilotkit/react-ui/dist/components/chat/props';
+import { useT } from '@gitroom/react/translation/get.transation.service.client';
 const MAX_NEWLINES = 6;
 
 export const Input = ({
@@ -16,6 +17,7 @@ export const Input = ({
 }: InputProps & { onChange: (value: string) => void }) => {
   const context = useChatContext();
   const copilotContext = useCopilotContext();
+  const t = useT();
   const showPoweredBy = !copilotContext.copilotApiConfig?.publicApiKey;
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -64,6 +66,11 @@ export const Input = ({
 
   const sendDisabled = !canSend && !canStop;
 
+  const showStop = isInProgress && !hideStopButton;
+  const sendButtonLabel = showStop
+    ? t('stop_generating', 'Stop generating')
+    : t('send_message', 'Send message');
+
   return (
     <div
       className={`copilotKitInputContainer ${
@@ -94,7 +101,12 @@ export const Input = ({
         />
         <div className="copilotKitInputControls">
           {onUpload && (
-            <button onClick={onUpload} className="copilotKitInputControlButton">
+            <button
+              onClick={onUpload}
+              title={t('upload_file', 'Upload file')}
+              aria-label={t('upload_file', 'Upload file')}
+              className="copilotKitInputControlButton"
+            >
               {context.icons.uploadIcon}
             </button>
           )}
@@ -102,14 +114,16 @@ export const Input = ({
           <div style={{ flexGrow: 1 }} />
           <button
             disabled={sendDisabled}
-            onClick={isInProgress && !hideStopButton ? onStop : send}
+            onClick={showStop ? onStop : send}
+            title={sendButtonLabel}
+            aria-label={sendButtonLabel}
             data-copilotkit-in-progress={inProgress}
             data-test-id={
               inProgress
                 ? 'copilot-chat-request-in-progress'
                 : 'copilot-chat-ready'
             }
-            className="copilotKitInputControlButton"
+            className="copilotKitInputControlButton enabled:!text-newTextColor"
           >
             {buttonIcon}
           </button>

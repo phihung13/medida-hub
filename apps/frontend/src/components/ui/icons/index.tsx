@@ -32,11 +32,11 @@ export const SettingsIcon: FC<IconProps> = ({
     />
     <path
       d="M9.99961 12.4993C11.3803 12.4993 12.4996 11.3801 12.4996 9.99935C12.4996 8.61864 11.3803 7.49935 9.99961 7.49935C8.6189 7.49935 7.49961 8.61864 7.49961 9.99935C7.49961 11.3801 8.6189 12.4993 9.99961 12.4993Z"
-      stroke="#612BD3"
+      stroke="#1e6fd9"
       strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
-      style={{ fill: '#612BD3' }}
+      style={{ fill: '#1e6fd9' }}
     />
   </svg>
 );
@@ -899,3 +899,28 @@ export const NoMediaIcon: FC = () => {
     </>
   );
 };
+
+// Magic Wand Icon — nút "bút phép thuật" AI viết caption từ ảnh
+export const MagicWandIcon: FC<IconProps> = ({
+  size = 16,
+  className,
+  ...props
+}) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    className={className}
+    {...props}
+  >
+    <path
+      d="M15 4V2M15 16V14M8 9H10M20 9H22M17.8 11.8L19 13M17.8 6.2L19 5M3 21L12 12M12.2 6.2L11 5"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);

@@ -63,7 +63,11 @@ const getCountryCodeForFlag = (languageCode: string) => {
 
 export const ChangeLanguageComponent = () => {
   const currentLanguage = i18next.resolvedLanguage || fallbackLng;
-  const availableLanguages = languages;
+  // Chỉ cho chọn Tiếng Anh + Tiếng Việt (bỏ các ngôn ngữ khác theo yêu cầu).
+  const allowedLanguages = ['en', 'vi'];
+  const availableLanguages = languages.filter((l) =>
+    allowedLanguages.includes(l)
+  );
   const [_, setCookie] = useCookie(cookieName, currentLanguage || fallbackLng);
   const modals = useModals();
   const t = useT();

@@ -268,13 +268,18 @@ export const CalendarWeekProvider: FC<{
   });
 
   const setFiltersWrapper = useCallback(
-    (newFilters: {
-      startDate: string;
-      endDate: string;
-      display: 'week' | 'month' | 'day' | 'list';
-      customer: string | null;
-    }) => {
-      setDisplaySaved(newFilters.display);
+    (
+      newFilters: {
+        startDate: string;
+        endDate: string;
+        display: 'week' | 'month' | 'day' | 'list';
+        customer: string | null;
+      },
+      // persist=false: đổi tạm trong phiên (vd auto Day-view trên mobile) mà
+      // KHÔNG ghi cookie dùng chung — nếu không desktop cũng bị kẹt Day view.
+      persist = true
+    ) => {
+      if (persist) setDisplaySaved(newFilters.display);
       setFilters(newFilters);
       setInternalData([]);
 
@@ -293,6 +298,28 @@ export const CalendarWeekProvider: FC<{
     },
     []
   );
+
+  // Điện thoại/tablet (≤1025px): tuần 7 cột quá chật — nếu chưa chọn gì rõ ràng
+  // (không có ?display= và cookie vẫn là mặc định 'week') thì mở Day view.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (searchParams.get('display')) return;
+    if (
+      display === 'week' &&
+      window.matchMedia('(max-width: 1025px)').matches
+    ) {
+      const range = getDateRange('day');
+      setFiltersWrapper(
+        {
+          startDate: range.startDate,
+          endDate: range.endDate,
+          display: 'day',
+          customer: filters.customer,
+        },
+        false // KHÔNG ghi cookie — chỉ đổi tạm cho phiên mobile này
+      );
+    }
+  }, []);
 
   const posts = useMemo(() => calendarData?.posts || [], [calendarData?.posts]);
   const comments = useMemo(() => calendarData?.comments || [], [calendarData?.comments]);

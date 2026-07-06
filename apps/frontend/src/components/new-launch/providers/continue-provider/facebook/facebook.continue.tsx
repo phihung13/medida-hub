@@ -35,6 +35,9 @@ export const FacebookContinue = withContinueProvider<FacebookItem, string>({
   getItemId: (item) => item.id,
   getSelectionValue: (item) => item.id,
   transformSaveData: (selection) => ({ page: selection }),
+  // Cho chọn NHIỀU Page 1 lần → mỗi Page thành 1 kênh riêng (dùng default
+  // multi: map từng selection qua transformSaveData → {pages:[{page:id},...]}).
+  multiple: true,
   isSelected: (item, selection) => selection === item.id,
   renderItem: (item) => (
     <>

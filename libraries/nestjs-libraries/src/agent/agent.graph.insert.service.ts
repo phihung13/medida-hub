@@ -1,18 +1,20 @@
 import { Injectable } from '@nestjs/common';
 import { BaseMessage, HumanMessage } from '@langchain/core/messages';
 import { END, START, StateGraph } from '@langchain/langgraph';
-import { ChatOpenAI } from '@langchain/openai';
+import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { agentCategories } from '@gitroom/nestjs-libraries/agent/agent.categories';
 import { z } from 'zod';
 import { agentTopics } from '@gitroom/nestjs-libraries/agent/agent.topics';
 import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
 
-const model = new ChatOpenAI({
-  apiKey: process.env.OPENAI_API_KEY || 'sk-proj-',
-  model: 'gpt-4o-2024-08-06',
-  temperature: 0,
-});
+// Lazy: key nhập qua UI Settings có hiệu lực ngay, không cần restart.
+const getModel = () =>
+  new ChatAnthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY || 'placeholder-set-in-settings',
+    model: 'claude-sonnet-4-6',
+    temperature: 0,
+  });
 
 interface WorkflowChannelsState {
   messages: BaseMessage[];
@@ -54,7 +56,7 @@ export class AgentGraphInsertService {
 
   async findCategory(state: WorkflowChannelsState) {
     const { messages } = state;
-    const structuredOutput = model.withStructuredOutput(category);
+    const structuredOutput = getModel().withStructuredOutput(category);
     return ChatPromptTemplate.fromTemplate(
       `
 You are an assistant that get a social media post and categorize it into to one from the following categories:
@@ -72,7 +74,7 @@ Here is the post:
 
   findTopic(state: WorkflowChannelsState) {
     const { messages } = state;
-    const structuredOutput = model.withStructuredOutput(topic);
+    const structuredOutput = getModel().withStructuredOutput(topic);
     return ChatPromptTemplate.fromTemplate(
       `
 You are an assistant that get a social media post and categorize it into one of the following topics:
@@ -90,7 +92,7 @@ Here is the post:
 
   findHook(state: WorkflowChannelsState) {
     const { messages } = state;
-    const structuredOutput = model.withStructuredOutput(hook);
+    const structuredOutput = getModel().withStructuredOutput(hook);
     return ChatPromptTemplate.fromTemplate(
       `
 You are an assistant that get a social media post and extract the hook, the hook is usually the first or second of both sentence of the post, but can be in a different place, make sure you don't change the wording of the post use the exact text:

@@ -1,4 +1,6 @@
 import { SentryComponent } from '@gitroom/frontend/components/layout/sentry.component';
+import { SuppressDevWarnings } from '@gitroom/frontend/components/layout/suppress.dev.warnings';
+import { LanMediaFix } from '@gitroom/frontend/components/layout/lan.media.fix';
 
 export const dynamic = 'force-dynamic';
 import '../global.scss';
@@ -34,13 +36,20 @@ const jakartaSans = Plus_Jakarta_Sans({
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const cookieStore = await cookies();
   const language = cookieStore.get(cookieName)?.value || fallbackLng;
+  // Khi không có Stripe (không dùng Plausible) → passthrough BỎ QUA props
+  // (Fragment trực tiếp sẽ báo "Invalid prop supplied to React.Fragment" vì
+  //  nhận prop `domain`). PassThrough chỉ render children.
+  const PassThrough = ({ children }: { children: ReactNode; [k: string]: any }) => (
+    <>{children}</>
+  );
   const Plausible = !!process.env.STRIPE_PUBLISHABLE_KEY
     ? PlausibleProvider
-    : Fragment;
+    : PassThrough;
   return (
     <html>
       <head>
-        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="icon" href="/favicon.ico?v=va2" sizes="any" />
+        <link rel="icon" type="image/svg+xml" href="/va-favicon.svg?v=va2" />
         {!!process.env.DATAFAST_WEBSITE_ID && (
           <Script
             data-website-id={process.env.DATAFAST_WEBSITE_ID}
@@ -54,6 +63,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       <body
         className={clsx(jakartaSans.className, 'dark text-primary !bg-primary')}
       >
+        <SuppressDevWarnings />
+        <LanMediaFix />
         <VariableContextComponent
           storageProvider={
             process.env.STORAGE_PROVIDER! as 'local' | 'cloudflare'

@@ -55,6 +55,55 @@ export const useMenuItem = () => {
       path: '/launches',
     },
     {
+      name: 'Zalo',
+      icon: (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="22"
+          height="22"
+          viewBox="0 0 22 22"
+          fill="none"
+        >
+          <path
+            d="M4 3.5h14A2.5 2.5 0 0 1 20.5 6v8a2.5 2.5 0 0 1-2.5 2.5H8.5l-4 3.5V16.5H4A2.5 2.5 0 0 1 1.5 14V6A2.5 2.5 0 0 1 4 3.5Z"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      ),
+      path: '/zalo',
+    },
+    {
+      name: t('viral', 'Discover'),
+      icon: (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="22"
+          height="22"
+          viewBox="0 0 24 24"
+          fill="none"
+        >
+          <path
+            d="M5 17l4-6 4 3 6-9"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M15 5h4v4"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      ),
+      path: '/viral',
+    },
+    {
       name: 'Agent',
       icon: (
         <svg
@@ -134,9 +183,12 @@ export const useMenuItem = () => {
         </svg>
       ),
       path: '/plugs',
+      // Ẩn Plugs khỏi menu: chỉ hữu ích với X/LinkedIn/Threads (đã ẩn), gây rối
+      // cho thiết lập chỉ-Facebook của trường.
+      hide: true,
     },
     {
-      name: t('integrations', 'Integrations'),
+      name: t('nav_ai_tools', 'AI Tools'),
       icon: (
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -317,7 +369,8 @@ export const TopMenu: FC = () => {
   const { isGeneral, billingEnabled } = useVariables();
   return (
     <>
-      <div className="flex flex-1 flex-col minCustom:gap-[16px] blurMe">
+      {/* custom:gap = màn thấp (<800px cao) trước đây KHÔNG có gap → icon dính nhau */}
+      <div className="flex flex-1 flex-col minCustom:gap-[16px] custom:gap-[10px] blurMe">
         {
           // @ts-ignore
           user?.orgId &&
@@ -350,7 +403,7 @@ export const TopMenu: FC = () => {
               ))
         }
       </div>
-      <div className="flex flex-col minCustom:gap-[20px] custom:gap-[8px] blurMe">
+      <div className="flex flex-col minCustom:gap-[20px] custom:gap-[8px] mb-[10px] blurMe">
         {secondMenu
           .filter((f) => {
             if (f.hide) {

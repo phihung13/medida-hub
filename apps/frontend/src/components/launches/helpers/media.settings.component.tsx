@@ -1,5 +1,6 @@
 'use client';
 
+import { resolveBaseUrl } from '@gitroom/helpers/utils/custom.fetch.func';
 import { EventEmitter } from 'events';
 import React, { FC, useCallback, useEffect, useRef, useState } from 'react';
 import { TopTitle } from '@gitroom/frontend/components/launches/helpers/top.title.component';
@@ -215,7 +216,7 @@ export const CreateThumbnail: FC<{
         <video
           ref={videoRef}
           src={
-            backendUrl + '/public/stream?url=' + encodeURIComponent(media.path)
+            resolveBaseUrl(backendUrl) + '/public/stream?url=' + encodeURIComponent(media.path)
           }
           className="w-full h-[200px] object-contain"
           onLoadedMetadata={handleLoadedMetadata}

@@ -1,5 +1,6 @@
 'use client';
 
+import { resolveBaseUrl } from '@gitroom/helpers/utils/custom.fetch.func';
 import useSWR from 'swr';
 import { ContextWrapper } from '@gitroom/frontend/components/layout/user.context';
 import { ReactNode, useCallback } from 'react';
@@ -26,7 +27,7 @@ export const PreviewWrapper = ({ children }: { children: ReactNode }) => {
     <ContextWrapper user={user}>
       <CopilotKit
         credentials="include"
-        runtimeUrl={backendUrl + '/copilot/chat'}
+        runtimeUrl={resolveBaseUrl(backendUrl) + '/copilot/chat'}
         showDevConsole={false}
       >
         <MantineWrapper>

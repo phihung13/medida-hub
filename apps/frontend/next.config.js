@@ -3,8 +3,13 @@ import { withSentryConfig } from '@sentry/nextjs';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Cho phép mở dev server từ thiết bị khác trong LAN (điện thoại/tablet):
+  // thiếu dòng này Next dev chặn tài nguyên /_next/* cross-origin → trang trắng.
+  allowedDevOrigins: ['192.168.*', '10.*', '172.*', '*.local'],
   experimental: {
-    proxyTimeout: 90_000,
+    // Stream agent/copilot đi qua proxy /hubapi có thể kéo dài (AI sinh bài,
+    // tạo ảnh...) — 5 phút cho chắc.
+    proxyTimeout: 300_000,
   },
   // Document-Policy header for browser profiling
   async headers() {
@@ -52,6 +57,18 @@ const nextConfig = {
           process.env.STORAGE_PROVIDER === 'local'
             ? '/api/uploads/:path*'
             : '/404',
+      },
+      // Proxy same-origin cho truy cập TỪ XA qua tunnel (1 URL công khai duy
+      // nhất phục vụ cả backend lẫn bot — trình duyệt bên ngoài không thể gọi
+      // thẳng cổng 3000/8088). Client tự chuyển sang các path này khi hostname
+      // không phải localhost/LAN (xem resolveBaseUrl + getBotUrl).
+      {
+        source: '/hubapi/:path*',
+        destination: 'http://127.0.0.1:3000/:path*',
+      },
+      {
+        source: '/botapi/:path*',
+        destination: 'http://127.0.0.1:8088/:path*',
       },
     ];
   },

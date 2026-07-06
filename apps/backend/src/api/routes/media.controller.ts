@@ -23,6 +23,7 @@ import { CustomFileValidationPipe } from '@gitroom/nestjs-libraries/upload/custo
 import { SubscriptionService } from '@gitroom/nestjs-libraries/database/prisma/subscriptions/subscription.service';
 import { UploadFactory } from '@gitroom/nestjs-libraries/upload/upload.factory';
 import { SaveMediaInformationDto } from '@gitroom/nestjs-libraries/dtos/media/save.media.information.dto';
+import { GenerateAiCaptionDto } from '@gitroom/nestjs-libraries/dtos/media/generate.ai.caption.dto';
 import { VideoDto } from '@gitroom/nestjs-libraries/dtos/videos/video.dto';
 import { VideoFunctionDto } from '@gitroom/nestjs-libraries/dtos/videos/video.function.dto';
 
@@ -125,6 +126,16 @@ export class MediaController {
     @Body() body: SaveMediaInformationDto
   ) {
     return this._mediaService.saveMediaInformation(org.id, body);
+  }
+
+  // Nút "bút phép thuật" composer: AI đọc ảnh → caption bài + caption từng ảnh.
+  // Phải khai báo TRƯỚC @Post('/:endpoint') catch-all bên dưới.
+  @Post('/ai-caption')
+  generateAiCaption(
+    @GetOrgFromRequest() org: Organization,
+    @Body() body: GenerateAiCaptionDto
+  ) {
+    return this._mediaService.generateAiCaptions(org, body);
   }
 
   @Post('/upload-simple')

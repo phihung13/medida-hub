@@ -7,7 +7,7 @@ import { NeynarAuthButton } from '@gitroom/frontend/components/auth/nayner.auth.
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 export const FarcasterProvider = () => {
   const gotoLogin = useCallback(async (code: string) => {
-    window.location.href = `/auth?provider=FARCASTER&code=${code}`;
+    window.location.href = `/login?provider=FARCASTER&code=${code}`;
   }, []);
   return <ButtonCaster login={gotoLogin} />;
 };

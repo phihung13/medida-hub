@@ -1,0 +1,15 @@
+{
+  "name": "viet-anh-media-hub-demo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Demo kiến trúc Việt Anh Media Hub: 2 backend (hub + zalo-worker) + 1 UI, không cần Docker/Redis.",
+  "scripts": {
+    "start": "node dev.js",
+    "hub": "node src/hub-api.js",
+    "worker": "node src/zalo-worker.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

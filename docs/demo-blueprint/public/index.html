@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Việt Anh Media Hub — Demo</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231e6fd9'/%3E%3Ctext x='16' y='23' font-size='18' text-anchor='middle' fill='white' font-family='Arial' font-weight='bold'%3EVA%3C/text%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo">VA</div>
+        <div>
+          <h1>Việt Anh Media Hub</h1>
+          <span class="tag">Zalo → Duyệt → Đăng đa kênh · <em>demo</em></span>
+        </div>
+      </div>
+      <div class="status-cluster">
+        <div class="light" id="light-hub"><span class="dot"></span> Hub API<small>backend 1</small></div>
+        <div class="light" id="light-worker"><span class="dot"></span> Zalo Worker<small>backend 2</small></div>
+        <div class="light metric"><b id="queue-count">0</b> job chờ<small>hàng đợi</small></div>
+        <div class="light metric"><b id="claude-state">—</b> caption<small>AI</small></div>
+      </div>
+    </header>
+
+    <main class="layout">
+      <!-- CỘT TRÁI: nhóm Zalo + hành động -->
+      <section class="col left">
+        <div class="card">
+          <div class="card-head">
+            <h2>Nhóm Zalo đang nghe</h2>
+            <span class="hint">worker chỉ hứng từ nhóm BẬT</span>
+          </div>
+          <div id="groups"></div>
+        </div>
+
+        <div class="card action">
+          <h2>Giả lập nguồn vào</h2>
+          <p class="muted">
+            Bấm để worker "bắt" một album ảnh từ nhóm Zalo và đẩy vào hàng đợi —
+            thay cho việc Zalo thật gửi ảnh.
+          </p>
+          <button id="btn-simulate" class="btn-primary big">🎬 Giả lập ảnh từ nhóm Zalo</button>
+          <button id="btn-reset" class="btn-ghost">🔄 Reset demo</button>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2>Nhật ký hoạt động</h2></div>
+          <ul id="activity" class="feed"></ul>
+        </div>
+      </section>
+
+      <!-- CỘT PHẢI: hàng chờ duyệt -->
+      <section class="col right">
+        <div class="card-head main-head">
+          <h2>Hàng chờ duyệt bài</h2>
+          <div class="counts">
+            <span class="pill pending"><b id="c-pending">0</b> chờ duyệt</span>
+            <span class="pill posted"><b id="c-posted">0</b> đã đăng</span>
+          </div>
+        </div>
+        <div id="drafts" class="drafts"></div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <span>Kiến trúc: <b>zalo-worker</b> (zca-js) → hàng đợi bền → <b>hub</b> (Postiz: Claude caption + tạo bản nháp) → duyệt → đăng đa kênh. Một UI, hai tiến trình.</span>
+    </footer>
+
+    <div id="toast" class="toast"></div>
+    <script src="/app.js"></script>
+  </body>
+</html>

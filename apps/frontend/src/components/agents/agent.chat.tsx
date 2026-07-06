@@ -1,5 +1,6 @@
 'use client';
 
+import { resolveBaseUrl } from '@gitroom/helpers/utils/custom.fetch.func';
 import React, {
   FC,
   useCallback,
@@ -45,7 +46,7 @@ export const AgentChat: FC = () => {
     <CopilotKit
       {...(params.id === 'new' ? {} : { threadId: params.id })}
       credentials="include"
-      runtimeUrl={backendUrl + '/copilot/agent'}
+      runtimeUrl={resolveBaseUrl(backendUrl) + '/copilot/agent'}
       showDevConsole={false}
       agent="postiz"
       properties={{
@@ -68,9 +69,9 @@ export const AgentChat: FC = () => {
             className="w-full h-full"
             labels={{
               title: t('your_assistant', 'Your Assistant'),
-              initial: t('agent_welcome_message', `Hello, I am your Postiz agent 🙌🏻.
-              
-I can schedule a post or multiple posts to multiple channels and generate pictures and videos.
+              initial: t('agent_welcome_message', `Hello, I am your Social Hub agent 🙌🏻.
+
+I can schedule a post or multiple posts to multiple channels and generate pictures.
 
 You can select the channels you want to use from the left menu.
 

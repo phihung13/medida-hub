@@ -334,6 +334,7 @@ model Integration {
   customerId            String?
   rootInternalId        String?
   additionalSettings    String?                @default("[]")
+  postFooter            String?
   exisingPlugData       ExisingPlugData[]
   customer              Customer?              @relation(fields: [customerId], references: [id])
   organization          Organization           @relation(fields: [organizationId], references: [id])
@@ -353,6 +354,99 @@ model Integration {
   @@index([inBetweenSteps])
   @@index([refreshNeeded])
   @@index([disabled])
+}
+
+// Theo dõi credit/số dư của các công cụ AI ngoài (HeyGen, MiniMax, OpenAI,
+// Claude, Google AI Studio…). HeyGen tự lấy số dư qua API; các bên không có API
+// số dư thì nhập tay. Cảnh báo khi dưới ngưỡng.
+model AiCredit {
+  id             String    @id @default(cuid())
+  organizationId String
+  provider       String
+  label          String
+  apiKey         String?
+  balance        Float?
+  unit           String    @default("credits")
+  threshold      Float?
+  auto           Boolean   @default(false)
+  lastChecked    DateTime?
+  lastError      String?
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime? @updatedAt
+
+  @@index([organizationId])
+}
+
+// "Lò Bài Thắng": bài viral giáo dục sưu tầm (nhập tay hoặc quét tự động) để
+// AI mổ công thức + nhân bản. Thước đo chính: lượt share (shares).
+model ViralPost {
+  id             String    @id @default(cuid())
+  organizationId String
+  platform       String // facebook | instagram | tiktok | youtube | news
+  level          String    @default("all") // mn | th | cs | pt | all (cấp học)
+  title          String
+  sourceName     String? // tên trang/kênh gốc
+  url            String?
+  thumbnail      String? // path media hoặc URL ảnh
+  content        String? // text bài gốc (nếu có)
+  shares         Int?
+  likes          Int?
+  comments       Int?
+  views          Int?
+  origin         String    @default("manual") // manual | auto
+  formula        String? // JSON công thức AI đã mổ (cache)
+  clonedCount    Int       @default(0)
+  // AI chấm điểm theo chân dung khách hàng (rubric từ n8n WF-Crawll-Duyet):
+  score          Int? // 0-100; null = chưa chấm
+  scoreDetail    String? // JSON {scores:{hook,clarity,brand_voice,value,cta,seo}, verdict, reason}
+  persona        String? // nhóm chân dung phù hợp nhất (MN-HCM, TH-HCM, ...)
+  aiContent      String? // bản AI viết lại cho persona đó (dùng để đăng)
+  status         String    @default("pending") // approved | pending | skipped
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime? @updatedAt
+
+  @@index([organizationId])
+  @@index([platform])
+  @@index([shares])
+  @@index([status])
+}
+
+// Nguồn theo dõi của Lò Bài Thắng (trang/kênh tham khảo).
+model ViralSource {
+  id             String    @id @default(cuid())
+  organizationId String
+  platform       String
+  name           String
+  url            String?
+  auto           Boolean   @default(false)
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([organizationId])
+}
+
+// "Bài của mình" — bản AI viết lại từ một bài viral, chấm điểm lại (phải tốt
+// hơn bài gốc). Ở đây tới khi user bấm Đăng → tạo bản nháp trên Lịch.
+model ViralClone {
+  id             String    @id @default(cuid())
+  organizationId String
+  sourceId       String? // ViralPost gốc (nếu clone từ 1 thẻ)
+  title          String
+  content        String // nội dung AI viết cho mình
+  persona        String? // nhóm chân dung nhắm tới
+  score          Int? // điểm bản clone
+  sourceScore    Int? // điểm bài gốc (để so "tốt hơn")
+  scoreDetail    String? // JSON breakdown
+  status         String    @default("mine") // mine | posted
+  postId         String? // Post đã tạo khi đăng
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime? @updatedAt
+
+  @@index([organizationId])
+  @@index([status])
 }
 
 model Signatures {

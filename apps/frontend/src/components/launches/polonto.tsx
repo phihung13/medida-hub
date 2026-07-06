@@ -104,6 +104,37 @@ const Polonto: FC<{
       store.clear();
     };
   }, []);
+
+  // Ẩn cảnh báo "license key is missing" của Polotno khi chạy không key.
+  // Polotno chèn 1 element cảnh báo trong workspace → quét & ẩn element nào có
+  // chữ "license"/"api key" (không đụng nội dung do người dùng tạo).
+  useEffect(() => {
+    const root = document.querySelector('.polonto');
+    if (!root) return;
+    const RE = /license key|api key|polotno\.com|get.*key/i;
+    const hideWarnings = () => {
+      root.querySelectorAll('a, div, span, p').forEach((el) => {
+        const txt = (el.textContent || '').trim();
+        if (
+          txt.length < 120 &&
+          RE.test(txt) &&
+          !el.querySelector('canvas') &&
+          (el as HTMLElement).style.display !== 'none'
+        ) {
+          (el as HTMLElement).style.display = 'none';
+        }
+      });
+    };
+    hideWarnings();
+    const obs = new MutationObserver(hideWarnings);
+    obs.observe(root, { childList: true, subtree: true });
+    const t = setInterval(hideWarnings, 1000);
+    return () => {
+      obs.disconnect();
+      clearInterval(t);
+    };
+  }, []);
+
   return (
     <div className="bg-white text-black relative z-[400] polonto">
       <CloseContext.Provider

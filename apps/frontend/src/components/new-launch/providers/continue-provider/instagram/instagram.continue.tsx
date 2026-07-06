@@ -44,6 +44,7 @@ export const InstagramContinue = withContinueProvider<
   getItemId: (item) => item.id,
   getSelectionValue: (item) => ({ id: item.id, pageId: item.pageId }),
   transformSaveData: (selection) => selection,
+  multiple: true,
   isSelected: (item, selection) => selection?.id === item.id,
   renderItem: (item) => (
     <>

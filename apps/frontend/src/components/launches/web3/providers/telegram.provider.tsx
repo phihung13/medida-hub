@@ -113,6 +113,7 @@ export const TelegramProvider: FC<Web3ProviderInterface> = (props) => {
                   value={`/connect ${word.current}`}
                   name=""
                   disableForm={true}
+                  readOnly={true}
                 />
               </div>
               <Button>{t('copy', 'Copy')}</Button>

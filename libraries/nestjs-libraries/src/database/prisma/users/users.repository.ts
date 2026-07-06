@@ -96,6 +96,18 @@ export class UsersRepository {
     });
   }
 
+  changeEmail(id: string, email: string) {
+    return this._user.model.user.update({
+      where: {
+        id,
+        providerName: Provider.LOCAL,
+      },
+      data: {
+        email: email.toLowerCase(),
+      },
+    });
+  }
+
   changeAudienceSize(userId: string, audience: number) {
     return this._user.model.user.update({
       where: {
@@ -115,6 +127,7 @@ export class UsersRepository {
       select: {
         id: true,
         name: true,
+        email: true,
         bio: true,
         picture: {
           select: {

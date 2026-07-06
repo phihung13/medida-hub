@@ -115,7 +115,7 @@ export function Activate() {
                 'Great news! Your account is already activated.'
               )}
             </div>
-            <Link href="/auth/login">
+            <Link href="/login">
               <Button className="rounded-[10px] !h-[52px] w-full">
                 {t('go_to_login', 'Go to Login')}
               </Button>
@@ -147,7 +147,7 @@ export function Activate() {
         {status !== 'already_activated' && (
           <p className="mt-4 text-sm text-textColor">
             {t('already_activated', 'Already activated?')}&nbsp;
-            <Link href="/auth/login" className="underline cursor-pointer">
+            <Link href="/login" className="underline cursor-pointer">
               {t('sign_in', 'Sign In')}
             </Link>
           </p>

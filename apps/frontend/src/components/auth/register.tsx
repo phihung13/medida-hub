@@ -99,6 +99,23 @@ export function RegisterAfter({
   const isAfterProvider = useMemo(() => {
     return !!token && !!provider;
   }, [token, provider]);
+  // Chế độ MỜI: mở từ link mời của admin (cookie `org` = JWT chứa email + vai trò).
+  // Decode payload (JWT chuẩn, không cần secret) để điền sẵn email → người được
+  // mời chỉ đặt mật khẩu, không thấy Google/Company/Sign Up.
+  const [orgCookie] = useCookie('org');
+  const invite = useMemo(() => {
+    if (!orgCookie) return null;
+    try {
+      const b64 = (orgCookie.split('.')[1] || '')
+        .replace(/-/g, '+')
+        .replace(/_/g, '/');
+      const payload = JSON.parse(atob(b64));
+      return { email: payload?.email || '', role: payload?.role || '' };
+    } catch {
+      return null;
+    }
+  }, [orgCookie]);
+  const isInvite = !!invite;
   const resolver = useMemo(() => {
     return classValidatorResolver(CreateOrgUserDto);
   }, []);
@@ -107,6 +124,8 @@ export function RegisterAfter({
     defaultValues: {
       providerToken: token,
       provider: provider,
+      email: invite?.email || '',
+      company: invite ? 'Trường Việt Anh' : '',
     },
   });
   const fetchData = useFetch();
@@ -125,9 +144,9 @@ export function RegisterAfter({
           fireEvents('register');
           return track(TrackEnum.CompleteRegistration).then(() => {
             if (response.headers.get('activate') === 'true') {
-              router.push('/auth/activate');
+              router.push('/login/activate');
             } else {
-              router.push('/auth/login');
+              router.push('/login');
             }
           });
         } else {
@@ -150,15 +169,27 @@ export function RegisterAfter({
       <form className="flex-1 flex" onSubmit={form.handleSubmit(onSubmit)}>
         <div className="flex flex-col flex-1">
           <div>
-            <h1 className="text-[40px] font-[500] -tracking-[0.8px] text-start cursor-pointer">
-              {t('sign_up', 'Sign Up')}
+            <h1 className="text-[40px] mobile:text-[30px] font-[500] -tracking-[0.8px] text-start cursor-pointer">
+              {isInvite
+                ? t('set_password', 'Set Password')
+                : t('sign_up', 'Sign Up')}
             </h1>
           </div>
-          <div className="text-[14px] mt-[32px] mb-[12px]">
-            {t('continue_with', 'Continue With')}
-          </div>
+          {isInvite ? (
+            <div className="text-[14px] mt-[20px] mb-[12px] opacity-70">
+              {t(
+                'invite_hint',
+                'You have been invited to Social Hub. Set a password to get started.'
+              )}
+            </div>
+          ) : (
+            <div className="text-[14px] mt-[32px] mb-[12px]">
+              {t('continue_with', 'Continue With')}
+            </div>
+          )}
           <div className="flex flex-col">
             {!isAfterProvider &&
+              !isInvite &&
               (!isGeneral ? (
                 <GithubProvider />
               ) : (
@@ -172,7 +203,7 @@ export function RegisterAfter({
                   {billingEnabled && <WalletProvider />}
                 </div>
               ))}
-            {!isAfterProvider && (
+            {!isAfterProvider && !isInvite && (
               <div className="h-[20px] mb-[24px] mt-[24px] relative">
                 <div className="absolute w-full h-[1px] bg-fifth top-[50%] -translate-y-[50%]" />
                 <div
@@ -191,10 +222,15 @@ export function RegisterAfter({
                       translationKey="label_email"
                       {...form.register('email')}
                       type="email"
+                      readOnly={isInvite}
                       placeholder={t('email_address', 'Email Address')}
                     />
                     <Input
-                      label="Password"
+                      label={
+                        isInvite
+                          ? t('set_a_password', 'Set Password')
+                          : 'Password'
+                      }
                       translationKey="label_password"
                       {...form.register('password')}
                       autoComplete="off"
@@ -203,39 +239,43 @@ export function RegisterAfter({
                     />
                   </>
                 )}
-                <Input
-                  label="Company"
-                  translationKey="label_company"
-                  {...form.register('company')}
-                  autoComplete="off"
-                  type="text"
-                  placeholder={t('label_company', 'Company')}
-                />
-              </div>
-              <div className={clsx('text-[12px]')}>
-                {t(
-                  'by_registering_you_agree_to_our',
-                  'By registering you agree to our'
+                {!isInvite && (
+                  <Input
+                    label="Company"
+                    translationKey="label_company"
+                    {...form.register('company')}
+                    autoComplete="off"
+                    type="text"
+                    placeholder={t('label_company', 'Company')}
+                  />
                 )}
-                &nbsp;
-                <a
-                  href={`https://postiz.com/terms`}
-                  className="underline hover:font-bold"
-                  rel="nofollow"
-                >
-                  {t('terms_of_service', 'Terms of Service')}
-                </a>
-                &nbsp;
-                {t('and', 'and')}&nbsp;
-                <a
-                  href={`https://postiz.com/privacy`}
-                  rel="nofollow"
-                  className="underline hover:font-bold"
-                >
-                  {t('privacy_policy', 'Privacy Policy')}
-                </a>
-                &nbsp;
               </div>
+              {!isInvite && (
+                <div className={clsx('text-[12px]')}>
+                  {t(
+                    'by_registering_you_agree_to_our',
+                    'By registering you agree to our'
+                  )}
+                  &nbsp;
+                  <a
+                    href={`https://postiz.com/terms`}
+                    className="underline hover:font-bold"
+                    rel="nofollow"
+                  >
+                    {t('terms_of_service', 'Terms of Service')}
+                  </a>
+                  &nbsp;
+                  {t('and', 'and')}&nbsp;
+                  <a
+                    href={`https://postiz.com/privacy`}
+                    rel="nofollow"
+                    className="underline hover:font-bold"
+                  >
+                    {t('privacy_policy', 'Privacy Policy')}
+                  </a>
+                  &nbsp;
+                </div>
+              )}
               <div className="text-center mt-6">
                 <div className="w-full flex">
                   <Button
@@ -243,19 +283,23 @@ export function RegisterAfter({
                     className="flex-1 rounded-[10px] !h-[52px]"
                     loading={loading}
                   >
-                    {t('create_account', 'Create Account')}
+                    {isInvite
+                      ? t('set_password_enter', 'Set Password & Enter')
+                      : t('create_account', 'Create Account')}
                   </Button>
                 </div>
-                <p className="mt-4 text-sm">
-                  {t('already_have_an_account', 'Already Have An Account?')}
-                  &nbsp;
-                  <Link
-                    href="/auth/login"
-                    className="underline  cursor-pointer"
-                  >
-                    {t('sign_in', 'Sign In')}
-                  </Link>
-                </p>
+                {!isInvite && (
+                  <p className="mt-4 text-sm">
+                    {t('already_have_an_account', 'Already Have An Account?')}
+                    &nbsp;
+                    <Link
+                      href="/login"
+                      className="underline  cursor-pointer"
+                    >
+                      {t('sign_in', 'Sign In')}
+                    </Link>
+                  </p>
+                )}
               </div>
             </div>
           </div>

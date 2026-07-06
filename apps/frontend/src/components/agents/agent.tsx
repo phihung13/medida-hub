@@ -22,6 +22,8 @@ import { Integration } from '@prisma/client';
 import Link from 'next/link';
 import { useParams, usePathname, useRouter } from 'next/navigation';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
+import { deleteDialog } from '@gitroom/react/helpers/delete.dialog';
+import { TrashIcon } from '@gitroom/frontend/components/ui/icons';
 
 export const MediaPortal: FC<{
   media: { path: string; id: string }[];
@@ -219,7 +221,29 @@ const Threads: FC = () => {
   }, []);
   const { id } = useParams<{ id: string }>();
 
-  const { data } = useSWR('threads', threads);
+  const { data, mutate } = useSWR('threads', threads);
+
+  const deleteChat = useCallback(
+    (threadId: string) => async (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (
+        !(await deleteDialog(
+          t('delete_chat_confirm', 'Delete this chat?'),
+          t('yes_delete', 'Delete')
+        ))
+      ) {
+        return;
+      }
+      await fetch(`/copilot/list/${threadId}/delete`, { method: 'POST' });
+      await mutate();
+      // Đang mở đúng chat vừa xóa → về trang tạo chat mới.
+      if (threadId === id) {
+        router.push('/agents');
+      }
+    },
+    [fetch, mutate, id, router, t]
+  );
 
   return (
     <div
@@ -257,16 +281,27 @@ const Threads: FC = () => {
         </div>
         <div className="flex flex-col gap-[1px]">
           {data?.threads?.map((p: any) => (
-            <Link
+            <div
+              key={p.id}
               className={clsx(
-                'overflow-ellipsis overflow-hidden whitespace-nowrap hover:bg-newBgColor px-[10px] py-[6px] rounded-[10px] cursor-pointer',
+                'group/thread flex items-center gap-[4px] hover:bg-newBgColor px-[10px] py-[6px] rounded-[10px]',
                 p.id === id && 'bg-newBgColor'
               )}
-              href={`/agents/${p.id}`}
-              key={p.id}
             >
-              {p.title}
-            </Link>
+              <Link
+                href={`/agents/${p.id}`}
+                className="flex-1 min-w-0 overflow-ellipsis overflow-hidden whitespace-nowrap cursor-pointer"
+              >
+                {p.title}
+              </Link>
+              <button
+                onClick={deleteChat(p.id)}
+                title={t('delete_chat', 'Delete chat')}
+                className="shrink-0 opacity-0 group-hover/thread:opacity-100 transition-opacity text-textItemBlur hover:text-red-500 p-[2px]"
+              >
+                <TrashIcon />
+              </button>
+            </div>
           ))}
         </div>
       </div>

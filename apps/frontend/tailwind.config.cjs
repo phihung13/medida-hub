@@ -270,6 +270,9 @@ module.exports = {
         xs: {
           max: '401px',
         },
+        wide: {
+          raw: '(min-width: 1500px)',
+        },
       },
     },
   },

@@ -1,4 +1,5 @@
 import XHRUpload from '@uppy/xhr-upload';
+import { resolveBaseUrl } from '@gitroom/helpers/utils/custom.fetch.func';
 import AwsS3Multipart from '@uppy/aws-s3';
 import sha256 from 'sha256';
 import Transloadit from '@uppy/transloadit';
@@ -96,7 +97,7 @@ export const getUppyUploadPlugin = (
       return {
         plugin: XHRUpload,
         options: {
-          endpoint: `${backendUrl}/media/upload-server`,
+          endpoint: `${resolveBaseUrl(backendUrl)}/media/upload-server`,
           withCredentials: true,
         },
       };

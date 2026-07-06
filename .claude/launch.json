@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "media-hub",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["run.mjs"],
+      "port": 4200
+    }
+  ]
+}

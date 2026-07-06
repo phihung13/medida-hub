@@ -18,6 +18,7 @@ import { hasExtension } from '@gitroom/helpers/utils/has.extension';
 import { Media } from '@prisma/client';
 import { useMediaDirectory } from '@gitroom/react/helpers/use.media.directory';
 import { useSettings } from '@gitroom/frontend/components/launches/helpers/use.values';
+import { loadVars } from '@gitroom/react/helpers/variable.context';
 import EventEmitter from 'events';
 import { useToaster } from '@gitroom/react/toaster/toaster';
 import clsx from 'clsx';
@@ -53,8 +54,9 @@ import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
 import { useShallow } from 'zustand/react/shallow';
 import { LoadingComponent } from '@gitroom/frontend/components/layout/loading';
 import { useDebounce } from 'use-debounce';
-const Polonto = dynamic(
-  () => import('@gitroom/frontend/components/launches/polonto')
+// Editor ảnh: dùng Filerobot (MIT, miễn phí, không cần license key) thay Polotno.
+const FilerobotEditor = dynamic(
+  () => import('@gitroom/frontend/components/launches/filerobot.editor')
 );
 const showModalEmitter = new EventEmitter();
 export const Pagination: FC<{
@@ -119,7 +121,7 @@ export const Pagination: FC<{
   }, [current, totalPages]);
 
   return (
-    <ul className="flex flex-row items-center gap-1 justify-center mt-[15px]">
+    <ul className="flex flex-row flex-wrap items-center gap-1 justify-center mt-[15px]">
       <li className={clsx(current === 0 && 'opacity-20 pointer-events-none')}>
         <div
           className="cursor-pointer inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 h-10 px-4 py-2 gap-1 ps-2.5 text-gray-400 hover:text-white border-[#1F1F1F] hover:bg-forth"
@@ -127,7 +129,7 @@ export const Pagination: FC<{
           onClick={() => setPage(current - 1)}
         >
           <ChevronLeftIcon className="lucide lucide-chevron-left h-4 w-4" />
-          <span>{t('previous', 'Previous')}</span>
+          <span className="xs:hidden">{t('previous', 'Previous')}</span>
         </div>
       </li>
       {paginationItems.map((item, index) => (
@@ -162,7 +164,7 @@ export const Pagination: FC<{
           aria-label="Go to next page"
           onClick={() => setPage(current + 1)}
         >
-          <span>{t('next', 'Next')}</span>
+          <span className="xs:hidden">{t('next', 'Next')}</span>
           <ChevronRightIcon className="lucide lucide-chevron-right h-4 w-4" />
         </a>
       </li>
@@ -344,33 +346,83 @@ export const MediaBox: FC<{
     [toaster, t]
   );
 
-  const maximize = useCallback(
+  // Mở Filerobot editor với ảnh thư viện làm nguồn để SỬA/THIẾT KẾ trực tiếp.
+  const designMediaLibrary = useCallback(
     (media: Media) => async (e: any) => {
       e.stopPropagation();
       modals.openModal({
+        askClose: false,
+        closeOnEscape: true,
+        removeLayout: true,
+        fullScreen: true,
+        children: (close) => (
+          <FilerobotEditor
+            source={mediaDirectory.set(media.path)}
+            setMedia={async () => {
+              await mutate();
+            }}
+            closeModal={close}
+          />
+        ),
+      });
+    },
+    [mediaDirectory, mutate]
+  );
+
+  const maximize = useCallback(
+    (media: Media) => async (e: any) => {
+      e.stopPropagation();
+      const url = mediaDirectory.set(media.path);
+      const isVideo = hasExtension(media.path, 'mp4');
+      const download = () => {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = media.originalName || media.path.split('/').pop() || 'media';
+        a.target = '_blank';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      };
+      modals.openModal({
         title: '',
         top: 10,
-        children: (
-          <div className="w-full h-full p-[50px]">
-            {hasExtension(media.path, 'mp4') ? (
-              <VideoFrame
-                autoplay={true}
-                url={mediaDirectory.set(media.path)}
-              />
-            ) : (
-              <img
-                width="100%"
-                height="100%"
-                className="w-full h-full max-h-[100%] max-w-[100%] object-cover"
-                src={mediaDirectory.set(media.path)}
-                alt="media"
-              />
-            )}
+        children: (close) => (
+          <div className="w-full h-full flex flex-col gap-[12px] p-[16px] mobile:p-[8px]">
+            <div className="flex-1 min-h-0 flex items-center justify-center">
+              {isVideo ? (
+                <VideoFrame autoplay={true} url={url} />
+              ) : (
+                <img
+                  className="max-h-full max-w-full object-contain rounded-[6px]"
+                  src={url}
+                  alt="media"
+                />
+              )}
+            </div>
+            <div className="shrink-0 flex justify-end gap-[8px]">
+              <button
+                onClick={download}
+                className="cursor-pointer h-[40px] px-[16px] items-center justify-center border border-newTextColor/10 flex rounded-[8px] text-textColor"
+              >
+                {t('download', 'Download')}
+              </button>
+              {!isVideo && (
+                <button
+                  onClick={(ev) => {
+                    close();
+                    designMediaLibrary(media)(ev);
+                  }}
+                  className="cursor-pointer text-white h-[40px] px-[16px] items-center justify-center bg-[#1e6fd9] flex rounded-[8px]"
+                >
+                  {t('edit_design', 'Edit / Design')}
+                </button>
+              )}
+            </div>
           </div>
         ),
       });
     },
-    []
+    [mediaDirectory, designMediaLibrary, t]
   );
 
   const deleteImage = useCallback(
@@ -418,7 +470,7 @@ export const MediaBox: FC<{
       <div className="flex flex-col flex-1">
         <div
           className={clsx(
-            'flex items-center gap-[12px]',
+            'flex items-center gap-[12px] flex-wrap',
             !isLoading &&
               !data?.results?.length &&
               !debouncedSearch &&
@@ -431,7 +483,7 @@ export const MediaBox: FC<{
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t('search_media_by_name', 'Search by file name')}
-              className="w-full h-[44px] px-[14px] rounded-[8px] bg-newBgColorInner border border-newColColor text-[14px] outline-none focus:border-[#612BD3]"
+              className="w-full h-[44px] px-[14px] rounded-[8px] bg-newBgColorInner border border-newColColor text-[14px] outline-none focus:border-[#1e6fd9]"
             />
           </div>
           <input
@@ -544,13 +596,13 @@ export const MediaBox: FC<{
                     className={clsx(
                       'w-full h-full rounded-[6px] border-[4px] relative',
                       !!selected.find((p) => p.id === media.id)
-                        ? 'border-[#612BD3]'
+                        ? 'border-[#1e6fd9]'
                         : 'border-transparent'
                     )}
                     onClick={addRemoveSelected(media)}
                   >
                     {!!selected.find((p: any) => p.id === media.id) ? (
-                      <div className="text-white flex z-[101] justify-center items-center text-[14px] font-[500] w-[24px] h-[24px] rounded-full bg-[#612BD3] absolute -bottom-[10px] -end-[10px]">
+                      <div className="text-white flex z-[101] justify-center items-center text-[14px] font-[500] w-[24px] h-[24px] rounded-full bg-[#1e6fd9] absolute -bottom-[10px] -end-[10px]">
                         {selected.findIndex((z: any) => z.id === media.id) + 1}
                       </div>
                     ) : (
@@ -559,16 +611,18 @@ export const MediaBox: FC<{
                         onClick={deleteImage(media)}
                       />
                     )}
-                    <div className="absolute bottom-[10px] end-[10px] z-[100]">{media.originalName}</div>
+                    <div className="absolute bottom-[6px] start-[6px] end-[6px] z-[100] truncate text-[11px] text-white bg-black/50 rounded-[4px] px-[6px] py-[2px] pointer-events-none">{media.originalName}</div>
                     <div className="w-full h-full rounded-[6px] overflow-hidden relative">
-                      <div className="absolute z-[20] left-[50%] top-[50%] -translate-x-[50%] -translate-y-[50%]">
+                      <div className="absolute z-[20] left-[50%] top-[50%] -translate-x-[50%] -translate-y-[50%] flex items-center gap-[6px]">
                         <div
                           onClick={maximize(media)}
-                          className="cursor-pointer p-[4px] bg-black/40 hidden group-hover:block hover:scale-150 transition-all"
+                          title={t('view_media', 'View')}
+                          aria-label={t('view_media', 'View')}
+                          className="cursor-pointer p-[4px] bg-black/40 hidden group-hover:block hover:scale-125 transition-all"
                         >
                           <svg
-                            width="30"
-                            height="30"
+                            width="26"
+                            height="26"
                             viewBox="0 0 14 14"
                             fill="none"
                             xmlns="http://www.w3.org/2000/svg"
@@ -579,6 +633,30 @@ export const MediaBox: FC<{
                             />
                           </svg>
                         </div>
+                        {!hasExtension(media.path, 'mp4') && (
+                          <div
+                            onClick={designMediaLibrary(media)}
+                            title={t('edit_design', 'Edit / Design')}
+                            aria-label={t('edit_design', 'Edit / Design')}
+                            className="cursor-pointer p-[4px] bg-black/40 hidden group-hover:block hover:scale-125 transition-all"
+                          >
+                            <svg
+                              width="26"
+                              height="26"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              xmlns="http://www.w3.org/2000/svg"
+                            >
+                              <path
+                                d="M4 20h4L18.5 9.5a2.121 2.121 0 0 0-3-3L5 17v3ZM13.5 6.5l4 4"
+                                stroke="#F1F5F9"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          </div>
+                        )}
                       </div>
                       {hasExtension(media.path, 'mp4') ? (
                         <VideoFrame url={mediaDirectory.set(media.path)} />
@@ -616,7 +694,7 @@ export const MediaBox: FC<{
               <button
                 onClick={standalone ? () => {} : addMedia}
                 disabled={selected.length === 0}
-                className="cursor-pointer text-white disabled:opacity-80 disabled:cursor-not-allowed h-[52px] px-[20px] items-center justify-center bg-[#612BD3] flex rounded-[10px]"
+                className="cursor-pointer text-white disabled:opacity-80 disabled:cursor-not-allowed h-[52px] px-[20px] items-center justify-center bg-[#1e6fd9] flex rounded-[10px]"
               >
                 {t('add_selected_media', 'Add selected media')}
               </button>
@@ -739,14 +817,21 @@ export const MultiMediaComponent: FC<{
     [currentMedia]
   );
 
+  // Nút "Design Media" LUÔN hiện — dùng Filerobot Image Editor (MIT, miễn phí,
+  // không cần license key, không watermark). Xem filerobot.editor.tsx.
+  const canDesign = true;
   const designMedia = useCallback(() => {
     if (!!user?.tier?.ai && !dummy) {
       modals.openModal({
         askClose: false,
-        title: t('design_media', 'Design Media'),
-        size: '80%',
+        closeOnEscape: true,
+        // removeLayout + fullScreen: bỏ thanh tiêu đề + padding + khoảng gap của
+        // modal (thứ đẩy editor xuống + căn giữa gây lề chết trên/dưới + kẹp
+        // thanh công cụ khi zoom). Editor tự có header (tiêu đề + đóng).
+        removeLayout: true,
+        fullScreen: true,
         children: (close) => (
-          <Polonto setMedia={changeMedia} closeModal={close} />
+          <FilerobotEditor setMedia={changeMedia} closeModal={close} />
         ),
       });
     }
@@ -823,7 +908,7 @@ export const MultiMediaComponent: FC<{
             </ReactSortable>
           )}
         </div>
-        <div className="flex gap-[8px] px-[12px] border-t border-newColColor w-full b1 text-textColor">
+        <div className="flex flex-wrap gap-[8px] px-[12px] border-t border-newColColor w-full b1 text-textColor">
           {!mediaNotAvailable && (
             <div className="flex py-[10px] b2 items-center gap-[4px]">
               <div
@@ -839,25 +924,41 @@ export const MultiMediaComponent: FC<{
                   </div>
                 </div>
               </div>
-              <div
-                onClick={designMedia}
-                className="cursor-pointer h-[30px] rounded-[6px] justify-center items-center flex bg-newColColor px-[8px]"
-              >
-                <div className="flex gap-[5px] items-center">
-                  <div>
-                    <DesignMediaIcon />
-                  </div>
-                  <div className="text-[10px] font-[600] iconBreak:hidden block">
-                    {t('design_media', 'Design Media')}
+              {canDesign && (
+                <div
+                  onClick={designMedia}
+                  title={t(
+                    'design_media_tooltip',
+                    'Design media — open image editor'
+                  )}
+                  aria-label={t(
+                    'design_media_tooltip',
+                    'Design media — open image editor'
+                  )}
+                  className="cursor-pointer h-[30px] rounded-[6px] justify-center items-center flex bg-newColColor px-[8px]"
+                >
+                  <div className="flex gap-[5px] items-center">
+                    <div>
+                      <DesignMediaIcon />
+                    </div>
+                    <div className="text-[10px] font-[600] iconBreak:hidden block">
+                      {t('design_media', 'Design Media')}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               <ThirdPartyMedia allData={allData} onChange={changeMedia} />
 
               {!!user?.tier?.ai && (
                 <>
-                  <AiImage value={text} onChange={changeMedia} />
+                  <span
+                    title={t('generate_ai_image', 'Generate AI image')}
+                    aria-label={t('generate_ai_image', 'Generate AI image')}
+                    className="flex"
+                  >
+                    <AiImage value={text} onChange={changeMedia} />
+                  </span>
                   <AiVideo value={text} onChange={changeMedia} />
                 </>
               )}
@@ -923,14 +1024,13 @@ export const MediaComponent: FC<{
 
   const showDesignModal = useCallback(() => {
     modals.openModal({
-      title: t('media_editor', 'Media Editor'),
       askClose: false,
       closeOnEscape: true,
+      // editor lấp đầy màn hình, không còn chrome modal chèn ép (xem designMedia)
+      removeLayout: true,
       fullScreen: true,
-      size: 'calc(100% - 80px)',
-      height: 'calc(100% - 80px)',
       children: (close) => (
-        <Polonto
+        <FilerobotEditor
           width={width}
           height={height}
           setMedia={changeMedia}

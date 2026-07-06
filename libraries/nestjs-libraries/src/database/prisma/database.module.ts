@@ -27,6 +27,10 @@ import { WebhooksRepository } from '@gitroom/nestjs-libraries/database/prisma/we
 import { WebhooksService } from '@gitroom/nestjs-libraries/database/prisma/webhooks/webhooks.service';
 import { SignatureRepository } from '@gitroom/nestjs-libraries/database/prisma/signatures/signature.repository';
 import { SignatureService } from '@gitroom/nestjs-libraries/database/prisma/signatures/signature.service';
+import { AiCreditRepository } from '@gitroom/nestjs-libraries/database/prisma/ai-credits/ai.credit.repository';
+import { AiCreditService } from '@gitroom/nestjs-libraries/database/prisma/ai-credits/ai.credit.service';
+import { ViralRepository } from '@gitroom/nestjs-libraries/database/prisma/viral/viral.repository';
+import { ViralService } from '@gitroom/nestjs-libraries/database/prisma/viral/viral.service';
 import { AutopostRepository } from '@gitroom/nestjs-libraries/database/prisma/autopost/autopost.repository';
 import { AutopostService } from '@gitroom/nestjs-libraries/database/prisma/autopost/autopost.service';
 import { SetsService } from '@gitroom/nestjs-libraries/database/prisma/sets/sets.service';
@@ -72,6 +76,10 @@ import { AdminStatsService } from '@gitroom/nestjs-libraries/database/prisma/adm
     AutopostRepository,
     AutopostService,
     SignatureService,
+    AiCreditRepository,
+    AiCreditService,
+    ViralRepository,
+    ViralService,
     MediaService,
     MediaRepository,
     AgenciesService,

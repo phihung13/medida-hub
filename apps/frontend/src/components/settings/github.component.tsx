@@ -87,7 +87,7 @@ const ConnectComponent: FC<{
   const t = useT();
 
   return (
-    <div className="my-[16px] mt-[16px] h-[100px] bg-sixth border-fifth border rounded-[4px] px-[24px] flex">
+    <div className="my-[16px] mt-[16px] min-h-[100px] py-[12px] bg-sixth border-fifth border rounded-[4px] px-[24px] mobile:px-[12px] flex flex-wrap items-center gap-y-[8px]">
       <div className={`flex items-center gap-[8px] flex-1`}>
         <div>
           <SafeImage src="/icons/github.svg" alt="GitHub" width={40} height={40} />

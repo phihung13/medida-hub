@@ -48,7 +48,7 @@ export const AfterActivate = () => {
         <>
           This user is already activated,
           <br />
-          <Link href="/auth/login" className="underline">
+          <Link href="/login" className="underline">
             {t(
               'click_here_to_go_back_to_login',
               'Click here to go back to login'

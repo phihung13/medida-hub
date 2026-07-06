@@ -1,12 +1,26 @@
-import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpException,
+  Param,
+  Post,
+} from '@nestjs/common';
 import { GetOrgFromRequest } from '@gitroom/nestjs-libraries/user/org.from.request';
-import { Organization } from '@prisma/client';
+import { GetUserFromRequest } from '@gitroom/nestjs-libraries/user/user.from.request';
+import { Organization, User } from '@prisma/client';
 import { CheckPolicies } from '@gitroom/backend/services/auth/permissions/permissions.ability';
 import { OrganizationService } from '@gitroom/nestjs-libraries/database/prisma/organizations/organization.service';
 import { AddTeamMemberDto } from '@gitroom/nestjs-libraries/dtos/settings/add.team.member.dto';
 import { ShortlinkPreferenceDto } from '@gitroom/nestjs-libraries/dtos/settings/shortlink-preference.dto';
 import { ApiTags } from '@nestjs/swagger';
 import { AuthorizationActions, Sections } from '@gitroom/backend/services/auth/permissions/permission.exception.class';
+import {
+  getSocialKeysStatus,
+  setSocialKeys,
+  SocialKeyStatus,
+} from '@gitroom/nestjs-libraries/keys/social.keys';
 
 @ApiTags('Settings')
 @Controller('/settings')
@@ -31,9 +45,32 @@ export class SettingsController {
   )
   async inviteTeamMember(
     @GetOrgFromRequest() org: Organization,
-    @Body() body: AddTeamMemberDto
+    @Body() body: AddTeamMemberDto,
+    @Body('origin') origin: string
   ) {
-    return this._organizationService.inviteTeamMember(org.id, body);
+    return this._organizationService.inviteTeamMember(org.id, body, origin);
+  }
+
+  // Admin đặt lại mật khẩu cho 1 thành viên → trả link để copy (không email).
+  @Post('/team/:id/reset-password')
+  @CheckPolicies(
+    [AuthorizationActions.Create, Sections.TEAM_MEMBERS],
+    [AuthorizationActions.Create, Sections.ADMIN]
+  )
+  async resetMemberPassword(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string,
+    @Body('origin') origin: string
+  ) {
+    const res = await this._organizationService.generateMemberResetLink(
+      org,
+      id,
+      origin
+    );
+    if (!res) {
+      throw new HttpException('Không tìm thấy thành viên trong tổ chức.', 404);
+    }
+    return res;
   }
 
   @Delete('/team/:id')
@@ -63,5 +100,31 @@ export class SettingsController {
       org.id,
       body.shortlink
     );
+  }
+
+  // ==== OAuth keys các kênh — nhập từ UI Settings (ghi .env + hiệu lực ngay) ====
+  // OAuth key ghi vào .env TOÀN CỤC instance → chỉ super admin được xem/đổi.
+  private assertSuperAdmin(user: User) {
+    if (!user?.isSuperAdmin) {
+      throw new HttpException('Chỉ quản trị hệ thống mới đổi được cấu hình này.', 403);
+    }
+  }
+
+  @Get('/social-keys')
+  getSocialKeys(@GetUserFromRequest() user: User): SocialKeyStatus {
+    this.assertSuperAdmin(user);
+    return getSocialKeysStatus();
+  }
+
+  @Post('/social-keys')
+  saveSocialKeys(
+    @GetUserFromRequest() user: User,
+    @Body() body: { vars?: Record<string, string> }
+  ): {
+    ok: boolean;
+    saved: string[];
+  } {
+    this.assertSuperAdmin(user);
+    return setSocialKeys(body?.vars || {});
   }
 }

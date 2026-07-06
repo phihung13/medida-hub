@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   HttpException,
   Post,
   Query,
@@ -23,6 +24,8 @@ import { pricing } from '@gitroom/nestjs-libraries/database/prisma/subscriptions
 import { ApiTags } from '@nestjs/swagger';
 import { UsersService } from '@gitroom/nestjs-libraries/database/prisma/users/users.service';
 import { UserDetailDto } from '@gitroom/nestjs-libraries/dtos/users/user.details.dto';
+import { ChangePasswordDto } from '@gitroom/nestjs-libraries/dtos/users/change.password.dto';
+import { ChangeEmailDto } from '@gitroom/nestjs-libraries/dtos/users/change.email.dto';
 import { EmailNotificationsDto } from '@gitroom/nestjs-libraries/dtos/users/email-notifications.dto';
 import { HttpForbiddenException } from '@gitroom/nestjs-libraries/services/exception.filter';
 import { RealIP } from 'nestjs-real-ip';
@@ -189,6 +192,51 @@ export class UsersController {
     @Body() body: UserDetailDto
   ) {
     return this._userService.changePersonal(user.id, body);
+  }
+
+  // Tự đổi mật khẩu của chính mình (mọi thành viên).
+  @Post('/change-password')
+  @HttpCode(200)
+  async changePassword(
+    @GetUserFromRequest() user: User,
+    @Body() body: ChangePasswordDto
+  ) {
+    const ok = await this._userService.changePassword(
+      user.id,
+      body.currentPassword,
+      body.newPassword
+    );
+    if (!ok) {
+      throw new HttpException('Mật khẩu hiện tại không đúng.', 400);
+    }
+    return { success: true };
+  }
+
+  // Tự đổi email của chính mình — chỉ admin trở lên (email là tên đăng nhập).
+  @Post('/change-email')
+  @HttpCode(200)
+  async changeEmail(
+    @GetUserFromRequest() user: User,
+    @GetOrgFromRequest() organization: Organization,
+    @Body() body: ChangeEmailDto
+  ) {
+    // @ts-ignore
+    const role = organization?.users?.[0]?.role;
+    if (!user.isSuperAdmin && role !== 'ADMIN' && role !== 'SUPERADMIN') {
+      throw new HttpException('Chỉ quản trị viên mới đổi được email.', 403);
+    }
+    const res = await this._userService.changeEmail(
+      user.id,
+      body.password,
+      body.email
+    );
+    if (res === 'invalid') {
+      throw new HttpException('Mật khẩu không đúng.', 400);
+    }
+    if (res === 'exists') {
+      throw new HttpException('Email này đã được tài khoản khác sử dụng.', 400);
+    }
+    return { success: true };
   }
 
   @Get('/email-notifications')

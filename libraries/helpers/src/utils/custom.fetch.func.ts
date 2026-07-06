@@ -7,6 +7,44 @@ export interface Params {
     response: Response
   ) => Promise<boolean>;
 }
+
+const isLocalHostname = (h: string) => h === 'localhost' || h === '127.0.0.1';
+
+// Host "trong nhà": IP private (LAN), tên máy không có dấu chấm, *.local —
+// các trường hợp thiết bị gọi THẲNG được vào cổng backend/bot của máy chủ.
+const isLanHostname = (h: string) =>
+  /^(10\.[0-9.]+|192\.168\.[0-9.]+|172\.(1[6-9]|2[0-9]|3[01])\.[0-9.]+)$/.test(h) ||
+  !h.includes('.') ||
+  h.endsWith('.local');
+
+// baseUrl cấu hình sẵn là http://localhost:3000. Tùy nơi đang mở trang:
+// - localhost: giữ nguyên (máy chủ).
+// - LAN (http://<IP>:4200): đổi host theo trang, GIỮ port → gọi thẳng :3000.
+// - Public (tunnel cloudflare/ngrok...): KHÔNG có cổng 3000 công khai →
+//   đi qua proxy same-origin /hubapi (Next rewrite → 127.0.0.1:3000).
+export const resolveBaseUrl = (baseUrl: string) => {
+  if (typeof window === 'undefined' || !baseUrl) {
+    return baseUrl;
+  }
+  try {
+    const u = new URL(baseUrl);
+    if (!isLocalHostname(u.hostname)) {
+      return baseUrl; // đã cấu hình URL prod thật — tôn trọng
+    }
+    const cur = window.location;
+    if (isLocalHostname(cur.hostname)) {
+      return baseUrl;
+    }
+    if (isLanHostname(cur.hostname)) {
+      u.hostname = cur.hostname;
+      return u.toString().replace(/\/$/, '');
+    }
+    return `${cur.origin}/hubapi`;
+  } catch {
+    /* baseUrl tương đối — giữ nguyên */
+  }
+  return baseUrl;
+};
 export const customFetch = (
   params: Params,
   auth?: string,
@@ -43,7 +81,7 @@ export const customFetch = (
             .find((p) => p.includes('impersonate='))
             ?.split('=')[1];
 
-    const fetchRequest = await fetch(params.baseUrl + url, {
+    const fetchRequest = await fetch(resolveBaseUrl(params.baseUrl) + url, {
       ...(secured ? { credentials: 'include' } : {}),
       ...(newRequestObject || options),
       headers: {

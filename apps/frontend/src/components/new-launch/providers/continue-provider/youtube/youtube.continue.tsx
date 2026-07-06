@@ -43,6 +43,7 @@ export const YoutubeContinue = withContinueProvider<
   getItemId: (item) => item.id,
   getSelectionValue: (item) => ({ id: item.id }),
   transformSaveData: (selection) => selection,
+  multiple: true,
   isSelected: (item, selection) => selection?.id === item.id,
   renderItem: (item) => (
     <>

@@ -23,6 +23,7 @@ import { BotPicture } from '@gitroom/frontend/components/launches/bot.picture';
 import { CustomerModal } from '@gitroom/frontend/components/launches/customer.modal';
 import { Integration } from '@prisma/client';
 import { SettingsModal } from '@gitroom/frontend/components/launches/settings.modal';
+import { FooterModal } from '@gitroom/frontend/components/launches/footer.modal';
 import { CustomVariables } from '@gitroom/frontend/components/launches/add.provider.component';
 import { useRouter } from 'next/navigation';
 import { useVariables } from '@gitroom/react/helpers/variable.context';
@@ -287,6 +288,26 @@ export const Menu: FC<{
     });
     setShow(false);
   }, [integrations, t]);
+  const postFooterSettings = useCallback(() => {
+    const findIntegration = integrations.find(
+      (integration) => integration.id === id
+    );
+    modal.openModal({
+      title: t('post_footer', 'Post Footer'),
+      classNames: { modal: 'w-[100%] max-w-[560px]' },
+      children: (
+        <FooterModal
+          // @ts-ignore
+          integration={findIntegration}
+          onClose={() => {
+            mutate();
+            modal.closeCurrent();
+          }}
+        />
+      ),
+    });
+    setShow(false);
+  }, [integrations, t]);
   const addToCustomer = useCallback(() => {
     const findIntegration = integrations.find(
       (integration) => integration.id === id
@@ -409,6 +430,28 @@ export const Menu: FC<{
               </svg>
             </div>
             <div className="text-[14px]">{t('copy_id', 'Copy Channel ID')}</div>
+          </div>
+          <div
+            className="flex gap-[12px] items-center py-[8px] px-[10px]"
+            onClick={postFooterSettings}
+          >
+            <div>
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M4 5h16M4 10h16M4 15h10M4 19h16"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </div>
+            <div className="text-[14px]">{t('post_footer', 'Post Footer')}</div>
           </div>
           {canDisable &&
             findIntegration?.refreshNeeded &&

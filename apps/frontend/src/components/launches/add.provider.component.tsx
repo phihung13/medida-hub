@@ -3,6 +3,10 @@
 import { useModals } from '@gitroom/frontend/components/layout/new-modal';
 import React, { FC, useCallback, useMemo } from 'react';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
+import {
+  PLATFORM_GUIDES,
+  SocialKeyGuideForm,
+} from '@gitroom/frontend/components/settings/social-keys.component';
 import { Input } from '@gitroom/react/form/input';
 import { FieldValues, FormProvider, useForm } from 'react-hook-form';
 import { Button } from '@gitroom/react/form/button';
@@ -280,7 +284,7 @@ const ExtensionNotFound: FC = () => {
       <p className="text-[14px] text-textColor/80">
         {t(
           'extension_not_available',
-          'The Postiz browser extension is not installed. You need to install it before connecting this channel.'
+          'The Social Hub browser extension is not installed. You need to install it before connecting this channel.'
         )}
       </p>
       <div className="flex gap-[10px]">
@@ -346,7 +350,7 @@ const ChromeExtensionWarning: FC<{
           We will store your cookies securely to facilitate the connection.
         </li>
         <li>
-          Postiz does not take responsibility for any issues arising or account
+          Social Hub does not take responsibility for any issues arising or account
           termination due to the use of this method.
         </li>
       </ul>
@@ -429,6 +433,44 @@ export const AddProviderComponent: FC<{
       ) =>
       async () => {
         const onboardingParam = onboarding ? 'onboarding=true' : '';
+
+        // Kênh cần OAuth app tự đăng ký: nếu CHƯA điền key → mở hướng dẫn +
+        // form điền ngay, thay vì đẩy sang trang lỗi của nền tảng
+        // ("Invalid app ID" / "client_id undefined"...).
+        // (Telegram thuộc nhóm web3-modal nhưng vẫn cần TELEGRAM_TOKEN/BOT_NAME
+        //  → kiểm tra key cho CẢ web3 nếu nền tảng có trong danh sách hướng dẫn.)
+        const keyGuide = PLATFORM_GUIDES[identifier];
+        if (keyGuide && !invite) {
+          try {
+            const keyStatus = await (
+              await fetch('/settings/social-keys')
+            ).json();
+            const missing = keyGuide.fields.some(
+              (f) => !keyStatus?.[f.env]?.has
+            );
+            if (missing) {
+              // Đóng modal "Add Channel" trước để không hiện 2 nút X chồng nhau.
+              modal.closeAll();
+              modal.openModal({
+                title: `${keyGuide.icon} ${t(
+                  'configure_before_connecting',
+                  'Configure'
+                )} ${keyGuide.name} ${t('before_connecting', 'before connecting')}`,
+                withCloseButton: true,
+                classNames: { modal: 'text-textColor' },
+                children: (
+                  <SocialKeyGuideForm
+                    identifier={identifier}
+                    onSaved={() => modal.closeCurrent()}
+                  />
+                ),
+              });
+              return;
+            }
+          } catch {
+            /* không chặn nếu check lỗi */
+          }
+        }
         const openWeb3 = async () => {
           const { component: Web3Providers } = web3List.find(
             (item) => item.identifier === identifier
@@ -574,7 +616,7 @@ export const AddProviderComponent: FC<{
             toaster.show(
               t(
                 'extension_not_installed',
-                'Postiz browser extension is not installed or not reachable.'
+                'Social Hub browser extension is not installed or not reachable.'
               ),
               'warning'
             );
@@ -669,6 +711,28 @@ export const AddProviderComponent: FC<{
 
   const t = useT();
 
+  // Mở form nhập OAuth key. Đóng modal "Add Channel" bên ngoài trước để
+  // tránh hiện 2 nút đóng (X) chồng lên nhau — chỉ còn 1 modal Configure.
+  const openGuide = useCallback(
+    (identifier: string) => {
+      const g = PLATFORM_GUIDES[identifier];
+      if (!g) return;
+      modal.closeAll();
+      modal.openModal({
+        title: `${g.icon} ${t('configure', 'Configure')} ${g.name}`,
+        withCloseButton: true,
+        classNames: { modal: 'text-textColor' },
+        children: (
+          <SocialKeyGuideForm
+            identifier={identifier}
+            onSaved={() => modal.closeCurrent()}
+          />
+        ),
+      });
+    },
+    [modal, t]
+  );
+
   return (
     <div className="w-full flex flex-col gap-[20px] rounded-[4px] relative]">
       <div className="flex flex-col">
@@ -677,7 +741,7 @@ export const AddProviderComponent: FC<{
             isMobile && 'gap-[20px] flex flex-col',
             !isMobile &&
               'grid grid-cols-5 gap-[10px] justify-items-center justify-center',
-            isMobile ? {} : onboarding ? 'grid-cols-9' : 'grid-cols-5'
+            isMobile ? {} : onboarding ? 'grid-cols-9 tablet:grid-cols-5 mobile:grid-cols-3 xs:grid-cols-2' : 'grid-cols-5 mobile:grid-cols-3 xs:grid-cols-2'
           )}
         >
           {social
@@ -754,6 +818,41 @@ export const AddProviderComponent: FC<{
                     </svg>
                   )}
                 </div>
+                {/* Nút ⚙ — sửa lại OAuth key (App ID/Secret...) BẤT CỨ LÚC NÀO,
+                    kể cả đã lưu. Không nhảy vào OAuth. */}
+                {!props.invite && !!PLATFORM_GUIDES[item.identifier] && (
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    title={t(
+                      'enter_developer_app_keys',
+                      'Enter developer app keys'
+                    )}
+                    aria-label={t(
+                      'enter_developer_app_keys',
+                      'Enter developer app keys'
+                    )}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openGuide(item.identifier);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openGuide(item.identifier);
+                      }
+                    }}
+                    data-tooltip-id="tooltip"
+                    data-tooltip-content={t(
+                      'enter_developer_app_keys',
+                      'Enter developer app keys'
+                    )}
+                    className="absolute top-[6px] start-[6px] w-[22px] h-[22px] rounded-full bg-newBgColorInner/80 hover:bg-newBgColorInner flex items-center justify-center text-[12px] opacity-60 hover:opacity-100"
+                  >
+                    ⚙
+                  </div>
+                )}
               </div>
             ))}
         </div>

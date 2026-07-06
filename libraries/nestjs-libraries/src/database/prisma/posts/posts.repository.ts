@@ -600,6 +600,9 @@ export class PostsRepository {
               orgId: orgId,
               name: {
                 in: tags.map((tag) => tag.label).filter((f) => f),
+                // Không phân biệt hoa/thường — bot Zalo gửi "Zalo" nhưng org có
+                // thể đã tạo "zalo"; match hụt sẽ bị bỏ qua im lặng.
+                mode: 'insensitive',
               },
             },
           });

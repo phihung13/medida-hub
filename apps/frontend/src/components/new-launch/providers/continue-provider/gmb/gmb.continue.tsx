@@ -46,6 +46,7 @@ export const GmbContinue = withContinueProvider<GmbItem, GmbSelection>({
     locationName: item.locationName,
   }),
   transformSaveData: (selection) => selection,
+  multiple: true,
   isSelected: (item, selection) => selection?.id === item.id,
   renderItem: (item) => (
     <>

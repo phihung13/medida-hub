@@ -50,11 +50,10 @@ const AiImageModal: FC<{
     close();
     setLocked(true);
     try {
-      const image = await (
-        await fetch('/media/generate-image-with-prompt', {
-          method: 'POST',
-          body: JSON.stringify({
-            prompt: `
+      const res = await fetch('/media/generate-image-with-prompt', {
+        method: 'POST',
+        body: JSON.stringify({
+          prompt: `
 <!-- description -->
 ${prompt}
 <!-- /description -->
@@ -64,13 +63,29 @@ ${style}
 <!-- /style -->
 
 `,
-          }),
-        })
-      ).json();
-      if (image) {
+        }),
+      });
+      const image = await res.json().catch(() => null);
+      // Chỉ nhận ảnh hợp lệ (có id + path). Lỗi (vd chưa cấu hình key) → báo nhẹ,
+      // KHÔNG thêm ảnh hỏng vào bài.
+      if (res.ok && image && image.id && image.path) {
         onChange(image);
+      } else {
+        toaster.show(
+          image?.message ||
+            t(
+              'image_gen_not_configured',
+              'Could not generate the image. Go to Settings → "AI Image Generation" to add a key.'
+            ),
+          'warning'
+        );
       }
-    } catch (e) {}
+    } catch (e) {
+      toaster.show(
+        t('image_gen_failed', 'Could not generate the image, please try again later.'),
+        'warning'
+      );
+    }
     setLocked(false);
     setLoading(false);
   }, [prompt, style, onChange]);
@@ -99,7 +114,7 @@ ${style}
               className={clsx(
                 'cursor-pointer rounded-[4px] px-[10px] h-[30px] flex items-center text-[12px] border',
                 style === p
-                  ? 'bg-[#612BD3] border-[#612BD3] text-white'
+                  ? 'bg-[#1e6fd9] border-[#1e6fd9] text-white'
                   : 'bg-newColColor border-newBgLineColor'
               )}
             >

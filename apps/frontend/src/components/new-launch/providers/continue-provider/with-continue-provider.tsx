@@ -40,6 +40,10 @@ export interface ContinueProviderConfig<TItem, TSelection> {
   renderItem: (item: TItem, isSelected: boolean) => ReactNode;
   isSelected: (item: TItem, selection: TSelection | null) => boolean;
   getItemId: (item: TItem) => string;
+  // Cho chọn NHIỀU (vd Facebook nhiều Page). transformSaveDataMultiple nhận
+  // mảng selection → payload {pages:[...]}.
+  multiple?: boolean;
+  transformSaveDataMultiple?: (selections: TSelection[]) => any;
 }
 
 export function withContinueProvider<TItem, TSelection>(
@@ -56,6 +60,8 @@ export function withContinueProvider<TItem, TSelection>(
     renderItem,
     isSelected,
     getItemId,
+    multiple,
+    transformSaveDataMultiple,
   } = config;
 
   return function ContinueProviderComponent(props: ContinueProviderProps) {
@@ -63,6 +69,9 @@ export function withContinueProvider<TItem, TSelection>(
     const call = useCustomProviderFunction();
     const t = useT();
     const [selection, setSelection] = useState<TSelection | null>(null);
+    // Multi-select: theo dõi theo ITEM ID (selection có thể là object nên không
+    // dùng === được).
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
     const loadData = useCallback(async () => {
       // Skip fetch if initial data was provided
@@ -86,16 +95,41 @@ export function withContinueProvider<TItem, TSelection>(
 
     const handleSelect = useCallback(
       (item: TItem) => () => {
-        setSelection(getSelectionValue(item));
+        if (multiple) {
+          const itemId = getItemId(item);
+          setSelectedIds((prev) =>
+            prev.includes(itemId)
+              ? prev.filter((s) => s !== itemId)
+              : [...prev, itemId]
+          );
+        } else {
+          setSelection(getSelectionValue(item));
+        }
       },
       []
     );
 
     const handleSave = useCallback(async () => {
-      if (selection) {
+      if (multiple) {
+        // Map id đã chọn -> item -> selection value -> payload (dùng chung
+        // transformSaveData của bản chọn 1 cho từng phần tử).
+        const items = ((resolvedData as TItem[]) || []).filter((it) =>
+          selectedIds.includes(getItemId(it))
+        );
+        const selections = items.map((it) => getSelectionValue(it));
+        if (selections.length) {
+          await onSave(
+            transformSaveDataMultiple
+              ? transformSaveDataMultiple(selections)
+              : // Mặc định: mỗi phần tử map qua transformSaveData (đúng shape
+                // data từng provider), gói vào { pages: [...] }.
+                { pages: selections.map((s) => transformSaveData(s)) }
+          );
+        }
+      } else if (selection) {
         await onSave(transformSaveData(selection));
       }
-    }, [onSave, selection]);
+    }, [onSave, selection, selectedIds, resolvedData]);
 
     const filteredData = useMemo(() => {
       return (
@@ -127,23 +161,44 @@ export function withContinueProvider<TItem, TSelection>(
       <div className="flex flex-col gap-[20px]">
         <div>{t(titleKey, titleDefault)}</div>
         <div className="grid grid-cols-3 justify-items-center select-none cursor-pointer gap-[10px]">
-          {filteredData.map((item) => (
-            <div
-              key={getItemId(item)}
-              className={clsx(
-                'flex flex-col w-full text-center gap-[10px] border border-input p-[10px] hover:bg-seventh rounded-[8px]',
-                isSelected(item, selection) && 'bg-seventh border-primary'
-              )}
-              onClick={handleSelect(item)}
-            >
-              {renderItem(item, isSelected(item, selection))}
-            </div>
-          ))}
+          {filteredData.map((item) => {
+            const sel = multiple
+              ? selectedIds.includes(getItemId(item))
+              : isSelected(item, selection);
+            return (
+              <div
+                key={getItemId(item)}
+                className={clsx(
+                  'relative flex flex-col w-full text-center gap-[10px] border border-input p-[10px] hover:bg-seventh rounded-[8px]',
+                  sel && 'bg-seventh border-primary'
+                )}
+                onClick={handleSelect(item)}
+              >
+                {multiple && sel && (
+                  <div className="absolute top-[6px] end-[6px] w-[20px] h-[20px] rounded-full bg-primary text-white flex items-center justify-center text-[12px] font-[700]">
+                    ✓
+                  </div>
+                )}
+                {renderItem(item, sel)}
+              </div>
+            );
+          })}
         </div>
-        <div>
-          <Button disabled={!selection || isSaving} loading={isSaving} onClick={handleSave}>
-            {t('save', 'Save')}
+        <div className="flex items-center gap-[12px]">
+          <Button
+            disabled={(multiple ? !selectedIds.length : !selection) || isSaving}
+            loading={isSaving}
+            onClick={handleSave}
+          >
+            {multiple && selectedIds.length
+              ? t('save', 'Save') + ` (${selectedIds.length})`
+              : t('save', 'Save')}
           </Button>
+          {multiple && (
+            <span className="text-[13px] opacity-60">
+              {t('click_multiple_pages', 'Click to select multiple channels at once')}
+            </span>
+          )}
         </div>
       </div>
     );

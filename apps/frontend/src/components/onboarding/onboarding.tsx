@@ -1,47 +1,22 @@
 'use client';
 
-import { FC, useCallback, useEffect, useRef } from 'react';
+import { FC, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useModals } from '@gitroom/frontend/components/layout/new-modal';
-import { useT } from '@gitroom/react/translation/get.transation.service.client';
-import { OnboardingModal } from '@gitroom/frontend/components/onboarding/onboarding.modal';
+import { AppTour } from '@gitroom/frontend/components/onboarding/app.tour';
 
+// Member mới đăng ký xong được chuyển tới /launches?onboarding=true →
+// hiện tour giới thiệu từng mục (thay cho modal Connect Channels + video cũ).
 export const Onboarding: FC = () => {
   const query = useSearchParams();
-  const modal = useModals();
   const router = useRouter();
-  const modalOpen = useRef(false);
-  const t = useT();
 
   const handleClose = useCallback(() => {
-    modal.closeAll();
     router.push('/launches');
-  }, [modal, router]);
+  }, [router]);
 
-  useEffect(() => {
-    const onboarding = query.get('onboarding');
-    if (!onboarding) {
-      if (modalOpen.current) {
-        modalOpen.current = false;
-        modal.closeAll();
-      }
-      return;
-    }
-    if (modalOpen.current) {
-      return;
-    }
-    modalOpen.current = true;
-    modal.openModal({
-      // title: t('onboarding', 'Welcome to Postiz'),
-      withCloseButton: true,
-      closeOnEscape: false,
-      removeLayout: true,
-      askClose: true,
-      fullScreen: true,
-      onClose: handleClose,
-      children: <OnboardingModal onClose={handleClose} />,
-    });
-  }, [query, handleClose, t]);
-  
-  return null;
+  if (!query.get('onboarding')) {
+    return null;
+  }
+
+  return <AppTour onClose={handleClose} />;
 };

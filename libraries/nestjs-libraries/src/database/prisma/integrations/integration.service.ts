@@ -25,6 +25,7 @@ import utc from 'dayjs/plugin/utc';
 import { AutopostRepository } from '@gitroom/nestjs-libraries/database/prisma/autopost/autopost.repository';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { TemporalService } from 'nestjs-temporal-core';
+import { OpenaiService } from '@gitroom/nestjs-libraries/openai/openai.service';
 
 dayjs.extend(utc);
 
@@ -38,7 +39,8 @@ export class IntegrationService {
     private _notificationService: NotificationService,
     @Inject(forwardRef(() => RefreshIntegrationService))
     private _refreshIntegrationService: RefreshIntegrationService,
-    private _temporalService: TemporalService
+    private _temporalService: TemporalService,
+    private _openaiService: OpenaiService
   ) {}
 
   async changeActiveCron(orgId: string) {
@@ -163,6 +165,21 @@ export class IntegrationService {
 
   getIntegrationById(org: string, id: string) {
     return this._integrationRepository.getIntegrationById(org, id);
+  }
+
+  // Chân bài (footer) cố định cho từng kênh — verify org trước khi ghi.
+  async updatePostFooter(org: string, id: string, footer: string) {
+    const integration = await this._integrationRepository.getIntegrationById(
+      org,
+      id
+    );
+    if (!integration) {
+      return null;
+    }
+    await this._integrationRepository.updateIntegration(id, {
+      postFooter: (footer || '').trim() || null,
+    } as any);
+    return { ok: true };
   }
 
   async refreshToken(provider: SocialProvider, refresh: string) {
@@ -304,26 +321,59 @@ export class IntegrationService {
       );
     }
 
-    const getIntegrationInformation = await provider.fetchPageInformation(
-      getIntegration.token,
-      data
-    );
+    // Hỗ trợ chọn NHIỀU kênh vệ tinh 1 lần (Page FB, location Google Business,
+    // company LinkedIn, channel YouTube...). data.pages = mảng OBJECT data —
+    // mỗi phần tử có cùng shape như bản chọn 1 (tuỳ provider: {page}, {id},
+    // {id,pageId}...). Tương thích ngược: không có data.pages thì dùng nguyên
+    // `data` như 1 lựa chọn.
+    const pageDataList: any[] =
+      Array.isArray(data?.pages) && data.pages.length ? data.pages : [data];
 
-    await this.checkForDeletedOnceAndUpdate(
-      org,
-      String(getIntegrationInformation.id)
+    // Kênh ĐẦU TIÊN: biến integration between-steps hiện tại thành kênh đó.
+    const first = await provider.fetchPageInformation(
+      getIntegration.token,
+      pageDataList[0]
     );
+    await this.checkForDeletedOnceAndUpdate(org, String(first.id));
     await this._integrationRepository.updateIntegration(id, {
-      picture: getIntegrationInformation.picture,
-      internalId: String(getIntegrationInformation.id),
+      picture: first.picture,
+      internalId: String(first.id),
       organizationId: org,
-      name: getIntegrationInformation.name,
+      name: first.name,
       inBetweenSteps: false,
-      token: getIntegrationInformation.access_token,
-      profile: getIntegrationInformation.username,
+      token: first.access_token,
+      profile: first.username,
     });
 
-    return { success: true };
+    // Các kênh CÒN LẠI: mỗi kênh tạo một integration MỚI (dùng chung token).
+    for (const pageData of pageDataList.slice(1)) {
+      try {
+        const info = await provider.fetchPageInformation(
+          getIntegration.token,
+          pageData
+        );
+        await this.checkForDeletedOnceAndUpdate(org, String(info.id));
+        await this.createOrUpdateIntegration(
+          undefined,
+          !!provider.oneTimeToken,
+          org,
+          info.name,
+          info.picture,
+          'social',
+          String(info.id),
+          getIntegration.providerIdentifier,
+          info.access_token,
+          '',
+          undefined,
+          info.username,
+          false
+        );
+      } catch (e) {
+        // 1 kênh lỗi không làm hỏng cả nhóm — bỏ qua kênh đó
+      }
+    }
+
+    return { success: true, count: pageDataList.length };
   }
 
   async checkAnalytics(
@@ -402,6 +452,198 @@ export class IntegrationService {
     }
 
     return [];
+  }
+
+  // Bài nổi bật của page FB — đọc bài của CHÍNH kênh (kể cả bài đăng ngoài Hub)
+  // bằng page token. Xếp theo engagement → "bài chiến thắng".
+  // reactions/comments cần pages_read_user_content: thử bản đầy đủ trước, nếu
+  // token chưa có quyền (chưa Refresh Channel) → tự lùi về share-only, không vỡ.
+  async getTopPosts(org: Organization, integration: string, days: number) {
+    const getIntegration = await this.getIntegrationById(org.id, integration);
+    if (
+      !getIntegration ||
+      getIntegration.type !== 'social' ||
+      getIntegration.providerIdentifier !== 'facebook'
+    ) {
+      return { posts: [] };
+    }
+    const cacheKey = `integration:top-posts:${org.id}:${integration}:${days}`;
+    const cached = await ioRedis.get(cacheKey);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+    const since = dayjs().subtract(days, 'day').unix();
+    const base = `https://graph.facebook.com/v20.0/${getIntegration.internalId}/posts`;
+    const query = (fields: string) =>
+      `${base}?fields=${fields}&since=${since}&limit=50&access_token=${getIntegration.token}`;
+    const RICH =
+      'message,full_picture,permalink_url,created_time,shares,reactions.summary(true),comments.summary(true)';
+    const BASIC = 'message,full_picture,permalink_url,created_time,shares';
+
+    const call = async (fields: string) => {
+      const res = await fetch(query(fields), {
+        signal: AbortSignal.timeout(15000),
+      });
+      return res.json() as Promise<any>;
+    };
+
+    try {
+      // Thử bản đầy đủ (có reactions/comments). Lỗi quyền (#10/#200) → lùi BASIC.
+      let data = await call(RICH);
+      let hasEngagement = true;
+      if (data?.error) {
+        const code = data.error?.code;
+        if (code === 10 || code === 200 || code === 100) {
+          data = await call(BASIC);
+          hasEngagement = false;
+        }
+      }
+      if (data?.error) {
+        return {
+          posts: [],
+          error: String(data.error?.message || 'Graph error').slice(0, 200),
+        };
+      }
+      const engagement = (p: any) =>
+        (p.shares || 0) * 3 + (p.reactions || 0) + (p.comments || 0) * 2;
+      const posts = (data?.data || [])
+        .map((p: any) => ({
+          id: p.id,
+          message: (p.message || '').slice(0, 600),
+          picture: p.full_picture || null,
+          url: p.permalink_url,
+          createdAt: p.created_time,
+          shares: p.shares?.count || 0,
+          reactions: p.reactions?.summary?.total_count ?? null,
+          comments: p.comments?.summary?.total_count ?? null,
+          clicks: null as number | null,
+          views: null as number | null,
+          reactionTypes: null as Record<string, number> | null,
+        }))
+        .sort((a: any, b: any) =>
+          hasEngagement ? engagement(b) - engagement(a) : b.shares - a.shares
+        );
+
+      // Làm giàu top ~24 bài: clicks + video views + phân loại reaction — 1 batch.
+      if (hasEngagement && posts.length) {
+        const topIds = posts.slice(0, 24).map((p: any) => p.id);
+        const ins = await this.fbBatchInsights(
+          getIntegration.token,
+          topIds,
+          'post_clicks,post_video_views,post_reactions_by_type_total'
+        ).catch(() => ({} as Record<string, any>));
+        for (const p of posts) {
+          const m = ins[p.id];
+          if (m) {
+            p.clicks = typeof m.post_clicks === 'number' ? m.post_clicks : null;
+            p.views =
+              typeof m.post_video_views === 'number' && m.post_video_views > 0
+                ? m.post_video_views
+                : null;
+            p.reactionTypes = m.post_reactions_by_type_total || null;
+          }
+        }
+      }
+
+      // Tổng hợp toàn kênh cho dashboard.
+      const totals = posts.reduce(
+        (a: any, p: any) => ({
+          shares: a.shares + (p.shares || 0),
+          reactions: a.reactions + (p.reactions || 0),
+          comments: a.comments + (p.comments || 0),
+          clicks: a.clicks + (p.clicks || 0),
+          views: a.views + (p.views || 0),
+        }),
+        { shares: 0, reactions: 0, comments: 0, clicks: 0, views: 0 }
+      );
+      const out = { posts, hasEngagement, totals, count: posts.length };
+      await ioRedis.set(cacheKey, JSON.stringify(out), 'EX', 1800);
+      return out;
+    } catch {
+      return { posts: [] };
+    }
+  }
+
+  // Gọi Graph Batch API (1 HTTP call) lấy insights cho nhiều post. Trả map
+  // id → { metricName: value }.
+  private async fbBatchInsights(
+    token: string,
+    ids: string[],
+    metrics: string
+  ): Promise<Record<string, Record<string, any>>> {
+    if (!ids.length) return {};
+    const batch = ids.map((id) => ({
+      method: 'GET',
+      relative_url: `${id}/insights?metric=${metrics}`,
+    }));
+    const body = new URLSearchParams();
+    body.set('access_token', token);
+    body.set('batch', JSON.stringify(batch));
+    const res = await fetch('https://graph.facebook.com/v23.0/', {
+      method: 'POST',
+      body,
+      signal: AbortSignal.timeout(20000),
+    });
+    const arr: any[] = await res.json();
+    const out: Record<string, Record<string, any>> = {};
+    if (!Array.isArray(arr)) return out;
+    arr.forEach((r, i) => {
+      if (!r || r.code !== 200) return;
+      try {
+        const parsed = JSON.parse(r.body);
+        const m: Record<string, any> = {};
+        for (const d of parsed.data || []) m[d.name] = d.values?.[0]?.value;
+        out[ids[i]] = m;
+      } catch {
+        /* bỏ qua bài lỗi */
+      }
+    });
+    return out;
+  }
+
+  // AI phân tích "bài chiến thắng" của kênh + gợi ý content. Cache 1h.
+  async getWinningAnalysis(org: Organization, integration: string) {
+    const getIntegration = await this.getIntegrationById(org.id, integration);
+    if (!getIntegration) return null;
+    const cacheKey = `integration:winning:${org.id}:${integration}`;
+    const cached = await ioRedis.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+    const top = await this.getTopPosts(org, integration, 90);
+    const posts = (top?.posts || []).filter((p: any) => (p.message || '').trim());
+    if (!posts.length) return { empty: true };
+    const analysis = await this._openaiService
+      .analyzeChannelWinners(getIntegration.name, posts.slice(0, 20))
+      .catch(() => null);
+    if (!analysis) return { empty: true };
+    await ioRedis.set(cacheKey, JSON.stringify(analysis), 'EX', 3600);
+    return analysis;
+  }
+
+  // AI trả lời câu hỏi về hiệu suất kênh (dùng dữ liệu bài + tổng hợp làm ngữ cảnh).
+  async askAboutChannel(
+    org: Organization,
+    integration: string,
+    question: string,
+    history: { role: string; content: string }[]
+  ) {
+    const getIntegration = await this.getIntegrationById(org.id, integration);
+    if (!getIntegration) return { answer: '' };
+    const top = await this.getTopPosts(org, integration, 90);
+    const posts = (top?.posts || []).slice(0, 15);
+    const context =
+      `Kênh: ${getIntegration.name} (Facebook).\n` +
+      `Tổng (90 ngày, ${top?.count || 0} bài): ${JSON.stringify(top?.totals || {})}.\n` +
+      `Top bài (message | reactions/comments/shares/clicks):\n` +
+      posts
+        .map(
+          (p: any) =>
+            `- "${(p.message || '').slice(0, 140).replace(/\n/g, ' ')}" | ${p.reactions ?? '-'}/${p.comments ?? '-'}/${p.shares ?? 0}/${p.clicks ?? '-'}`
+        )
+        .join('\n');
+    const answer = await this._openaiService
+      .answerAboutChannel(context, question, history)
+      .catch(() => '');
+    return { answer };
   }
 
   customers(orgId: string) {

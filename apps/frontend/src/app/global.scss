@@ -797,6 +797,18 @@ html[dir='rtl'] [dir='ltr'] {
   pointer-events: none;
 }
 
+@media (max-width: 1025px) {
+  .w8-max {
+    width: 25% !important;
+    max-width: 25% !important;
+  }
+}
+@media (max-width: 401px) {
+  .w8-max {
+    width: 33.333% !important;
+    max-width: 33.333% !important;
+  }
+}
 .w8-max {
   width: calc(100% / 6);
   max-width: calc(100% / 6);
@@ -815,4 +827,12 @@ html[dir='rtl'] [dir='ltr'] {
 .text-shadow-tags {
   text-shadow: -1px -1px 0 black, 1px -1px 0 black, -1px 1px 0 black,
     1px 1px 0 black;
+}
+
+/* Media editor (Filerobot): làm canvas TRẮNG nổi rõ trên nền editor xám nhạt
+   để không còn cảnh "trắng trên trắng" nhìn như editor vỡ. Ring 1px + đổ bóng
+   nhẹ quanh chính thẻ <canvas> nên không phụ thuộc tên class nội bộ của lib. */
+.filerobot-wrap canvas {
+  box-shadow: 0 0 0 1px #cbd5e1, 0 6px 24px rgba(15, 23, 42, 0.12);
+  background: #ffffff;
 }

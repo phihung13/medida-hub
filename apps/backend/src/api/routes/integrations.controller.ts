@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpException,
   Param,
   Post,
   Put,
@@ -117,10 +118,29 @@ export class IntegrationsController {
             changeNickName: !!findIntegration?.changeNickname,
             customer: p.customer,
             additionalSettings: p.additionalSettings || '[]',
+            postFooter: (p as any).postFooter || '',
           };
         })
       ),
     };
+  }
+
+  // Lưu chân bài (footer) cố định cho 1 kênh — tự chèn dưới caption khi tạo bài.
+  @Post('/:id/footer')
+  async updatePostFooter(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string,
+    @Body('footer') footer: string
+  ) {
+    const res = await this._integrationService.updatePostFooter(
+      org.id,
+      id,
+      footer || ''
+    );
+    if (!res) {
+      throw new HttpException('Không tìm thấy kênh.', 404);
+    }
+    return res;
   }
 
   @Post('/:id/settings')

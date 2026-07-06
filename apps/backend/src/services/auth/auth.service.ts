@@ -37,7 +37,14 @@ export class AuthService {
     body: CreateOrgUserDto | LoginUserDto,
     ip: string,
     userAgent: string,
-    addToOrg?: boolean | { orgId: string; role: 'USER' | 'ADMIN'; id: string }
+    addToOrg?:
+      | boolean
+      | {
+          orgId: string;
+          role: 'USER' | 'ADMIN';
+          id: string;
+          email?: string;
+        }
   ) {
     if (provider === Provider.LOCAL) {
       if (process.env.DISALLOW_PLUS && body.email.includes('+')) {
@@ -48,11 +55,54 @@ export class AuthService {
       }
       const user = await this._userService.getUserByEmail(body.email);
       if (body instanceof CreateOrgUserDto) {
-        if (user) {
-          throw new Error('Email already exists');
+        // Người được mời qua link của admin (cookie `org` là JWT do server ký,
+        // đã verify chữ ký + hạn) không bị chặn bởi DISABLE_REGISTRATION —
+        // nhưng email đăng ký phải đúng email trong lời mời.
+        const invited = !!addToOrg && typeof addToOrg !== 'boolean';
+        if (invited) {
+          const inviteEmail = (
+            (addToOrg as { email?: string }).email || ''
+          ).toLowerCase();
+          if (inviteEmail && inviteEmail !== body.email) {
+            throw new Error('Email does not match the invitation');
+          }
         }
 
-        if (!(await this.canRegister(provider))) {
+        if (user) {
+          // "Gỡ khỏi nhóm" không xoá tài khoản → mời lại cùng email sẽ đụng
+          // tài khoản cũ. Có lời mời hợp lệ thì coi như admin đặt lại mật khẩu
+          // và đưa lại vào nhóm. Rào chống chiếm tài khoản: không áp dụng cho
+          // super admin, và chỉ khi tài khoản không còn trong nhóm chung nào
+          // có thành viên khác (nhóm cá nhân tự sinh khi đăng ký thì vô hại).
+          if (
+            invited &&
+            user.providerName === Provider.LOCAL &&
+            !user.isSuperAdmin &&
+            (await this._organizationService.isUserOnlyInSoloOrgs(user.id))
+          ) {
+            await this._userService.updatePassword(user.id, body.password);
+            if (!user.activated) {
+              await this._userService.activateUser(user.id);
+            }
+            const addedOrg =
+              typeof addToOrg !== 'boolean'
+                ? await this._organizationService.addUserToOrg(
+                    user.id,
+                    addToOrg.id,
+                    addToOrg.orgId,
+                    addToOrg.role
+                  )
+                : false;
+            return { addedOrg, jwt: await this.jwt(user) };
+          }
+          throw new Error(
+            invited
+              ? 'Tài khoản này đã tồn tại và đang trong nhóm — hãy đăng nhập bằng mật khẩu cũ, hoặc nhờ admin bấm "Đặt lại mật khẩu".'
+              : 'Email already exists'
+          );
+        }
+
+        if (!invited && !(await this.canRegister(provider))) {
           throw new Error('Registration is disabled');
         }
 
@@ -228,7 +278,7 @@ export class AuthService {
     await this._notificationService.sendEmail(
       user.email,
       'Reset your password',
-      `You have requested to reset your passsord. <br />Click <a href="${process.env.FRONTEND_URL}/auth/forgot/${resetValues}">here</a> to reset your password<br />The link will expire in 20 minutes`
+      `You have requested to reset your passsord. <br />Click <a href="${process.env.FRONTEND_URL}/login/forgot/${resetValues}">here</a> to reset your password<br />The link will expire in 20 minutes`
     );
   }
 
