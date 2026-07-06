@@ -21,3 +21,16 @@ dist
 .git
 .github
 reports
+# Media Hub: file runtime/local KHÔNG đưa vào image build
+uploads
+tools
+tunnel-url.txt
+_*.log
+var/docker/*.log
+apps/orchestrator/dist
+apps/backend/anthropic-key.txt
+viral-config.json
+image-gen.json
+.env
+.env.*
+scripts

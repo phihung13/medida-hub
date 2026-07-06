@@ -1,0 +1,168 @@
+# ============================================================================
+#  Việt Anh Media Hub — DEPLOY PRODUCTION (Docker trên VPS)
+#  Khác docker-compose.yaml (image official Postiz, KHÔNG có custom): file này
+#  BUILD image từ source repo (Dockerfile.dev) nên gồm Claude AI, Zalo, /viral…
+#
+#  Chạy:  docker compose -f docker-compose.prod.yaml up -d --build
+#  Xem log:  docker compose -f docker-compose.prod.yaml logs -f media-hub
+#  Biến bí mật/tuỳ chỉnh: điền vào .env (xem .env.production.example)
+#
+#  Kiến trúc all-in-one: 1 container media-hub chạy nginx(5000) + pm2
+#  (backend:3000 + frontend:4200 + orchestrator:3002). nginx route /api→backend,
+#  /uploads→volume tĩnh, còn lại→frontend. prisma-db-push tự chạy lúc khởi động.
+# ============================================================================
+services:
+  media-hub:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      args:
+        NEXT_PUBLIC_VERSION: 'media-hub'
+    image: viet-anh-media-hub:latest
+    container_name: media-hub
+    restart: always
+    # env_file nạp API keys/secrets người dùng điền; environment bên dưới cố
+    # định hạ tầng nội bộ (override .env nếu trùng — tránh trỏ nhầm DB/redis).
+    env_file:
+      - .env
+    environment:
+      # === Bắt buộc — domain & bảo mật (điền qua .env) ===
+      MAIN_URL: '${FRONTEND_URL}'
+      FRONTEND_URL: '${FRONTEND_URL}'
+      NEXT_PUBLIC_BACKEND_URL: '${FRONTEND_URL}/api'
+      JWT_SECRET: '${JWT_SECRET}'
+      NOT_SECURED: '${NOT_SECURED:-false}'
+      DISABLE_REGISTRATION: '${DISABLE_REGISTRATION:-true}'
+      IS_GENERAL: 'true'
+      # === Hạ tầng nội bộ (cố định theo service names) ===
+      DATABASE_URL: 'postgresql://postiz-user:${POSTGRES_PASSWORD}@postiz-postgres:5432/postiz-db'
+      REDIS_URL: 'redis://postiz-redis:6379'
+      BACKEND_INTERNAL_URL: 'http://localhost:3000'
+      TEMPORAL_ADDRESS: 'temporal:7233'
+      # === Lưu trữ media local (nginx phục vụ /uploads từ volume) ===
+      STORAGE_PROVIDER: 'local'
+      UPLOAD_DIRECTORY: '/uploads'
+      NEXT_PUBLIC_UPLOAD_DIRECTORY: '/uploads'
+      RUN_VIRAL_CRAWLER: '1'
+    volumes:
+      - media-hub-config:/config/
+      - media-hub-uploads:/uploads/
+    ports:
+      - '${PORT:-4007}:5000'
+    networks:
+      - postiz-network
+      - temporal-network
+    depends_on:
+      postiz-postgres:
+        condition: service_healthy
+      postiz-redis:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+
+  postiz-postgres:
+    image: postgres:17-alpine
+    container_name: postiz-postgres
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: '${POSTGRES_PASSWORD}'
+      POSTGRES_USER: postiz-user
+      POSTGRES_DB: postiz-db
+    volumes:
+      - postgres-volume:/var/lib/postgresql/data
+    networks:
+      - postiz-network
+    healthcheck:
+      test: pg_isready -U postiz-user -d postiz-db
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  postiz-redis:
+    image: redis:7.2
+    container_name: postiz-redis
+    restart: always
+    healthcheck:
+      test: redis-cli ping
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - postiz-redis-data:/data
+    networks:
+      - postiz-network
+
+  # -----------------------------------------------------------------
+  #  Temporal stack (engine lên lịch — orchestrator là worker của nó)
+  # -----------------------------------------------------------------
+  temporal-elasticsearch:
+    container_name: temporal-elasticsearch
+    image: elasticsearch:7.17.27
+    restart: always
+    environment:
+      - cluster.routing.allocation.disk.threshold_enabled=true
+      - cluster.routing.allocation.disk.watermark.low=512mb
+      - cluster.routing.allocation.disk.watermark.high=256mb
+      - cluster.routing.allocation.disk.watermark.flood_stage=128mb
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms256m -Xmx256m
+      - xpack.security.enabled=false
+    networks:
+      - temporal-network
+    expose:
+      - 9200
+    volumes:
+      - temporal-es-data:/usr/share/elasticsearch/data
+
+  temporal-postgresql:
+    container_name: temporal-postgresql
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_USER: temporal
+    networks:
+      - temporal-network
+    expose:
+      - 5432
+    volumes:
+      - temporal-pg-data:/var/lib/postgresql/data
+
+  temporal:
+    container_name: temporal
+    image: temporalio/auto-setup:1.28.1
+    restart: always
+    depends_on:
+      - temporal-postgresql
+      - temporal-elasticsearch
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=temporal-postgresql
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+      - ENABLE_ES=true
+      - ES_SEEDS=temporal-elasticsearch
+      - ES_VERSION=v7
+      - TEMPORAL_NAMESPACE=default
+    networks:
+      - temporal-network
+    expose:
+      - 7233
+    volumes:
+      - ./dynamicconfig:/etc/temporal/config/dynamicconfig
+
+volumes:
+  postgres-volume:
+  postiz-redis-data:
+  media-hub-config:
+  media-hub-uploads:
+  temporal-es-data:
+  temporal-pg-data:
+
+networks:
+  postiz-network:
+  temporal-network:
+    driver: bridge
+    name: temporal-network
