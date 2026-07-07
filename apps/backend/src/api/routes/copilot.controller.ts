@@ -203,15 +203,29 @@ export class CopilotController {
     return { ok: true, ...getImageGenStatus() };
   }
 
+  // CopilotKit bọc TOÀN BỘ layout và hỏi "availableAgents" ngay khi mount.
+  // Chưa có key mà trả 400 thô → CopilotKit nội bộ .filter trên non-array →
+  // sập CẢ TRANG ("Application error: client-side exception"). Trả GraphQL
+  // rỗng hợp lệ cho câu hỏi mount; chỉ chat thật mới báo 400 thiếu key.
+  private replyNoAnthropicKey(req: Request, res: Response) {
+    Logger.warn(
+      'Anthropic (Claude) API key not set, chat functionality will not work'
+    );
+    const query = String((req.body as any)?.query || '');
+    if (query.includes('availableAgents')) {
+      res.status(200).json({ data: { availableAgents: { agents: [] } } });
+      return;
+    }
+    res.status(400).json({
+      error:
+        'Chưa cấu hình Claude API key. Vào Settings → "Claude API key" để thêm.',
+    });
+  }
+
   @Post('/chat')
   chatAgent(@Req() req: Request, @Res() res: Response) {
     if (!getAnthropicKey()) {
-      Logger.warn('Anthropic (Claude) API key not set, chat functionality will not work');
-      // Trả lỗi rõ ràng thay vì treo request (client sẽ hiện thông báo thay vì "[Network] Unknown error")
-      res.status(400).json({
-        error:
-          'Chưa cấu hình Claude API key. Vào Settings → "Claude API key" để thêm.',
-      });
+      this.replyNoAnthropicKey(req, res);
       return;
     }
 
@@ -234,12 +248,7 @@ export class CopilotController {
     @GetOrgFromRequest() organization: Organization
   ) {
     if (!getAnthropicKey()) {
-      Logger.warn('Anthropic (Claude) API key not set, chat functionality will not work');
-      // Trả lỗi rõ ràng thay vì treo request (client sẽ hiện thông báo thay vì "[Network] Unknown error")
-      res.status(400).json({
-        error:
-          'Chưa cấu hình Claude API key. Vào Settings → "Claude API key" để thêm.',
-      });
+      this.replyNoAnthropicKey(req, res);
       return;
     }
     const mastra = await this._mastraService.mastra();
