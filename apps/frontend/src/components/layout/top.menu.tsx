@@ -143,6 +143,27 @@ export const useMenuItem = () => {
       path: '/analytics',
     },
     {
+      name: t('content', 'Content'),
+      icon: (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="20"
+          height="20"
+          viewBox="0 0 20 20"
+          fill="none"
+        >
+          <path
+            d="M6.5 6.5h7M6.5 10h7M6.5 13.5h4M4.5 2.5h11A2 2 0 0 1 17.5 4.5v11a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2v-11a2 2 0 0 1 2-2Z"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      ),
+      path: '/content',
+    },
+    {
       name: t('media', 'Media'),
       icon: (
         <svg

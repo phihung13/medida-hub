@@ -378,6 +378,32 @@ model AiCredit {
   @@index([organizationId])
 }
 
+// Bài trên NỀN TẢNG (Meta) sync về — gồm bài đăng tay ngoài app lẫn bài hẹn
+// giờ trên Business Suite. Tách khỏi bảng Post để không ảnh hưởng calendar/
+// đếm bài của app; bài app đăng (Post.releaseId) được lọc trùng lúc merge.
+model ExternalPost {
+  id             String    @id @default(cuid())
+  organizationId String
+  integrationId  String
+  externalId     String // id bài trên nền tảng (Graph API)
+  platform       String // facebook | instagram
+  status         String // PUBLISHED | SCHEDULED
+  content        String    @default("")
+  mediaUrls      String    @default("[]") // JSON [{type,url}]
+  permalink      String?
+  publishDate    DateTime // giờ đã đăng hoặc giờ hẹn trên nền tảng
+  insights       String? // JSON {reactions,comments,shares,views,...}
+  syncedAt       DateTime  @updatedAt
+  createdAt      DateTime  @default(now())
+  deletedAt      DateTime?
+
+  @@unique([integrationId, externalId])
+  @@index([organizationId, status])
+  @@index([publishDate])
+  @@index([integrationId])
+  @@index([deletedAt])
+}
+
 // "Lò Bài Thắng": bài viral giáo dục sưu tầm (nhập tay hoặc quét tự động) để
 // AI mổ công thức + nhân bản. Thước đo chính: lượt share (shares).
 model ViralPost {

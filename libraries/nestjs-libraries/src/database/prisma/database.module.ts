@@ -48,6 +48,8 @@ import { ErrorsRepository } from '@gitroom/nestjs-libraries/database/prisma/erro
 import { ErrorsService } from '@gitroom/nestjs-libraries/database/prisma/errors/errors.service';
 import { AdminStatsRepository } from '@gitroom/nestjs-libraries/database/prisma/admin-stats/admin-stats.repository';
 import { AdminStatsService } from '@gitroom/nestjs-libraries/database/prisma/admin-stats/admin-stats.service';
+import { ExternalPostRepository } from '@gitroom/nestjs-libraries/database/prisma/content/external-post.repository';
+import { ContentSyncService } from '@gitroom/nestjs-libraries/database/prisma/content/content-sync.service';
 
 @Global()
 @Module({
@@ -75,6 +77,8 @@ import { AdminStatsService } from '@gitroom/nestjs-libraries/database/prisma/adm
     SignatureRepository,
     AutopostRepository,
     AutopostService,
+    ExternalPostRepository,
+    ContentSyncService,
     SignatureService,
     AiCreditRepository,
     AiCreditService,
