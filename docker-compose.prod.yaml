@@ -209,6 +209,11 @@ services:
       - ES_SEEDS=temporal-elasticsearch
       - ES_VERSION=v7
       - TEMPORAL_NAMESPACE=default
+      # Coolify gắn thêm network riêng vào container → temporal có 2 IP nhưng
+      # mặc định chỉ bind vào IP đầu tiên (getent hosts), trong khi backend
+      # resolve tên `temporal` ra IP của network CÒN LẠI → ECONNREFUSED 7233
+      # dù temporal chạy khỏe. Bind 0.0.0.0 = nghe trên mọi interface.
+      - BIND_ON_IP=0.0.0.0
     networks:
       - temporal-network
     expose:
