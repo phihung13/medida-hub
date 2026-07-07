@@ -40,6 +40,7 @@ import { OAuthController, OAuthAuthorizedController } from '@gitroom/backend/api
 import { AnnouncementsController } from '@gitroom/backend/api/routes/announcements.controller';
 import { AdminController } from '@gitroom/backend/api/routes/admin.controller';
 import { ContentController } from '@gitroom/backend/api/routes/content.controller';
+import { BulkController } from '@gitroom/backend/api/routes/bulk.controller';
 import { AuthProviderManager } from '@gitroom/backend/services/auth/providers/providers.manager';
 import { GithubProvider } from '@gitroom/backend/services/auth/providers/github.provider';
 import { GoogleProvider } from '@gitroom/backend/services/auth/providers/google.provider';
@@ -70,6 +71,7 @@ const authenticatedController = [
   AnnouncementsController,
   AdminController,
   ContentController,
+  BulkController,
 ];
 @Module({
   imports: [UploadModule],

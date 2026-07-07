@@ -50,6 +50,7 @@ import { AdminStatsRepository } from '@gitroom/nestjs-libraries/database/prisma/
 import { AdminStatsService } from '@gitroom/nestjs-libraries/database/prisma/admin-stats/admin-stats.service';
 import { ExternalPostRepository } from '@gitroom/nestjs-libraries/database/prisma/content/external-post.repository';
 import { ContentSyncService } from '@gitroom/nestjs-libraries/database/prisma/content/content-sync.service';
+import { BulkImportService } from '@gitroom/nestjs-libraries/database/prisma/content/bulk-import.service';
 
 @Global()
 @Module({
@@ -79,6 +80,7 @@ import { ContentSyncService } from '@gitroom/nestjs-libraries/database/prisma/co
     AutopostService,
     ExternalPostRepository,
     ContentSyncService,
+    BulkImportService,
     SignatureService,
     AiCreditRepository,
     AiCreditService,
