@@ -225,6 +225,8 @@ volumes:
 
 networks:
   postiz-network:
+  # KHÔNG đặt name cố định — để compose tự prefix theo project, tránh xung đột
+  # "network already exists with incorrect label" khi tạo resource Coolify mới
+  # trong lúc network của resource cũ còn tồn tại.
   temporal-network:
     driver: bridge
-    name: temporal-network
