@@ -63,6 +63,14 @@ services:
       - media-hub-uploads:/uploads/
     ports:
       - '${PORT:-4007}:5000'
+    # media-hub nằm trên 3 network (2 compose + 1 Coolify tự gắn theo uuid
+    # resource). Traefik không có nhãn chỉ định sẽ BỐC HÚ HỌA 1 IP trong số đó
+    # → lượt deploy đen đủi trỏ vào network mà proxy không với tới → Gateway
+    # Timeout. Ghim network của Coolify (COOLIFY_RESOURCE_UUID có sẵn lúc
+    # build/deploy trên Coolify; chạy tay ngoài Coolify biến rỗng → label vô
+    # hại vì không có Traefik).
+    labels:
+      - 'traefik.docker.network=${COOLIFY_RESOURCE_UUID:-}'
     networks:
       - postiz-network
       - temporal-network
