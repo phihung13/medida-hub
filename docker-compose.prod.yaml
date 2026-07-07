@@ -67,7 +67,7 @@ services:
       postiz-redis:
         condition: service_healthy
       temporal:
-        condition: service_healthy
+        condition: service_started
 
   # -----------------------------------------------------------------
   #  Bot Zalo (zca-js) — nguồn ảnh từ nhóm Zalo. KHÔNG expose cổng/domain:
@@ -206,12 +206,6 @@ services:
       - 7233
     volumes:
       - ./dynamicconfig:/etc/temporal/config/dynamicconfig
-    healthcheck:
-      test: bash -c 'exec 3<>/dev/tcp/127.0.0.1/7233'
-      interval: 5s
-      timeout: 5s
-      retries: 20
-      start_period: 60s
 
 volumes:
   postgres-volume:
