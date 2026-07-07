@@ -67,7 +67,7 @@ services:
       postiz-redis:
         condition: service_healthy
       temporal:
-        condition: service_started
+        condition: service_healthy
 
   # -----------------------------------------------------------------
   #  Bot Zalo (zca-js) — nguồn ảnh từ nhóm Zalo. KHÔNG expose cổng/domain:
@@ -154,6 +154,12 @@ services:
       - 9200
     volumes:
       - temporal-es-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: curl -s http://localhost:9200/_cluster/health | grep -q '"status":"green"\|"status":"yellow"'
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 90s
 
   temporal-postgresql:
     container_name: temporal-postgresql
@@ -168,14 +174,21 @@ services:
       - 5432
     volumes:
       - temporal-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: pg_isready -U temporal
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   temporal:
     container_name: temporal
     image: temporalio/auto-setup:1.28.1
     restart: always
     depends_on:
-      - temporal-postgresql
-      - temporal-elasticsearch
+      temporal-postgresql:
+        condition: service_healthy
+      temporal-elasticsearch:
+        condition: service_healthy
     environment:
       - DB=postgres12
       - DB_PORT=5432
@@ -193,6 +206,12 @@ services:
       - 7233
     volumes:
       - ./dynamicconfig:/etc/temporal/config/dynamicconfig
+    healthcheck:
+      test: bash -c 'exec 3<>/dev/tcp/127.0.0.1/7233'
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
 
 volumes:
   postgres-volume:
