@@ -24,6 +24,19 @@ export class ContentController {
     );
   }
 
+  @Get('/calendar')
+  async calendar(
+    @GetOrgFromRequest() org: Organization,
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string
+  ) {
+    return this._contentSyncService.getCalendarItems(
+      org.id,
+      startDate,
+      endDate
+    );
+  }
+
   @Post('/sync')
   async sync(
     @GetOrgFromRequest() org: Organization,

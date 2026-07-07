@@ -256,6 +256,25 @@ export class ContentSyncService {
     };
   }
 
+  // Lớp phủ calendar: bài nền tảng trong khoảng ngày đang xem — CHỈ ĐỌC,
+  // calendar hiển thị kèm nhãn riêng, không đưa vào máy đăng bài.
+  async getCalendarItems(orgId: string, startDate: string, endDate: string) {
+    const integrations = await this._integrationService.getIntegrationsList(
+      orgId
+    );
+    const integrationsById = Object.fromEntries(
+      integrations.map((i: any) => [i.id, i])
+    );
+    const rows = await this._externalPostRepository.listRange(
+      orgId,
+      new Date(startDate),
+      new Date(endDate)
+    );
+    return {
+      items: rows.map((r) => this.externalShape(r, integrationsById)),
+    };
+  }
+
   async getContent(
     orgId: string,
     type: 'published' | 'scheduled' | 'draft',

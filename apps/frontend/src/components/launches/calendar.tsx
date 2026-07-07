@@ -595,6 +595,7 @@ export const CalendarColumn: FC<{
   const {
     integrations,
     posts,
+    externalPosts,
     changeDate,
     display,
     reloadCalendarView,
@@ -621,6 +622,19 @@ export const CalendarColumn: FC<{
       return check;
     });
   }, [posts, display, getDate]);
+  // Bài sync từ Meta (chỉ-đọc) rơi vào ô này. Day view dùng slot theo phút
+  // đăng của app nên bài ngoài không khớp slot — chỉ phủ lên Week/Month.
+  const externalList = useMemo(() => {
+    if (display === 'day') return [];
+    return (externalPosts || []).filter((post) => {
+      const pList = dayjs.utc(post.publishDate).local();
+      return display === 'week'
+        ? pList.isSameOrAfter(getDate.startOf('hour')) &&
+            pList.isBefore(getDate.endOf('hour'))
+        : pList.format('DD/MM/YYYY') === getDate.format('DD/MM/YYYY');
+    });
+  }, [externalPosts, display, getDate]);
+
   const [showAll, setShowAll] = useState(false);
   const showAllFunc = useCallback(() => {
     setShowAll(true);
@@ -877,6 +891,56 @@ export const CalendarColumn: FC<{
                   integrations={integrations}
                   deletePost={deletePost(post)}
                 />
+              </div>
+            </div>
+          ))}
+          {externalList.map((ep) => (
+            <div
+              key={ep.id}
+              className="text-textColor p-[2.5px] relative flex flex-col justify-center items-center"
+            >
+              <div
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (ep.permalink) window.open(ep.permalink, '_blank');
+                }}
+                title={
+                  ep.state === 'SCHEDULED'
+                    ? t(
+                        'calendar_meta_scheduled_tip',
+                        'Bài hẹn trên Meta — sửa/hủy trong Business Suite'
+                      )
+                    : t(
+                        'calendar_meta_published_tip',
+                        'Bài đã đăng trên nền tảng (ngoài app) — bấm mở bài gốc'
+                      )
+                }
+                className={clsx(
+                  'relative w-full flex items-center gap-[5px] p-[4px] rounded-[6px] border border-dashed border-[#7f56d9]/60 bg-[#7f56d9]/10 text-start overflow-hidden',
+                  ep.permalink && 'cursor-pointer hover:bg-[#7f56d9]/20'
+                )}
+              >
+                {ep.integrationPicture ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={ep.integrationPicture}
+                    alt=""
+                    className="w-[14px] h-[14px] rounded-full shrink-0"
+                  />
+                ) : (
+                  <span className="text-[10px] shrink-0">
+                    {ep.platform === 'instagram' ? '📸' : '📘'}
+                  </span>
+                )}
+                <span className="text-[10px] font-[800] text-[#a78bfa] shrink-0">
+                  {ep.state === 'SCHEDULED'
+                    ? dayjs.utc(ep.publishDate).local().format('HH:mm')
+                    : 'Meta'}
+                </span>
+                <span className="text-[10.5px] truncate text-textColor/80">
+                  {ep.content ||
+                    t('calendar_meta_no_text', '(bài không có chữ)')}
+                </span>
               </div>
             </div>
           ))}

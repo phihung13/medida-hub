@@ -88,6 +88,19 @@ export class ExternalPostRepository {
     });
   }
 
+  // Cho lớp phủ calendar: mọi bài nền tảng (đã đăng + hẹn) trong khoảng ngày.
+  listRange(orgId: string, from: Date, to: Date) {
+    return this._externalPost.model.externalPost.findMany({
+      where: {
+        organizationId: orgId,
+        deletedAt: null,
+        publishDate: { gte: from, lte: to },
+      },
+      orderBy: { publishDate: 'asc' },
+      take: 500,
+    });
+  }
+
   async lastSyncedAt(integrationId: string): Promise<Date | null> {
     const row = await this._externalPost.model.externalPost.findFirst({
       where: { integrationId },

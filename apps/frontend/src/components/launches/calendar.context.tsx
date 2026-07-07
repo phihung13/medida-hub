@@ -51,6 +51,20 @@ export const CalendarContext = createContext({
       }[];
     }
   >,
+  // Bài sync từ nền tảng (Meta) — lớp phủ CHỈ ĐỌC trên calendar, tách khỏi
+  // bảng Post để không lọt vào máy đăng bài.
+  externalPosts: [] as Array<{
+    id: string;
+    state: string;
+    platform: string;
+    integrationId: string;
+    integrationName: string;
+    integrationPicture: string | null;
+    content: string;
+    image: string | null;
+    permalink: string | null;
+    publishDate: string;
+  }>,
   reloadCalendarView: () => {
     /** empty **/
   },
@@ -242,6 +256,34 @@ export const CalendarWeekProvider: FC<{
     }
   );
 
+  // Bài sync từ Meta (ExternalPost) trong khoảng ngày đang xem — lớp phủ
+  // chỉ-đọc; lỗi/chưa có dữ liệu thì trả rỗng, không ảnh hưởng calendar.
+  const loadExternalPosts = useCallback(async () => {
+    const externalParams = new URLSearchParams({
+      startDate: newDayjs(filters.startDate).startOf('day').utc().format(),
+      endDate: newDayjs(filters.endDate).endOf('day').utc().format(),
+    }).toString();
+    try {
+      const data = await (
+        await fetch(`/content/calendar?${externalParams}`)
+      ).json();
+      return data?.items || [];
+    } catch {
+      return [];
+    }
+  }, [filters]);
+
+  const { data: externalPostsData } = useSWR(
+    filters.display !== 'list' ? `/content-calendar-${params}` : null,
+    loadExternalPosts,
+    {
+      refreshInterval: 3600000,
+      refreshWhenOffline: false,
+      refreshWhenHidden: false,
+      revalidateOnFocus: false,
+    }
+  );
+
   const defaultSign = useCallback(async () => {
     return await (await fetch('/signatures/default')).json();
   }, []);
@@ -368,6 +410,7 @@ export const CalendarWeekProvider: FC<{
         reloadCalendarView,
         ...filters,
         posts: calendarIsLoading ? [] : internalData,
+        externalPosts: externalPostsData || [],
         loading,
         integrations,
         setFilters: setFiltersWrapper,
