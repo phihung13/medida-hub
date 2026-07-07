@@ -23,11 +23,14 @@ on:
     workflows: [Build]
     types: [completed]
     branches: [main]
+  # Cho phép kích deploy tay (GitHub UI / gh CLI) không cần push commit mới —
+  # dùng khi chỉ đổi Environment Variables trong Coolify.
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     steps:
       - name: Gọi Deploy Webhook của Coolify
         env:

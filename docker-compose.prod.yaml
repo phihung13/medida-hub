@@ -39,6 +39,11 @@ services:
       REDIS_URL: 'redis://postiz-redis:6379'
       BACKEND_INTERNAL_URL: 'http://localhost:3000'
       TEMPORAL_ADDRESS: 'temporal:7233'
+      # Coolify tự inject TOÀN BỘ .env (gồm PORT=4007 — vốn chỉ là CỔNG HOST) vào
+      # container → backend đọc process.env.PORT và bind nhầm 4007. Ghim lại 3000
+      # (nginx trong container proxy /api → localhost:3000). Frontend không ảnh
+      # hưởng vì start cố định `next start -p 4200`.
+      PORT: '3000'
       # === Lưu trữ media local (nginx phục vụ /uploads từ volume) ===
       STORAGE_PROVIDER: 'local'
       UPLOAD_DIRECTORY: '/uploads'
@@ -195,7 +200,11 @@ services:
       - POSTGRES_USER=temporal
       - POSTGRES_PWD=temporal
       - POSTGRES_SEEDS=temporal-postgresql
-      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+      # KHÔNG mount ./dynamicconfig và KHÔNG set DYNAMIC_CONFIG_FILE_PATH:
+      # Coolify map bind mount tương đối sang /data/coolify/applications/<uuid>/
+      # (thư mục RỖNG) → file dynamicconfig không tồn tại → temporal fatal ngay
+      # khi boot và crash-loop. Bỏ đi để dùng config/dynamicconfig/docker.yaml
+      # có sẵn trong image temporalio/auto-setup.
       - ENABLE_ES=true
       - ES_SEEDS=temporal-elasticsearch
       - ES_VERSION=v7
@@ -204,8 +213,6 @@ services:
       - temporal-network
     expose:
       - 7233
-    volumes:
-      - ./dynamicconfig:/etc/temporal/config/dynamicconfig
 
 volumes:
   postgres-volume:
