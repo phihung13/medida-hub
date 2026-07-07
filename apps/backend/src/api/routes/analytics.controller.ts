@@ -13,6 +13,16 @@ export class AnalyticsController {
     private _postsService: PostsService
   ) {}
 
+  // GĐ4 — Tổng quan mọi kênh (kiểu Meta Business Suite). PHẢI khai báo TRƯỚC
+  // route '/:integration' — NestJS khớp theo thứ tự, để sau sẽ bị nuốt.
+  @Get('/overview')
+  async overview(
+    @GetOrgFromRequest() org: Organization,
+    @Query('date') date: string
+  ) {
+    return this._integrationService.getAnalyticsOverview(org, date || '7');
+  }
+
   @Get('/:integration')
   async getIntegration(
     @GetOrgFromRequest() org: Organization,

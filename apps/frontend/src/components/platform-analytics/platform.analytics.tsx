@@ -8,6 +8,7 @@ import ImageWithFallback from '@gitroom/react/helpers/image.with.fallback';
 import SafeImage from '@gitroom/react/helpers/safe.image';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { RenderAnalytics } from '@gitroom/frontend/components/platform-analytics/render.analytics';
+import { OverviewAnalytics } from '@gitroom/frontend/components/platform-analytics/overview.analytics';
 import { Select } from '@gitroom/react/form/select';
 import { Button } from '@gitroom/react/form/button';
 import { useRouter } from 'next/navigation';
@@ -35,7 +36,8 @@ export const PlatformAnalytics = () => {
   const router = useRouter();
   const { disableXAnalytics } = useVariables();
 
-  const [current, setCurrent] = useState(0);
+  // current = -1 → tab "Tổng quan mọi kênh" (mặc định, kiểu Business Suite)
+  const [current, setCurrent] = useState(-1);
   const [key, setKey] = useState(7);
   const [refresh, setRefresh] = useState(false);
   const [collapseMenu, setCollapseMenu] = useCookie('collapseMenu', '0');
@@ -68,7 +70,7 @@ export const PlatformAnalytics = () => {
     );
   }, [data]);
   const currentIntegration = useMemo(() => {
-    return sortedIntegrations[current];
+    return current >= 0 ? sortedIntegrations[current] : undefined;
   }, [current, sortedIntegrations]);
   const options = useMemo(() => {
     if (!currentIntegration) {
@@ -204,6 +206,29 @@ export const PlatformAnalytics = () => {
               </svg>
             </div>
           </div>
+          {/* Tab Tổng quan mọi kênh — mặc định khi mở trang */}
+          <div
+            onClick={() => setCurrent(-1)}
+            className={clsx(
+              'flex gap-[12px] items-center group/profile hover:bg-boxHover rounded-e-[8px] transition-opacity py-[6px]',
+              current !== -1 && 'opacity-65 hover:opacity-100 cursor-pointer'
+            )}
+          >
+            <div
+              className={clsx(
+                'h-[34px] w-[4px] -ms-[12px] rounded-s-[3px]',
+                current === -1 ? 'opacity-100' : 'opacity-0'
+              )}
+            >
+              <SVGLine />
+            </div>
+            <div className="w-[36px] h-[36px] rounded-[8px] bg-[#1e6fd9]/15 border border-[#1e6fd9]/40 grid place-items-center text-[17px]">
+              📊
+            </div>
+            <div className="flex-1 whitespace-nowrap text-ellipsis overflow-hidden group-[.sidebar]:hidden font-[600]">
+              {t('overview_menu', 'Tổng quan')}
+            </div>
+          </div>
           {sortedIntegrations.map((integration, index) => (
             <div
               key={integration.id}
@@ -223,7 +248,7 @@ export const PlatformAnalytics = () => {
               }}
               className={clsx(
                 'flex gap-[12px] items-center group/profile justify-center hover:bg-boxHover rounded-e-[8px] transition-opacity',
-                currentIntegration.id !== integration.id &&
+                currentIntegration?.id !== integration.id &&
                   'opacity-65 hover:opacity-100 cursor-pointer'
               )}
             >
@@ -244,7 +269,7 @@ export const PlatformAnalytics = () => {
                 <div
                   className={clsx(
                     'h-full w-[4px] -ms-[12px] rounded-s-[3px] group-hover/profile:opacity-100 transition-opacity',
-                    currentIntegration.id === integration.id
+                    currentIntegration?.id === integration.id
                       ? 'opacity-100'
                       : 'opacity-0'
                   )}
@@ -280,7 +305,21 @@ export const PlatformAnalytics = () => {
         </div>
       </div>
       <div className="bg-newBgColorInner flex-1 flex-col flex p-[20px] gap-[12px]">
-        {!!options.length && (
+        {current === -1 && (
+          <OverviewAnalytics
+            onOpenChannel={(id) => {
+              const idx = sortedIntegrations.findIndex(
+                (i: any) => i.id === id
+              );
+              if (idx >= 0) {
+                setRefresh(true);
+                setTimeout(() => setRefresh(false), 10);
+                setCurrent(idx);
+              }
+            }}
+          />
+        )}
+        {current !== -1 && !!options.length && (
           <div className="flex-1 flex flex-col gap-[14px]">
             <div className="max-w-[200px]">
               <Select

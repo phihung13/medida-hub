@@ -399,6 +399,59 @@ export class IntegrationService {
     return { success: true, count: pageDataList.length };
   }
 
+  // GĐ4 — Tổng quan mọi kênh: gọi checkAnalytics từng kênh song song (đã có
+  // cache Redis 1h) rồi tóm tắt: tổng kỳ, % thay đổi, series để vẽ sparkline.
+  // Metric dạng "số dư" (follower count...) lấy giá trị CUỐI thay vì cộng dồn.
+  async getAnalyticsOverview(org: Organization, date: string) {
+    const list = (await this.getIntegrationsList(org.id)).filter(
+      (i: any) => !i.disabled && i.type === 'social'
+    );
+    const CUMULATIVE_HINTS = ['follower', 'following', 'subscriber', 'fan'];
+    const channels = await Promise.all(
+      list.map(async (integration: any) => {
+        const base = {
+          id: integration.id,
+          name: integration.name,
+          picture: integration.picture,
+          identifier: integration.providerIdentifier,
+        };
+        try {
+          const analytics = await this.checkAnalytics(
+            org,
+            integration.id,
+            date
+          );
+          const metrics = (analytics || []).map((m) => {
+            const values = (m.data || []).map((d) => Number(d.total) || 0);
+            const isBalance = CUMULATIVE_HINTS.some((h) =>
+              m.label?.toLowerCase().includes(h)
+            );
+            const total = isBalance
+              ? values.filter(Boolean).slice(-1)[0] || 0
+              : values.reduce((s, v) => s + v, 0);
+            return {
+              label: m.label,
+              total,
+              percentageChange: m.percentageChange ?? 0,
+              series: (m.data || []).map((d) => ({
+                date: d.date,
+                value: Number(d.total) || 0,
+              })),
+            };
+          });
+          return { ...base, metrics };
+        } catch {
+          return { ...base, metrics: [], error: true };
+        }
+      })
+    );
+    return {
+      channels: channels.filter(
+        (c) => c.metrics.length || (c as any).error
+      ),
+    };
+  }
+
   async checkAnalytics(
     org: Organization,
     integration: string,
