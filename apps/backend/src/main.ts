@@ -109,6 +109,10 @@ async function start() {
     Logger.log(`🚀 Backend is running on: http://localhost:${port}`);
   } catch (e) {
     Logger.error(`Backend failed to start on port ${port}`, e);
+    // Thoát hẳn để pm2/Docker restart lại — nếu không tiến trình treo "zombie"
+    // (pm2 thấy online, không bao giờ restart) khi temporal/DB chưa sẵn sàng
+    // lúc boot lần đầu (temporal cần 1-3 phút tạo schema trước khi mở cổng).
+    process.exit(1);
   }
 }
 
