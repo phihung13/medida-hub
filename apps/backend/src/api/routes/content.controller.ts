@@ -4,25 +4,13 @@ import { Organization } from '@prisma/client';
 import { ApiTags } from '@nestjs/swagger';
 import { ContentSyncService } from '@gitroom/nestjs-libraries/database/prisma/content/content-sync.service';
 
-// Trang Content: gộp bài của app (Post) + bài sync từ Meta (ExternalPost) —
-// gồm cả bài đăng tay/hẹn giờ NGOÀI app trên Business Suite.
+// Sync bài từ Meta (ExternalPost) — gồm bài đăng tay/hẹn giờ NGOÀI app trên
+// Business Suite — phục vụ LỚP PHỦ chỉ-đọc trên Calendar. (Trang /content
+// riêng đã bỏ theo quyết định user — calendar là nguồn nhìn duy nhất.)
 @ApiTags('Content')
 @Controller('/content')
 export class ContentController {
   constructor(private _contentSyncService: ContentSyncService) {}
-
-  @Get('/list')
-  async list(
-    @GetOrgFromRequest() org: Organization,
-    @Query('type') type: 'published' | 'scheduled' | 'draft',
-    @Query('integrationId') integrationId?: string
-  ) {
-    return this._contentSyncService.getContent(
-      org.id,
-      type || 'published',
-      integrationId || undefined
-    );
-  }
 
   @Get('/calendar')
   async calendar(

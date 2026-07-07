@@ -273,7 +273,7 @@ export const CalendarWeekProvider: FC<{
     }
   }, [filters]);
 
-  const { data: externalPostsData } = useSWR(
+  const { data: externalPostsData, mutate: mutateExternalPosts } = useSWR(
     filters.display !== 'list' ? `/content-calendar-${params}` : null,
     loadExternalPosts,
     {
@@ -283,6 +283,20 @@ export const CalendarWeekProvider: FC<{
       revalidateOnFocus: false,
     }
   );
+
+  // Tự đồng bộ bài từ Meta mỗi lần mở calendar — server tự khóa 15 phút/lần
+  // (Redis cooldown) nên mở nhiều không gọi Meta quá tay; xong thì nạp lại
+  // lớp phủ. Lỗi (chưa kết nối kênh, mất mạng...) → bỏ qua êm.
+  useEffect(() => {
+    (async () => {
+      try {
+        await fetch('/content/sync', { method: 'POST' });
+        mutateExternalPosts();
+      } catch {
+        /* sync nền — không làm phiền UI */
+      }
+    })();
+  }, []);
 
   const defaultSign = useCallback(async () => {
     return await (await fetch('/signatures/default')).json();

@@ -203,27 +203,6 @@ export class ContentSyncService {
     return { synced: Object.keys(results).length, results };
   }
 
-  // ---- Danh sách gộp cho trang Content -------------------------------------
-
-  private postShape(p: any) {
-    return {
-      id: p.id,
-      source: 'app' as const,
-      state: p.state,
-      platform: p.integration?.providerIdentifier || '',
-      integrationId: p.integrationId,
-      integrationName: p.integration?.name || '',
-      integrationPicture: p.integration?.picture || null,
-      content: p.content || '',
-      mediaUrls: [] as { type: string; url: string }[],
-      image: p.image || null,
-      permalink: p.releaseURL || null,
-      publishDate: p.publishDate,
-      insights: null as Record<string, number | null> | null,
-      releaseId: p.releaseId || null,
-    };
-  }
-
   private externalShape(p: any, integrationsById: Record<string, any>) {
     const integration = integrationsById[p.integrationId];
     let mediaUrls: { type: string; url: string }[] = [];
@@ -270,94 +249,23 @@ export class ContentSyncService {
       new Date(startDate),
       new Date(endDate)
     );
+    if (!rows.length) return { items: [] };
+    // Bài do APP đăng cũng quay về qua sync (externalId = Post.releaseId) —
+    // calendar đã hiện bản gốc từ bảng Post nên loại bản sync để khỏi đôi.
+    const appPosts = await this._post.model.post.findMany({
+      where: {
+        organizationId: orgId,
+        deletedAt: null,
+        releaseId: { in: rows.map((r) => r.externalId) },
+      },
+      select: { releaseId: true },
+    });
+    const appReleaseIds = new Set(appPosts.map((p) => p.releaseId));
     return {
-      items: rows.map((r) => this.externalShape(r, integrationsById)),
+      items: rows
+        .filter((r) => !appReleaseIds.has(r.externalId))
+        .map((r) => this.externalShape(r, integrationsById)),
     };
   }
 
-  async getContent(
-    orgId: string,
-    type: 'published' | 'scheduled' | 'draft',
-    integrationId?: string
-  ) {
-    const integrations = await this._integrationService.getIntegrationsList(
-      orgId
-    );
-    const integrationsById = Object.fromEntries(
-      integrations.map((i: any) => [i.id, i])
-    );
-
-    if (type === 'draft') {
-      const drafts = await this._post.model.post.findMany({
-        where: {
-          organizationId: orgId,
-          state: 'DRAFT',
-          deletedAt: null,
-          parentPostId: null,
-          ...(integrationId ? { integrationId } : {}),
-        },
-        include: { integration: true },
-        orderBy: { updatedAt: 'desc' },
-        take: 200,
-      });
-      return { items: drafts.map((p) => this.postShape(p)) };
-    }
-
-    if (type === 'scheduled') {
-      const [local, external] = await Promise.all([
-        this._post.model.post.findMany({
-          where: {
-            organizationId: orgId,
-            state: 'QUEUE',
-            deletedAt: null,
-            parentPostId: null,
-            publishDate: { gte: new Date() },
-            ...(integrationId ? { integrationId } : {}),
-          },
-          include: { integration: true },
-          orderBy: { publishDate: 'asc' },
-          take: 200,
-        }),
-        this._externalPostRepository.list(orgId, 'SCHEDULED', integrationId),
-      ]);
-      const items = [
-        ...local.map((p) => this.postShape(p)),
-        ...external.map((p) => this.externalShape(p, integrationsById)),
-      ].sort(
-        (a, b) =>
-          new Date(a.publishDate).getTime() - new Date(b.publishDate).getTime()
-      );
-      return { items };
-    }
-
-    // published: bài app đã đăng + bài trên nền tảng, lọc trùng theo releaseId
-    const [local, external] = await Promise.all([
-      this._post.model.post.findMany({
-        where: {
-          organizationId: orgId,
-          state: 'PUBLISHED',
-          deletedAt: null,
-          parentPostId: null,
-          ...(integrationId ? { integrationId } : {}),
-        },
-        include: { integration: true },
-        orderBy: { publishDate: 'desc' },
-        take: 200,
-      }),
-      this._externalPostRepository.list(orgId, 'PUBLISHED', integrationId),
-    ]);
-    const appReleaseIds = new Set(
-      local.map((p) => p.releaseId).filter(Boolean)
-    );
-    const items = [
-      ...local.map((p) => this.postShape(p)),
-      ...external
-        .filter((p) => !appReleaseIds.has(p.externalId))
-        .map((p) => this.externalShape(p, integrationsById)),
-    ].sort(
-      (a, b) =>
-        new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime()
-    );
-    return { items };
-  }
 }
