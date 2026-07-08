@@ -677,13 +677,78 @@ export class IntegrationService {
     return out;
   }
 
+  // Top VIDEO của kênh YouTube (kỳ N ngày) — số liệu thật từ YouTube
+  // Analytics API, tự refresh token hết hạn (Google token sống ~1h), cache 30'.
+  async getTopVideos(org: Organization, integration: string, days: number) {
+    const getIntegration = await this.getIntegrationById(org.id, integration);
+    if (
+      !getIntegration ||
+      getIntegration.type !== 'social' ||
+      getIntegration.providerIdentifier !== 'youtube'
+    ) {
+      return { videos: [] };
+    }
+    const cacheKey = `integration:top-videos:${org.id}:${integration}:${days}`;
+    const cached = await ioRedis.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+
+    if (dayjs(getIntegration?.tokenExpiration).isBefore(dayjs())) {
+      const data = await this._refreshIntegrationService.refresh(
+        getIntegration
+      );
+      if (!data?.accessToken) return { videos: [] };
+      getIntegration.token = data.accessToken;
+    }
+
+    const provider = this._integrationManager.getSocialIntegration('youtube');
+    try {
+      const videos = await (provider as any).topVideos(
+        getIntegration.token,
+        days
+      );
+      const totals = videos.reduce(
+        (a: any, v: any) => ({
+          views: a.views + v.views,
+          watchMinutes: a.watchMinutes + v.watchMinutes,
+          likes: a.likes + v.likes,
+          comments: a.comments + v.comments,
+          subscribersGained: a.subscribersGained + v.subscribersGained,
+        }),
+        { views: 0, watchMinutes: 0, likes: 0, comments: 0, subscribersGained: 0 }
+      );
+      const out = { videos, totals, count: videos.length };
+      await ioRedis.set(cacheKey, JSON.stringify(out), 'EX', 1800);
+      return out;
+    } catch (e: any) {
+      return {
+        videos: [],
+        error: String(e?.message || 'YouTube Analytics error').slice(0, 200),
+      };
+    }
+  }
+
   // AI phân tích "bài chiến thắng" của kênh + gợi ý content. Cache 1h.
+  // Facebook: theo tương tác bài viết; YouTube: theo ngôn ngữ video
+  // (watch time / retention / sub conversion).
   async getWinningAnalysis(org: Organization, integration: string) {
     const getIntegration = await this.getIntegrationById(org.id, integration);
     if (!getIntegration) return null;
     const cacheKey = `integration:winning:${org.id}:${integration}`;
     const cached = await ioRedis.get(cacheKey);
     if (cached) return JSON.parse(cached);
+
+    if (getIntegration.providerIdentifier === 'youtube') {
+      const top = await this.getTopVideos(org, integration, 90);
+      const videos = top?.videos || [];
+      if (!videos.length) return { empty: true };
+      const analysis = await this._openaiService
+        .analyzeYoutubeWinners(getIntegration.name, videos.slice(0, 20))
+        .catch(() => null);
+      if (!analysis) return { empty: true };
+      await ioRedis.set(cacheKey, JSON.stringify(analysis), 'EX', 3600);
+      return analysis;
+    }
+
     const top = await this.getTopPosts(org, integration, 90);
     const posts = (top?.posts || []).filter((p: any) => (p.message || '').trim());
     if (!posts.length) return { empty: true };
@@ -704,6 +769,26 @@ export class IntegrationService {
   ) {
     const getIntegration = await this.getIntegrationById(org.id, integration);
     if (!getIntegration) return { answer: '' };
+
+    if (getIntegration.providerIdentifier === 'youtube') {
+      const top = await this.getTopVideos(org, integration, 90);
+      const videos = (top?.videos || []).slice(0, 15);
+      const context =
+        `Kênh: ${getIntegration.name} (YouTube).\n` +
+        `Tổng (90 ngày, ${top?.count || 0} video): ${JSON.stringify(top?.totals || {})}.\n` +
+        `Top video (tiêu đề | views/phút xem/retention%/likes/sub mới | độ dài | ngày đăng):\n` +
+        videos
+          .map(
+            (v: any) =>
+              `- "${(v.title || '').slice(0, 120)}" | ${v.views}/${v.watchMinutes}/${v.avgViewPercentage?.toFixed?.(1) ?? v.avgViewPercentage}%/${v.likes}/+${v.subscribersGained} | ${v.duration || '-'} | ${(v.publishedAt || '').slice(0, 10)}`
+          )
+          .join('\n');
+      const answer = await this._openaiService
+        .answerAboutChannel(context, question, history)
+        .catch(() => '');
+      return { answer };
+    }
+
     const top = await this.getTopPosts(org, integration, 90);
     const posts = (top?.posts || []).slice(0, 15);
     const context =

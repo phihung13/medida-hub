@@ -571,6 +571,59 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
     }
   }
 
+  // Top video theo "ngôn ngữ YouTube": views, watch time, retention (% xem
+  // trung bình), sub gained từng VIDEO trong kỳ — trộn YouTube Analytics API
+  // (metrics theo video) với Data API (tiêu đề/thumbnail/độ dài).
+  async topVideos(accessToken: string, days: number) {
+    const { client, youtube, youtubeAnalytics } = clientAndYoutube();
+    client.setCredentials({ access_token: accessToken });
+    const ya = youtubeAnalytics(client);
+    const { data } = await ya.reports.query({
+      ids: 'channel==MINE',
+      startDate: dayjs().subtract(days, 'day').format('YYYY-MM-DD'),
+      endDate: dayjs().format('YYYY-MM-DD'),
+      metrics:
+        'views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,likes,comments,subscribersGained',
+      dimensions: 'video',
+      sort: '-views',
+      maxResults: 25,
+    });
+    const columns = (data?.columnHeaders || []).map((h) => h.name!);
+    const rows = (data?.rows || []).map((r) =>
+      columns.reduce((acc, col, i) => ({ ...acc, [col]: r[i] }), {} as any)
+    );
+    const ids = rows.map((r: any) => String(r.video)).filter(Boolean);
+    if (!ids.length) return [];
+
+    const yt = youtube(client);
+    const { data: vids } = await yt.videos.list({
+      part: ['snippet', 'contentDetails'],
+      id: ids,
+    });
+    const byId = new Map((vids.items || []).map((v) => [v.id, v]));
+    return rows.map((r: any) => {
+      const v = byId.get(String(r.video));
+      return {
+        id: String(r.video),
+        title: v?.snippet?.title || String(r.video),
+        thumbnail:
+          v?.snippet?.thumbnails?.medium?.url ||
+          v?.snippet?.thumbnails?.default?.url ||
+          null,
+        publishedAt: v?.snippet?.publishedAt || null,
+        duration: v?.contentDetails?.duration || null, // ISO8601 (PT4M13S)
+        url: `https://www.youtube.com/watch?v=${r.video}`,
+        views: Number(r.views) || 0,
+        watchMinutes: Number(r.estimatedMinutesWatched) || 0,
+        avgViewDuration: Number(r.averageViewDuration) || 0, // giây
+        avgViewPercentage: Number(r.averageViewPercentage) || 0, // % retention
+        likes: Number(r.likes) || 0,
+        comments: Number(r.comments) || 0,
+        subscribersGained: Number(r.subscribersGained) || 0,
+      };
+    });
+  }
+
   async postAnalytics(
     integrationId: string,
     accessToken: string,

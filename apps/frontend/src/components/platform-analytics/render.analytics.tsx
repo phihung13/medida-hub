@@ -636,6 +636,141 @@ const TopPostsSection: FC<{ integrationId: string; date: number }> = ({
   );
 };
 
+// ── Top VIDEO của kênh YouTube — ngôn ngữ YouTube: watch time + retention ──
+const useTopVideos = (integrationId: string, date: number, enabled: boolean) => {
+  const fetch = useFetch();
+  return useSWR(
+    enabled ? `/analytics/${integrationId}/top-videos?date=${date}` : null,
+    async (u: string) => (await fetch(u)).json(),
+    { revalidateOnFocus: false }
+  );
+};
+
+const TopVideosSection: FC<{ integrationId: string; date: number }> = ({
+  integrationId,
+  date,
+}) => {
+  const t = useT();
+  const { data, isLoading } = useTopVideos(integrationId, date, true);
+  const videos = data?.videos || [];
+  const nice = (n: number) =>
+    n >= 1000000
+      ? (n / 1000000).toFixed(1).replace('.0', '') + 'M'
+      : n >= 1000
+      ? (n / 1000).toFixed(1).replace('.0', '') + 'K'
+      : String(n);
+  // PT1H2M3S → 1:02:03
+  const fmtDuration = (iso?: string | null) => {
+    const m = String(iso || '').match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+    if (!m) return '';
+    const [h, mi, s] = [m[1] || '0', m[2] || '0', m[3] || '0'].map(Number);
+    return h
+      ? `${h}:${String(mi).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+      : `${mi}:${String(s).padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="mt-[20px] flex flex-col gap-[10px]">
+      <div className="text-[15px] font-[650]">
+        🏆 {t('analytics_top_videos', 'Top video của kênh')}{' '}
+        <span className="text-[11.5px] font-[400] text-newTableText/60">
+          {t(
+            'analytics_top_videos_note',
+            '— xếp theo lượt xem trong kỳ; retention (% xem trung bình) là chỉ số vàng của YouTube'
+          )}
+        </span>
+      </div>
+      {isLoading ? (
+        <div className="text-[13px] text-newTableText/60 p-[16px]">
+          {t('loading', 'Loading...')}
+        </div>
+      ) : data?.error ? (
+        <div className="text-[12.5px] text-[#f97066] bg-newTableHeader border border-newTableBorder rounded-[10px] p-[14px]">
+          {t('analytics_top_videos_error', 'Không đọc được số liệu video:')}{' '}
+          {data.error}
+        </div>
+      ) : !videos.length ? (
+        <div className="text-[13px] text-newTableText/60 bg-newTableHeader border border-newTableBorder rounded-[10px] p-[14px]">
+          {t(
+            'analytics_top_videos_empty',
+            'Chưa có video nào trong kỳ này — thử khoảng thời gian dài hơn.'
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-[12px]">
+          {videos.slice(0, 12).map((v: any, i: number) => (
+            <a
+              key={v.id}
+              href={v.url}
+              target="_blank"
+              rel="noreferrer"
+              title={t('analytics_open_video', 'Mở video trên YouTube (tab mới)')}
+              className="group/video relative bg-newTableHeader border border-newTableBorder rounded-[12px] overflow-hidden flex flex-col hover:border-[#f97066] hover:shadow-[0_2px_12px_rgba(249,112,102,0.18)] transition-all cursor-pointer"
+            >
+              <div className="relative aspect-video bg-newBgColorInner/60">
+                {v.thumbnail ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={v.thumbnail}
+                    alt=""
+                    loading="lazy"
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="absolute inset-0 grid place-items-center text-[20px] opacity-40">
+                    ▶️
+                  </div>
+                )}
+                <span className="absolute top-[8px] left-[8px] text-[11px] font-[800] px-[8px] py-[2px] rounded-[6px] bg-black/70 text-white">
+                  #{i + 1}
+                </span>
+                {v.duration && (
+                  <span className="absolute bottom-[8px] right-[8px] text-[11px] font-[700] px-[6px] py-[1px] rounded-[4px] bg-black/80 text-white tabular-nums">
+                    {fmtDuration(v.duration)}
+                  </span>
+                )}
+              </div>
+              <div className="p-[12px] flex flex-col gap-[8px] flex-1">
+                <div className="text-[12.5px] leading-[1.5] line-clamp-2 min-h-[36px] font-[600]">
+                  {v.title}
+                </div>
+                <div className="flex gap-[11px] text-[12px] text-newTableText/70 tabular-nums mt-auto items-center flex-wrap">
+                  <span title={t('analytics_views', 'lượt xem')}>
+                    ▶ <b className="text-newTableText">{nice(v.views)}</b>
+                  </span>
+                  <span title={t('analytics_watch_minutes', 'phút xem (watch time)')}>
+                    ⏱ <b className="text-newTableText">{nice(v.watchMinutes)}p</b>
+                  </span>
+                  <span
+                    className={
+                      v.avgViewPercentage >= 50
+                        ? 'text-[#32d583]'
+                        : v.avgViewPercentage >= 30
+                        ? 'text-[#FFC53D]'
+                        : 'text-[#f97066]'
+                    }
+                    title={t('analytics_retention', 'retention — % thời lượng người xem trụ lại')}
+                  >
+                    📈 <b className="font-[800]">{Math.round(v.avgViewPercentage)}%</b>
+                  </span>
+                  {v.subscribersGained > 0 && (
+                    <span title={t('analytics_subs_gained', 'sub mới từ video này')}>
+                      🔔 <b className="text-newTableText">+{nice(v.subscribersGained)}</b>
+                    </span>
+                  )}
+                  <span className="ms-auto text-[11px] text-newTableText/50">
+                    {String(v.publishedAt || '').slice(0, 10)}
+                  </span>
+                </div>
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const RenderAnalytics: FC<{
   integration: Integration;
   date: number;
@@ -735,13 +870,16 @@ export const RenderAnalytics: FC<{
   const isFacebook =
     (integration as any)?.providerIdentifier === 'facebook' ||
     (integration as any)?.identifier === 'facebook';
+  const isYoutube =
+    (integration as any)?.providerIdentifier === 'youtube' ||
+    (integration as any)?.identifier === 'youtube';
 
   const hasSeries = Array.isArray(data) && data.length > 0;
 
   return (
     <div className="flex flex-col gap-[16px]">
       {/* 1) Dải KPI + nút mở popup AI phân tích */}
-      {isFacebook && (
+      {(isFacebook || isYoutube) && (
         <div className="flex items-center gap-[10px] flex-wrap">
           <div className="text-[15px] font-[700] flex-1">
             {(integration as any)?.name || t('analytics', 'Analytics')}
@@ -790,8 +928,11 @@ export const RenderAnalytics: FC<{
       {/* 5) Bài nổi bật của kênh — đủ chỉ số */}
       {isFacebook && <TopPostsSection integrationId={integration.id} date={date} />}
 
+      {/* 5b) Top video YouTube — watch time + retention */}
+      {isYoutube && <TopVideosSection integrationId={integration.id} date={date} />}
+
       {/* 6) Chat AI nổi góc phải */}
-      {isFacebook && (
+      {(isFacebook || isYoutube) && (
         <ChannelChat
           integrationId={integration.id}
           channelName={(integration as any)?.name || ''}

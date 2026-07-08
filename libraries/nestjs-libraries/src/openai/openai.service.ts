@@ -568,6 +568,49 @@ export class OpenaiService {
     return claudeJson(system, user, 3000);
   }
 
+  // AI phân tích video chiến thắng kiểu YOUTUBE: watch time, retention,
+  // sub conversion, độ dài, tiêu đề, nhịp đăng — không dùng thước đo Facebook.
+  async analyzeYoutubeWinners(
+    channelName: string,
+    videos: {
+      title?: string;
+      views?: number;
+      watchMinutes?: number;
+      avgViewDuration?: number;
+      avgViewPercentage?: number;
+      likes?: number;
+      comments?: number;
+      subscribersGained?: number;
+      duration?: string | null;
+      publishedAt?: string | null;
+    }[]
+  ): Promise<{
+    overview: string;
+    patterns: { title: string; detail: string }[];
+    recommendations: string[];
+    contentIdeas: { title: string; hook: string }[];
+    bestFormat: string;
+  } | null> {
+    const system =
+      VIET_ANH_SYSTEM +
+      '\n\nBạn là chuyên gia phân tích kênh YOUTUBE trường học. Phân tích theo NGÔN NGỮ YOUTUBE: retention (% xem trung bình) quan trọng hơn views; watch time quyết định đề xuất; sub gained/video đo sức chuyển đổi; độ dài video và kiểu tiêu đề ảnh hưởng click. Tìm CÔNG THỨC THẮNG của chính kênh này từ số liệu thật — sắc, cụ thể, dẫn chứng video, không nói chung chung.\n' +
+      'Trả JSON: {\n' +
+      '"overview": "2-3 câu: hiệu suất tổng, video nào đang gánh kênh, vì sao (retention hay views)",\n' +
+      '"patterns": [{"title":"mô hình thắng (vd: video ngắn <3 phút giữ chân >60%)","detail":"vì sao thắng, dẫn chứng video + số liệu cụ thể"}] (3-5 mục),\n' +
+      '"recommendations": ["việc nên làm tiếp, cụ thể theo YouTube: độ dài, tiêu đề, thumbnail, nhịp đăng, 15 giây đầu"] (4-6 mục),\n' +
+      '"contentIdeas": [{"title":"tiêu đề video mới nên làm (bám công thức thắng)","hook":"ý tưởng 15 giây mở đầu để giữ chân"}] (3-5 ý),\n' +
+      '"bestFormat": "định dạng video hiệu quả nhất của kênh (độ dài + kiểu nội dung)"\n}';
+    const user =
+      `Kênh YouTube: ${channelName}\n\nCÁC VIDEO (tiêu đề | ▶views ⏱phút-xem 📈retention% 👍likes 💬comments +sub | độ dài ISO | ngày đăng):\n` +
+      videos
+        .map(
+          (v) =>
+            `- "${(v.title || '').slice(0, 150)}" | ${v.views ?? 0} ${v.watchMinutes ?? 0} ${(v.avgViewPercentage ?? 0).toFixed?.(1) ?? v.avgViewPercentage}% ${v.likes ?? 0} ${v.comments ?? 0} +${v.subscribersGained ?? 0} | ${v.duration || '-'} | ${(v.publishedAt || '').slice(0, 10)}`
+        )
+        .join('\n');
+    return claudeJson(system, user, 3000);
+  }
+
   // Trợ lý AI trả lời câu hỏi về hiệu suất kênh (có ngữ cảnh + lịch sử hội thoại).
   async answerAboutChannel(
     context: string,

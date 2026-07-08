@@ -46,6 +46,20 @@ export class AnalyticsController {
     );
   }
 
+  // Top VIDEO của kênh YouTube — số liệu YouTube Analytics thật.
+  @Get('/:integration/top-videos')
+  async getTopVideos(
+    @GetOrgFromRequest() org: Organization,
+    @Param('integration') integration: string,
+    @Query('date') date: string
+  ) {
+    return this._integrationService.getTopVideos(
+      org,
+      integration,
+      Math.max(+date || 30, 7)
+    );
+  }
+
   // AI phân tích bài chiến thắng + gợi ý content.
   @Get('/:integration/winning-analysis')
   async winningAnalysis(
