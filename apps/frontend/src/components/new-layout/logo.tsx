@@ -1,6 +1,7 @@
 'use client';
 
-// Logo Social Hub — huy hiệu "VA" (thay logo Social Hub gốc).
+// Logo Social Hub — biểu tượng "hub phát tỏa": 1 node trung tâm nối ra nhiều
+// kênh (ẩn dụ: soạn một chỗ, đăng ra nhiều nền tảng). Thay huy hiệu "VA" cũ.
 export const Logo = () => {
   return (
     <svg
@@ -13,30 +14,31 @@ export const Logo = () => {
     >
       <defs>
         <linearGradient
-          id="vaLogoGrad"
+          id="hubGrad"
           x1="4"
           y1="4"
           x2="56"
           y2="56"
           gradientUnits="userSpaceOnUse"
         >
-          <stop stopColor="#2E86FF" />
+          <stop stopColor="#3B9CFF" />
           <stop offset="1" stopColor="#1657AC" />
         </linearGradient>
       </defs>
-      <rect x="4" y="4" width="52" height="52" rx="15" fill="url(#vaLogoGrad)" />
-      <text
-        x="30"
-        y="39"
-        textAnchor="middle"
-        fontFamily="'Segoe UI', Arial, sans-serif"
-        fontSize="24"
-        fontWeight="800"
-        letterSpacing="0.5"
-        fill="white"
-      >
-        VA
-      </text>
+      <rect x="4" y="4" width="52" height="52" rx="16" fill="url(#hubGrad)" />
+      {/* Tia nối từ tâm ra 3 node */}
+      <g stroke="#fff" strokeWidth="2.6" strokeLinecap="round" opacity="0.9">
+        <line x1="30" y1="30" x2="30" y2="17" />
+        <line x1="30" y1="30" x2="18.5" y2="40" />
+        <line x1="30" y1="30" x2="41.5" y2="40" />
+      </g>
+      {/* 3 node kênh */}
+      <circle cx="30" cy="16" r="4.4" fill="#fff" />
+      <circle cx="18" cy="41" r="4.4" fill="#fff" />
+      <circle cx="42" cy="41" r="4.4" fill="#fff" />
+      {/* Node trung tâm — nhấn bằng viền */}
+      <circle cx="30" cy="30" r="6.2" fill="#fff" />
+      <circle cx="30" cy="30" r="2.9" fill="url(#hubGrad)" />
     </svg>
   );
 };

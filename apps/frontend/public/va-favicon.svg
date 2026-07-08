@@ -1,6 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60" width="60" height="60">
   <defs><linearGradient id="g" x1="0" y1="0" x2="60" y2="60" gradientUnits="userSpaceOnUse">
-    <stop stop-color="#2E86FF"/><stop offset="1" stop-color="#1657AC"/></linearGradient></defs>
-  <rect width="60" height="60" rx="14" fill="url(#g)"/>
-  <text x="30" y="40" text-anchor="middle" font-family="Arial, sans-serif" font-size="28" font-weight="800" fill="#ffffff">VA</text>
+    <stop stop-color="#3B9CFF"/><stop offset="1" stop-color="#1657AC"/></linearGradient></defs>
+  <rect width="60" height="60" rx="15" fill="url(#g)"/>
+  <g stroke="#fff" stroke-width="3" stroke-linecap="round" opacity="0.9">
+    <line x1="30" y1="30" x2="30" y2="16"/>
+    <line x1="30" y1="30" x2="17" y2="41"/>
+    <line x1="30" y1="30" x2="43" y2="41"/>
+  </g>
+  <circle cx="30" cy="15" r="5" fill="#fff"/>
+  <circle cx="16" cy="42" r="5" fill="#fff"/>
+  <circle cx="44" cy="42" r="5" fill="#fff"/>
+  <circle cx="30" cy="30" r="6.8" fill="#fff"/>
+  <circle cx="30" cy="30" r="3.1" fill="url(#g)"/>
 </svg>
