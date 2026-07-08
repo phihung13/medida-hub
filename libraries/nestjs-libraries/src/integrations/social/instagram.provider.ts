@@ -927,42 +927,66 @@ export class InstagramProvider
     const until = dayjs().startOf('day').unix();
     const since = dayjs().subtract(date, 'day').unix();
 
-    const { data, ...all } = await (
-      await fetch(
-        `https://${type}/v21.0/${id}/insights?metric=follower_count,reach&access_token=${accessToken}&period=day&since=${since}&until=${until}`
-      )
-    ).json();
+    // Gọi từng metric time-series RIÊNG: IG hay lỗi 1 metric (vd follower_count
+    // đòi tài khoản ≥100 follower) → gọi gộp sẽ mất cả cụm. Tách ra để metric
+    // chạy được vẫn hiện.
+    const timeSeries = async (metric: string) => {
+      try {
+        const res = await (
+          await fetch(
+            `https://${type}/v21.0/${id}/insights?metric=${metric}&access_token=${accessToken}&period=day&since=${since}&until=${until}`
+          )
+        ).json();
+        if (res?.error || !Array.isArray(res?.data)) return [];
+        return res.data;
+      } catch {
+        return [];
+      }
+    };
 
-    const { data: data2, ...all2 } = await (
-      await fetch(
-        `https://${type}/v21.0/${id}/insights?metric_type=total_value&metric=likes,views,comments,shares,saves,replies&access_token=${accessToken}&period=day&since=${since}&until=${until}`
-      )
-    ).json();
+    const totalValue = async () => {
+      try {
+        const res = await (
+          await fetch(
+            `https://${type}/v21.0/${id}/insights?metric_type=total_value&metric=likes,views,comments,shares,saves,replies&access_token=${accessToken}&period=day&since=${since}&until=${until}`
+          )
+        ).json();
+        if (res?.error || !Array.isArray(res?.data)) return [];
+        return res.data;
+      } catch {
+        return [];
+      }
+    };
+
+    const [reach, followers, data2] = await Promise.all([
+      timeSeries('reach'),
+      timeSeries('follower_count'),
+      totalValue(),
+    ]);
+
     const analytics = [];
-
-    analytics.push(
-      ...(data?.map((d: any) => ({
+    for (const d of [...reach, ...followers]) {
+      analytics.push({
         label: this.setTitle(d.name),
         percentageChange: 5,
-        data: d.values.map((v: any) => ({
+        data: (d.values || []).map((v: any) => ({
           total: v.value,
           date: dayjs(v.end_time).format('YYYY-MM-DD'),
         })),
-      })) || [])
-    );
-
-    analytics.push(
-      ...data2.map((d: any) => ({
+      });
+    }
+    for (const d of data2) {
+      analytics.push({
         label: this.setTitle(d.name),
         percentageChange: 5,
         data: [
           {
-            total: d.total_value.value,
+            total: d.total_value?.value ?? 0,
             date: dayjs().format('YYYY-MM-DD'),
           },
         ],
-      }))
-    );
+      });
+    }
 
     return analytics;
   }
