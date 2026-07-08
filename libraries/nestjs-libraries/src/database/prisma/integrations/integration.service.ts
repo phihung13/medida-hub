@@ -693,11 +693,15 @@ export class IntegrationService {
     if (cached) return JSON.parse(cached);
 
     if (dayjs(getIntegration?.tokenExpiration).isBefore(dayjs())) {
+      // refresh() trả `false | AuthTokenDetails` — phải loại `false` trước khi
+      // đọc accessToken (không dùng optional chaining được).
       const data = await this._refreshIntegrationService.refresh(
         getIntegration
       );
-      if (!data?.accessToken) return { videos: [] };
-      getIntegration.token = data.accessToken;
+      if (!data) return { videos: [] };
+      const { accessToken } = data;
+      if (!accessToken) return { videos: [] };
+      getIntegration.token = accessToken;
     }
 
     const provider = this._integrationManager.getSocialIntegration('youtube');
