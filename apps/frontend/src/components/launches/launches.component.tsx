@@ -583,16 +583,13 @@ export const LaunchesComponent = () => {
                 />
               ))}
             </div>
-            <div className="mt-[5px] text-center flex flex-col">
-              {billingEnabled && user?.isLifetime && (
-                <div>{capitalize(user?.tier?.current || '')} tier</div>
-              )}
-              <div>
-                {process.env.NEXT_PUBLIC_VERSION
-                  ? process.env.NEXT_PUBLIC_VERSION
-                  : ''}
+            {/* Nhãn phiên bản build (NEXT_PUBLIC_VERSION) của Postiz gốc —
+                trên VPS hiện chữ "media-hub" thừa thãi ở cuối cột kênh → bỏ. */}
+            {billingEnabled && user?.isLifetime && (
+              <div className="mt-[5px] text-center">
+                {capitalize(user?.tier?.current || '')} tier
               </div>
-            </div>
+            )}
           </div>
         </div>
         <div className="bg-newBgColorInner flex-1 flex-col flex p-[20px] gap-[12px]">
