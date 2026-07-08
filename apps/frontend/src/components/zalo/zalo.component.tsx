@@ -34,15 +34,13 @@ import { ZaloLogsTab, ZaloSettingsTab } from './zalo.settings';
 //  Google Business, Cài đặt, Nhật ký. Mọi API đi qua proxy /botapi (JWT + HUB_BOT_TOKEN).
 // ============================================================================
 
-type TabKey = 'overview' | 'posts' | 'routes' | 'gbp' | 'settings' | 'logs';
+type TabKey = 'overview' | 'routes' | 'gbp' | 'settings';
 
 const TAB_HASH: Record<TabKey, string> = {
   overview: 'tong-quan',
-  posts: 'bai-viet',
   routes: 'nhom-trang',
   gbp: 'google-business',
   settings: 'cai-dat',
-  logs: 'nhat-ky',
 };
 
 export const ZaloComponent: FC = () => {
@@ -70,6 +68,8 @@ export const ZaloComponent: FC = () => {
   const [groupSearch, setGroupSearch] = useState('');
   const [qrTick, setQrTick] = useState(0);
   const [qrBroken, setQrBroken] = useState(false);
+  // Danh sách nhóm đang nghe: thu gọn mặc định để tiết kiệm không gian.
+  const [groupsOpen, setGroupsOpen] = useState(false);
 
   const zaloLogged = !!(overview?.zaloConnected ?? cfg.zaloConnected);
   const running = online === true && cfg.enabled && cfg.hasKey && zaloLogged;
@@ -384,13 +384,11 @@ export const ZaloComponent: FC = () => {
   }
 
   const TABS: { key: TabKey; label: string; badge?: number }[] = [
+    // Bài viết hiện LUÔN trong Tổng quan; Nhật ký dời vào Cài đặt → bỏ 2 tab.
     { key: 'overview', label: t('zalo_tab_overview', 'Overview') },
-    // Tab Bài viết = lịch sử thuần hiển thị (duyệt ở Calendar) → không badge.
-    { key: 'posts', label: t('zalo_tab_posts', 'Posts') },
     { key: 'routes', label: t('zalo_tab_routes', 'Groups → Pages') },
     { key: 'gbp', label: 'Google Business' },
     { key: 'settings', label: t('zalo_tab_settings', 'Settings') },
-    { key: 'logs', label: t('zalo_tab_logs', 'Log') },
   ];
 
   return (
@@ -535,34 +533,10 @@ export const ZaloComponent: FC = () => {
             </Card>
           )}
 
-          {/* Bật cầu nối */}
-          <Card>
-            <div className="flex items-center gap-[14px] flex-wrap">
-              <div className="flex-1 min-w-[220px]">
-                <div className="text-[15px] font-[600]">{t('zalo_auto_bridge', 'Automatic bridge')}</div>
-                <div className="text-[12.5px] text-textItemBlur mt-[2px]">
-                  {t('zalo_auto_bridge_hint', 'New images from listened groups → posts awaiting review on Calendar.')}
-                </div>
-              </div>
-              <div className="flex items-center gap-[10px]">
-                <div className={clsx('text-[13.5px] font-[600]', cfg.enabled ? 'text-green-500' : 'text-textItemBlur')}>
-                  {cfg.enabled ? t('zalo_on', 'On') : t('zalo_off', 'Off')}
-                </div>
-                <Toggle
-                  on={cfg.enabled}
-                  disabled={!cfg.hasKey}
-                  title={!cfg.hasKey ? t('zalo_connect_hub_first', 'Connect Media Hub first') : undefined}
-                  onChange={() => save(!cfg.enabled)}
-                />
-              </div>
-            </div>
-          </Card>
-
           {/* Bài đã gom (lịch sử) — duyệt/sửa/đăng làm ở Calendar (bài tự vào Nháp) */}
           {!!overview?.pendingCount && (
             <div
-              onClick={() => switchTab('posts')}
-              className="border border-newTableBorder rounded-[12px] px-[16px] py-[12px] flex items-center gap-[10px] flex-wrap cursor-pointer hover:bg-boxHover transition-colors duration-150"
+              className="border border-newTableBorder rounded-[12px] px-[16px] py-[12px] flex items-center gap-[10px] flex-wrap"
             >
               <span className="text-[15px]">🗂</span>
               <span className="text-[13.5px] flex-1 min-w-[220px]">
@@ -581,14 +555,25 @@ export const ZaloComponent: FC = () => {
             </div>
           )}
 
-          {/* Nhóm Zalo + trạng thái gom realtime */}
+          {/* Nhóm Zalo + trạng thái gom realtime — thu gọn mặc định */}
           <Card
             title={
               <div className="flex items-center w-full gap-[10px]">
-                <span className="flex-1">
+                <span
+                  onClick={() => setGroupsOpen((v) => !v)}
+                  className="flex-1 cursor-pointer select-none flex items-center gap-[6px]"
+                >
+                  <span
+                    className={clsx(
+                      'inline-block transition-transform text-[10px]',
+                      groupsOpen && 'rotate-90'
+                    )}
+                  >
+                    ▶
+                  </span>
                   {t('zalo_listening_groups', 'Zalo groups being listened to')} ({listeningCount}/{routes.length})
                 </span>
-                {zaloLogged && (
+                {zaloLogged && groupsOpen && (
                   <span
                     onClick={() => loadGroups(true)}
                     className="cursor-pointer normal-case tracking-normal font-[600] text-btnPrimary"
@@ -599,6 +584,8 @@ export const ZaloComponent: FC = () => {
               </div>
             }
           >
+            {groupsOpen && (
+            <>
             {!routes.length && !groups.length && (
               <div className="text-[13px] text-textItemBlur leading-[1.6]">
                 {!zaloLogged
@@ -727,30 +714,70 @@ export const ZaloComponent: FC = () => {
                 </div>
               </div>
             )}
+            </>
+            )}
           </Card>
 
-          {/* Điều khiển nhanh */}
+          {/* Điều khiển nhanh — toggle nhỏ gọn góc dưới */}
           <div className="flex items-center gap-[16px] flex-wrap pt-[4px] text-[13px] text-textItemBlur">
+            {/* Cầu nối tự động: toggle nhỏ (trước là 1 Card lớn) */}
+            <div
+              onClick={() => cfg.hasKey && save(!cfg.enabled)}
+              title={
+                !cfg.hasKey
+                  ? t('zalo_connect_hub_first', 'Connect Media Hub first')
+                  : t(
+                      'zalo_auto_bridge_hint',
+                      'New images from listened groups → posts awaiting review on Calendar.'
+                    )
+              }
+              className={clsx(
+                'flex items-center gap-[8px] select-none',
+                cfg.hasKey ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'
+              )}
+            >
+              <Toggle
+                small
+                on={cfg.enabled}
+                disabled={!cfg.hasKey}
+                onChange={() => cfg.hasKey && save(!cfg.enabled)}
+              />
+              <span className={cfg.enabled ? 'text-green-500 font-[600]' : ''}>
+                {t('zalo_auto_bridge', 'Automatic bridge')}
+              </span>
+            </div>
+            <div className="w-[1px] h-[16px] bg-newTableBorder" />
+            {/* Tạm dừng bot */}
             <div onClick={togglePause} className="flex items-center gap-[8px] cursor-pointer select-none">
               <Toggle small on={!!overview?.paused} onChange={togglePause} />
               <span className={overview?.paused ? 'text-red-500 font-[600]' : ''}>
                 {overview?.paused ? t('zalo_paused', 'Paused') : t('zalo_pause_bot', 'Pause bot')}
               </span>
             </div>
-            <div className="w-[1px] h-[16px] bg-newTableBorder" />
-            <span onClick={() => switchTab('settings')} className="cursor-pointer hover:text-newTextColor">
-              {t('zalo_overview_more_settings', 'Account, Claude key, group filter… → Settings tab')}
-            </span>
+          </div>
+
+          {/* Bài viết hiện LUÔN dưới Tổng quan — khỏi tab riêng */}
+          <div className="pt-[8px] mt-[4px] border-t border-newTableBorder">
+            <ZaloPostsTab onChanged={loadAll} />
           </div>
         </>
       )}
 
       {/* ============================ CÁC TAB KHÁC ============================ */}
-      {tab === 'posts' && <ZaloPostsTab onChanged={loadAll} />}
       {tab === 'routes' && <ZaloRoutesTab zaloLogged={zaloLogged} onChanged={loadAll} />}
       {tab === 'gbp' && <ZaloGbpTab />}
-      {tab === 'settings' && <ZaloSettingsTab onChanged={loadAll} />}
-      {tab === 'logs' && <ZaloLogsTab />}
+      {tab === 'settings' && (
+        <>
+          <ZaloSettingsTab onChanged={loadAll} />
+          {/* Nhật ký dời vào cuối Cài đặt (trước là tab riêng) */}
+          <div className="mt-[20px] pt-[16px] border-t border-newTableBorder">
+            <div className="text-[14px] font-[600] mb-[10px]">
+              {t('zalo_tab_logs', 'Log')}
+            </div>
+            <ZaloLogsTab />
+          </div>
+        </>
+      )}
     </div>
   );
 };
