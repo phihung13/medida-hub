@@ -141,32 +141,21 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
   return (
     <div className="flex flex-col gap-[14px]">
       {/* Vận hành */}
-      <Card title={t('zalo_settings_ops', 'Operations')}>
-        <div className="text-[12.5px] text-textItemBlur leading-[1.6]">
-          {t(
-            'zalo_settings_ops_hint',
-            'Auto-publish vs review is set per channel in the Groups → Pages tab. Channels without auto-publish go to the Posts tab for review.'
-          )}
-        </div>
+      <Card title={t('zalo_settings_ops', 'Vận hành')}>
         <label className="flex items-center gap-[10px] cursor-pointer w-fit">
           <Toggle on={!!settings.paused} onChange={() => setS({ paused: !settings.paused })} />
-          <div>
-            <b className="text-[13.5px]">{t('zalo_settings_pause', 'Pause image collection')}</b>
-            <div className="text-[12px] text-textItemBlur">
-              {t('zalo_settings_pause_hint', 'Stop collecting new images from all groups.')}
-            </div>
-          </div>
+          <b className="text-[13.5px]">{t('zalo_settings_pause', 'Tạm dừng nhận ảnh (mọi nhóm)')}</b>
         </label>
 
         <div
           onClick={() => setFilterOpen((v) => !v)}
           className="border-t border-newTableBorder pt-[10px] flex items-center justify-between cursor-pointer"
         >
-          <b className="text-[13px]">{t('zalo_settings_group_filter', 'Filter visible groups')}</b>
+          <b className="text-[13px]">{t('zalo_settings_group_filter', 'Lọc nhóm hiển thị')}</b>
           <span className="text-[11.5px] text-textItemBlur">
             {(settings.groupAllowlist || []).length
-              ? t('zalo_settings_filtering_n', 'filtering {{n}} groups').replace('{{n}}', String((settings.groupAllowlist || []).length))
-              : t('zalo_settings_show_all', 'showing all')}{' '}
+              ? t('zalo_settings_filtering_n', 'đang lọc {{n}} nhóm').replace('{{n}}', String((settings.groupAllowlist || []).length))
+              : t('zalo_settings_show_all', 'hiện tất cả')}{' '}
             {filterOpen ? '▾' : '▸'}
           </span>
         </div>
@@ -175,7 +164,7 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
             <div className="text-[12px] text-textItemBlur leading-[1.6]">
               {t(
                 'zalo_settings_filter_hint',
-                'Using a personal account that exposes private groups? List the group IDs to SHOW (one per line) — pickers will only show those. Empty = show all. Groups already configured always show.'
+                'Liệt kê ID nhóm muốn HIỆN (mỗi dòng một ID) — bộ chọn chỉ hiện các nhóm này. Để trống = hiện tất cả.'
               )}
             </div>
             <textarea rows={4} value={allowText} onChange={(e) => setAllowText(e.target.value)} className={textareaCls} placeholder="threadId…" />
@@ -242,10 +231,10 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
       >
         <div className="text-[12.5px] text-textItemBlur">
           {zalo?.ownId
-            ? t('zalo_settings_own_id', 'Logged-in account ID: {{id}}').replace('{{id}}', String(zalo.ownId))
+            ? t('zalo_settings_own_id', 'ID tài khoản: {{id}}').replace('{{id}}', String(zalo.ownId))
             : zalo?.hasCreds
-            ? t('zalo_settings_has_creds', 'A saved session exists.')
-            : t('zalo_settings_no_creds', 'No account logged in yet.')}
+            ? t('zalo_settings_has_creds', 'Đã có session lưu.')
+            : t('zalo_settings_no_creds', 'Chưa đăng nhập tài khoản nào.')}
         </div>
         {!zalo?.connected && zalo?.qr && (
           <div className="w-[190px] h-[190px] rounded-[10px] bg-white flex items-center justify-center overflow-hidden">
@@ -282,7 +271,7 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
         <div className="text-[12px] text-textItemBlur leading-[1.6]">
           {t(
             'zalo_settings_account_note',
-            'Switching accounts happens immediately, no restart. Facebook tokens are ALWAYS kept — just map the new account’s groups to the old Pages to reconnect.'
+            'Đổi tài khoản có hiệu lực ngay, không cần khởi động lại. Token Facebook luôn được giữ.'
           )}
         </div>
       </Card>

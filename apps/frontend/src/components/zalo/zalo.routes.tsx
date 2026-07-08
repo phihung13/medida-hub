@@ -213,24 +213,17 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
 
   return (
     <div className="flex flex-col gap-[14px]">
-      <div className="text-[13px] text-textItemBlur leading-[1.6] max-w-[720px]">
+      <div className="text-[12.5px] text-textItemBlur max-w-[720px]">
         {t(
           'zalo_routes_intro',
-          'Each row connects a source Zalo group to where its posts go: a Facebook Page, Google Business, and/or a Media Hub channel. Remember to press "Save configuration" when done.'
+          'Mỗi thẻ: một nhóm Zalo nguồn → Trang Facebook / Google Business / kênh Media Hub. Nhớ bấm "Lưu cấu hình" sau khi sửa.'
         )}
       </div>
 
       {!routes.length && (
-        <Card>
-          <div className="text-[13.5px] leading-[1.7] text-textItemBlur">
-            <b className="text-newTextColor">{t('zalo_routes_empty_title', 'No group connected yet')}</b>
-            <ol className="list-decimal ms-[18px] mt-[6px] flex flex-col gap-[4px]">
-              <li>{t('zalo_routes_empty_1', 'Click "+ Add group" below.')}</li>
-              <li>{t('zalo_routes_empty_2', 'Pick the source Zalo group and the destination Facebook Page / Google Business / Media Hub channel.')}</li>
-              <li>{t('zalo_routes_empty_3b', 'Facebook Pages come from Add Channel (connect once) — then enable auto-publish here if you want.')}</li>
-            </ol>
-          </div>
-        </Card>
+        <div className="text-[13px] text-textItemBlur border border-dashed border-newTableBorder rounded-[12px] px-[16px] py-[14px]">
+          {t('zalo_routes_empty_title', 'Chưa nối nhóm nào — bấm "+ Thêm nhóm" bên dưới để bắt đầu.')}
+        </div>
       )}
 
       {routes.map((r, i) => {
