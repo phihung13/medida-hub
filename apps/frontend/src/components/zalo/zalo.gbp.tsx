@@ -31,7 +31,31 @@ export const ZaloGbpTab: FC = () => {
   const [rows, setRows] = useState<GbpBusiness[]>([]);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [starting, setStarting] = useState(false);
+  const [vncSrc, setVncSrc] = useState<string | null>(null);
+  const [vncBusy, setVncBusy] = useState(false);
+  const [showUpload, setShowUpload] = useState(false);
+
+  // Mở màn hình ảo: xin vé từ bot → dựng iframe noVNC (qua nginx /botvnc, hỗ
+  // trợ WebSocket) → mở luôn trình duyệt đăng nhập Google trên bot.
+  const openVirtualScreen = useCallback(async () => {
+    setVncBusy(true);
+    try {
+      const r = await bot('/api/gbp/vnc-ticket', { method: 'POST' }, 30000);
+      if (!r?.ticket) {
+        toast.show(r?.error || t('zalo_gbp_vnc_fail', 'Bot chưa bật được màn hình ảo'), 'warning');
+        return;
+      }
+      // Path noVNC có thể cần chỉnh theo layout thật trên VPS (xem vnc-debug).
+      setVncSrc(
+        `/botvnc/vnc/vnc.html?path=botvnc/vnc/websockify&autoconnect=true&resize=scale&ticket=${r.ticket}`
+      );
+      bot('/api/gbp/login/start', { method: 'POST', body: '{}' }, 60000).catch(() => {});
+    } catch {
+      toast.show(t('zalo_bot_unreachable', 'Cannot reach the Zalo bot'), 'warning');
+    } finally {
+      setVncBusy(false);
+    }
+  }, [t]);
 
   const load = useCallback(async () => {
     try {
@@ -68,11 +92,6 @@ export const ZaloGbpTab: FC = () => {
     [load, t]
   );
 
-  const startLogin = useCallback(async () => {
-    setStarting(true);
-    await call('/api/gbp/login/start', t('zalo_gbp_browser_opened', 'Google login browser opened on the bot machine'));
-    setStarting(false);
-  }, [call, t]);
 
   const uploadSession = useCallback(
     async (files: FileList | null) => {
@@ -103,7 +122,6 @@ export const ZaloGbpTab: FC = () => {
   }
 
   const sess = status.session || {};
-  const login = status.login || {};
   const expDays = sess.expiresAt ? Math.round((sess.expiresAt - Date.now()) / 86400000) : null;
 
   return (
@@ -123,67 +141,74 @@ export const ZaloGbpTab: FC = () => {
           </div>
         }
       >
-        <div className="text-[12.5px] text-textItemBlur leading-[1.6]">
-          {t(
-            'zalo_gbp_session_hint',
-            'Google Business posts through a saved Google login (Playwright). Google does not publish exact expiry; the estimate below is based on session cookies.'
-          )}
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-[8px] text-[13px]">
-          <div className="flex justify-between border border-newTableBorder rounded-[8px] px-[12px] py-[8px]">
-            <span className="text-textItemBlur">{t('zalo_gbp_updated', 'Last updated')}</span>
+        {/* Số liệu session gọn 1 dòng */}
+        <div className="flex gap-[8px] text-[12.5px] flex-wrap">
+          <span className="border border-newTableBorder rounded-[8px] px-[10px] py-[6px]">
+            {t('zalo_gbp_updated', 'Cập nhật')}:{' '}
             <b>{sess.updatedAt ? fmtFull(sess.updatedAt) : '—'}</b>
-          </div>
-          <div className="flex justify-between border border-newTableBorder rounded-[8px] px-[12px] py-[8px]">
-            <span className="text-textItemBlur">{t('zalo_gbp_expiry', 'Estimated expiry')}</span>
+          </span>
+          <span className="border border-newTableBorder rounded-[8px] px-[10px] py-[6px]">
+            {t('zalo_gbp_expiry', 'Hết hạn ước tính')}:{' '}
             <b>
               {sess.expiresAt
-                ? `${new Date(sess.expiresAt).toLocaleDateString('vi-VN')}${expDays != null ? ` (${expDays} ${t('zalo_token_days', 'days')})` : ''}`
-                : t('zalo_gbp_unknown', 'Unknown')}
+                ? `${new Date(sess.expiresAt).toLocaleDateString('vi-VN')}${expDays != null ? ` (${expDays}${t('zalo_token_days_short', 'ngày')})` : ''}`
+                : t('zalo_gbp_unknown', '—')}
             </b>
-          </div>
-        </div>
-        <div className="flex items-center gap-[10px] flex-wrap">
-          {login.active ? (
-            <>
-              <PrimaryButton className="!h-[36px] text-[13px]" disabled={busy} onClick={() => call('/api/gbp/login/save', t('zalo_gbp_session_saved', 'Google session saved'))}>
-                {t('zalo_gbp_save_login', 'Save session (after logging in)')}
-              </PrimaryButton>
-              <DangerLink onClick={() => call('/api/gbp/login/cancel', t('zalo_gbp_login_cancelled', 'Login cancelled'))}>
-                {t('zalo_token_cancel', 'Cancel')}
-              </DangerLink>
-            </>
-          ) : (
-            <PrimaryButton className="!h-[36px] text-[13px]" disabled={busy || starting} onClick={startLogin}>
-              {starting
-                ? t('zalo_gbp_starting', 'Opening browser… (10–15s, do not click again)')
-                : sess.hasSession
-                ? t('zalo_gbp_update_session', 'Update session')
-                : t('zalo_gbp_open_login', 'Open Google login browser')}
-            </PrimaryButton>
-          )}
-          <span onClick={load} className="cursor-pointer text-[12.5px] font-[600] text-btnPrimary">
-            ↻ {t('zalo_refresh', 'Refresh')}
           </span>
         </div>
-        <div className="text-[12px] text-textItemBlur leading-[1.6]">
-          {t(
-            'zalo_gbp_login_note',
-            'The login browser opens ON THE MACHINE RUNNING THE BOT. If the bot runs on a headless VPS, log in on a local machine (npm run gbp:login → data/gbp-session.json) and upload the file here:'
-          )}
-        </div>
-        <label className="inline-flex items-center gap-[6px] cursor-pointer text-[12.5px] font-[600] text-btnPrimary w-fit">
-          <input
-            type="file"
-            accept="application/json,.json"
-            hidden
-            onChange={(e) => {
-              uploadSession(e.target.files);
-              e.target.value = '';
-            }}
-          />
-          📤 {t('zalo_gbp_upload_session', 'Upload session file (gbp-session.json)')}
-        </label>
+
+        {/* Màn hình ảo — cách chính để đăng nhập Google ngay trên web */}
+        {vncSrc ? (
+          <div className="flex flex-col gap-[8px]">
+            <div className="rounded-[10px] overflow-hidden border border-newTableBorder bg-black">
+              <iframe
+                src={vncSrc}
+                title="Google login virtual screen"
+                className="w-full h-[520px] block"
+              />
+            </div>
+            <div className="flex items-center gap-[10px] flex-wrap">
+              <PrimaryButton className="!h-[36px] text-[13px]" disabled={busy} onClick={() => call('/api/gbp/login/save', t('zalo_gbp_session_saved', 'Đã lưu session Google'))}>
+                ✓ {t('zalo_gbp_done_login', 'Đã đăng nhập xong — Lưu')}
+              </PrimaryButton>
+              <DangerLink onClick={() => { setVncSrc(null); call('/api/gbp/login/cancel', t('zalo_gbp_login_cancelled', 'Đã hủy')); }}>
+                {t('zalo_token_cancel', 'Đóng')}
+              </DangerLink>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-[10px] flex-wrap">
+            <PrimaryButton className="!h-[36px] text-[13px]" disabled={vncBusy} onClick={openVirtualScreen}>
+              {vncBusy
+                ? t('zalo_gbp_opening_screen', 'Đang mở màn hình…')
+                : sess.hasSession
+                ? t('zalo_gbp_update_session', 'Đăng nhập lại Google')
+                : t('zalo_gbp_open_screen', '🖥 Đăng nhập Google ngay trên web')}
+            </PrimaryButton>
+            <span onClick={load} className="cursor-pointer text-[12.5px] font-[600] text-btnPrimary">
+              ↻ {t('zalo_refresh', 'Làm mới')}
+            </span>
+            <span onClick={() => setShowUpload((v) => !v)} className="cursor-pointer text-[12px] text-textItemBlur hover:text-newTextColor">
+              {t('zalo_gbp_other_way', 'Cách khác: tải file session…')}
+            </span>
+          </div>
+        )}
+
+        {/* Fallback: upload session file (thu gọn) */}
+        {showUpload && !vncSrc && (
+          <label className="inline-flex items-center gap-[6px] cursor-pointer text-[12.5px] font-[600] text-btnPrimary w-fit">
+            <input
+              type="file"
+              accept="application/json,.json"
+              hidden
+              onChange={(e) => {
+                uploadSession(e.target.files);
+                e.target.value = '';
+              }}
+            />
+            📤 {t('zalo_gbp_upload_session', 'Tải file session (gbp-session.json) — đăng nhập ở máy local: npm run gbp:login')}
+          </label>
+        )}
       </Card>
 
       {/* Hồ sơ Business */}
