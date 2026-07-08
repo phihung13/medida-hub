@@ -1,6 +1,6 @@
 'use client';
 
-import { FC, useCallback, useState } from 'react';
+import { FC, useCallback, useEffect, useRef, useState } from 'react';
 import useSWR from 'swr';
 import clsx from 'clsx';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
@@ -33,11 +33,18 @@ const PROVIDERS: Provider[] = [
 const providerLabel = (v: string) =>
   PROVIDERS.find((p) => p.value === v)?.label || v;
 
+const AUTO_REFRESH_MS = 15 * 60 * 1000; // 15 phút
+
 const useCredits = () => {
   const fetch = useFetch();
-  return useSWR('ai-credits', async () => {
-    return (await (await fetch('/ai-credits')).json())?.items || [];
-  });
+  return useSWR(
+    'ai-credits',
+    async () => {
+      return (await (await fetch('/ai-credits')).json())?.items || [];
+    },
+    // Đọc lại số dư (từ DB) mỗi 15 phút khi trang đang mở.
+    { refreshInterval: AUTO_REFRESH_MS, revalidateOnFocus: false }
+  );
 };
 
 const CreditForm: FC<{ data?: any; onSaved: () => void }> = ({
@@ -313,6 +320,30 @@ export const AiCreditsComponent: FC = () => {
   const { data, isLoading, mutate } = useCredits();
   const modal = useModals();
   const t = useT();
+  const fetch = useFetch();
+
+  // Cứ 15 phút (khi trang mở): tự gọi API lấy số dư cho các mục hỗ trợ auto
+  // (HeyGen) rồi đọc lại. Các nhà cung cấp nhập tay không có API nên bỏ qua.
+  const dataRef = useRef<any[]>([]);
+  dataRef.current = data || [];
+  useEffect(() => {
+    const tick = async () => {
+      const autoItems = (dataRef.current || []).filter(
+        (i: any) => i.supportsAuto
+      );
+      if (!autoItems.length) return;
+      await Promise.all(
+        autoItems.map((i: any) =>
+          fetch(`/ai-credits/${i.id}/refresh`, { method: 'POST' }).catch(
+            () => {}
+          )
+        )
+      );
+      mutate();
+    };
+    const id = setInterval(tick, AUTO_REFRESH_MS);
+    return () => clearInterval(id);
+  }, [fetch, mutate]);
 
   const add = useCallback(() => {
     modal.openModal({
