@@ -1,6 +1,6 @@
 'use client';
 
-import { FC, useCallback, useMemo, useRef, useState } from 'react';
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
@@ -44,12 +44,16 @@ const fmtLocal = (iso: string | null) => {
   return `${d.toLocaleDateString('vi-VN')} ${d.toTimeString().slice(0, 5)}`;
 };
 
-export const BulkComponent: FC = () => {
+export const BulkComponent: FC<{
+  fileId?: string; // mở lại file cũ từ "Lịch sử file" (trang Agent)
+  onChanged?: () => void; // báo sidebar mutate danh sách file
+}> = ({ fileId: fileIdProp, onChanged }) => {
   const t = useT();
   const fetch = useFetch();
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<BulkRow[]>([]);
+  const [fileId, setFileId] = useState<string | null>(fileIdProp || null);
   const [fileName, setFileName] = useState('');
   const [parsing, setParsing] = useState(false);
   const [polishing, setPolishing] = useState(false);
@@ -60,6 +64,41 @@ export const BulkComponent: FC = () => {
     () => channelsData?.integrations || [],
     [channelsData]
   );
+
+  // Mở lại file cũ: nạp rows + kết quả đã lưu
+  useEffect(() => {
+    if (!fileIdProp) return;
+    (async () => {
+      setParsing(true);
+      try {
+        const res = await (await fetch(`/bulk/files/${fileIdProp}`)).json();
+        setFileName(res?.name || '');
+        setRows(res?.rows || []);
+        const map: Record<number, { ok: boolean; error?: string }> = {};
+        for (const r of res?.results || []) map[r.row] = { ok: r.ok, error: r.error };
+        setResults(map);
+      } finally {
+        setParsing(false);
+      }
+    })();
+  }, [fileIdProp]);
+
+  // Tự lưu bản sửa tay (debounce 2s) để đóng modal không mất chỉnh sửa
+  const savedOnce = useRef(false);
+  useEffect(() => {
+    if (!fileId || !rows.length) return;
+    if (!savedOnce.current) {
+      savedOnce.current = true; // bỏ qua lần nạp đầu
+      return;
+    }
+    const timer = setTimeout(() => {
+      fetch(`/bulk/files/${fileId}/rows`, {
+        method: 'POST',
+        body: JSON.stringify({ rows }),
+      }).catch(() => {});
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [rows, fileId, fetch]);
 
   const onFile = useCallback(
     async (f: File | null) => {
@@ -75,12 +114,15 @@ export const BulkComponent: FC = () => {
           await fetch('/bulk/parse', { method: 'POST', body: form })
         ).json();
         setRows(res?.rows || []);
+        setFileId(res?.fileId || null);
+        savedOnce.current = false;
+        onChanged?.();
       } finally {
         setParsing(false);
         if (fileRef.current) fileRef.current.value = '';
       }
     },
-    [fetch]
+    [fetch, onChanged]
   );
 
   const updateRow = useCallback(
@@ -142,7 +184,7 @@ export const BulkComponent: FC = () => {
       const res = await (
         await fetch('/bulk/commit', {
           method: 'POST',
-          body: JSON.stringify({ rows: validRows }),
+          body: JSON.stringify({ rows: validRows, fileId }),
         })
       ).json();
       const map: Record<number, { ok: boolean; error?: string }> = {
@@ -152,10 +194,11 @@ export const BulkComponent: FC = () => {
         map[r.row] = { ok: r.ok, error: r.error };
       }
       setResults(map);
+      onChanged?.();
     } finally {
       setCommitting(false);
     }
-  }, [validRows, results, fetch]);
+  }, [validRows, results, fetch, fileId, onChanged]);
 
   const doneCount = Object.values(results).filter((r) => r.ok).length;
 

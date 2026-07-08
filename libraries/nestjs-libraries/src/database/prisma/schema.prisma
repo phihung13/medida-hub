@@ -404,6 +404,22 @@ model ExternalPost {
   @@index([deletedAt])
 }
 
+// GĐ3b — file lịch đăng đã nhập (mục "Lịch sử file" trong trang Agent):
+// giữ nguyên rows (kèm sửa tay) + kết quả commit từng dòng để mở lại xem/duyệt.
+model BulkFile {
+  id             String    @id @default(cuid())
+  organizationId String
+  name           String
+  rows           String    @default("[]") // BulkRow[] JSON
+  results        String    @default("[]") // [{row, ok, error?}] JSON
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  @@index([organizationId])
+  @@index([deletedAt])
+}
+
 // "Lò Bài Thắng": bài viral giáo dục sưu tầm (nhập tay hoặc quét tự động) để
 // AI mổ công thức + nhân bản. Thước đo chính: lượt share (shares).
 model ViralPost {

@@ -1,6 +1,8 @@
 import {
   Body,
   Controller,
+  Get,
+  Param,
   Post,
   UploadedFile,
   UseInterceptors,
@@ -41,8 +43,47 @@ export class BulkController {
   @Post('/commit')
   async commit(
     @GetOrgFromRequest() org: Organization,
+    @Body() body: { rows: BulkRow[]; fileId?: string }
+  ) {
+    return this._bulkImportService.commit(
+      org.id,
+      body.rows || [],
+      body.fileId || undefined
+    );
+  }
+
+  // --- Lịch sử file (hiện ở sidebar trang Agent) ---
+
+  @Get('/files')
+  async files(@GetOrgFromRequest() org: Organization) {
+    return this._bulkImportService.listFiles(org.id);
+  }
+
+  @Get('/files/:id')
+  async file(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string
+  ) {
+    return (await this._bulkImportService.getFile(org.id, id)) || {};
+  }
+
+  // Lưu bản sửa tay của bảng duyệt (không commit) — mở lại vẫn giữ chỉnh sửa.
+  @Post('/files/:id/rows')
+  async saveRows(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string,
     @Body() body: { rows: BulkRow[] }
   ) {
-    return this._bulkImportService.commit(org.id, body.rows || []);
+    await this._bulkImportService.saveRows(org.id, id, body.rows || []);
+    return { ok: true };
+  }
+
+  @Post('/files/:id/delete')
+  async deleteFile(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string
+  ) {
+    await this._bulkImportService.deleteFile(org.id, id);
+    return { ok: true };
   }
 }

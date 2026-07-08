@@ -11,6 +11,7 @@ import {
   getAnthropicKey,
   getAnthropicModel,
 } from '@gitroom/nestjs-libraries/openai/anthropic.key';
+import { PrismaRepository } from '@gitroom/nestjs-libraries/database/prisma/prisma.service';
 import { Readable } from 'stream';
 
 dayjs.extend(utc);
@@ -65,8 +66,93 @@ export class BulkImportService {
   constructor(
     private _integrationService: IntegrationService,
     private _postsService: PostsService,
-    private _mediaService: MediaService
+    private _mediaService: MediaService,
+    private _bulkFile: PrismaRepository<'bulkFile'>
   ) {}
+
+  // ---- Lịch sử file (trang Agent) -------------------------------------------
+
+  async listFiles(orgId: string) {
+    const files = await this._bulkFile.model.bulkFile.findMany({
+      where: { organizationId: orgId, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      select: {
+        id: true,
+        name: true,
+        rows: true,
+        results: true,
+        createdAt: true,
+      },
+    });
+    return {
+      files: files.map((f) => {
+        let total = 0;
+        let done = 0;
+        try {
+          total = JSON.parse(f.rows).length;
+        } catch {
+          /* rows hỏng — coi như 0 */
+        }
+        try {
+          done = JSON.parse(f.results).filter((r: any) => r.ok).length;
+        } catch {
+          /* chưa commit */
+        }
+        return {
+          id: f.id,
+          name: f.name,
+          createdAt: f.createdAt,
+          total,
+          done,
+        };
+      }),
+    };
+  }
+
+  async getFile(orgId: string, id: string) {
+    const f = await this._bulkFile.model.bulkFile.findFirst({
+      where: { id, organizationId: orgId, deletedAt: null },
+    });
+    if (!f) return null;
+    const integrations = (
+      await this._integrationService.getIntegrationsList(orgId)
+    ).filter((i: any) => !i.disabled && i.type === 'social');
+    let rows: BulkRow[] = [];
+    let results: any[] = [];
+    try {
+      rows = JSON.parse(f.rows);
+    } catch {
+      /* giữ rỗng */
+    }
+    try {
+      results = JSON.parse(f.results);
+    } catch {
+      /* giữ rỗng */
+    }
+    return {
+      id: f.id,
+      name: f.name,
+      createdAt: f.createdAt,
+      rows,
+      results,
+      channels: this.channelList(integrations),
+    };
+  }
+
+  saveRows(orgId: string, id: string, rows: BulkRow[]) {
+    return this._bulkFile.model.bulkFile.updateMany({
+      where: { id, organizationId: orgId },
+      data: { rows: JSON.stringify(rows || []) },
+    });
+  }
+
+  deleteFile(orgId: string, id: string) {
+    return this._bulkFile.model.bulkFile.updateMany({
+      where: { id, organizationId: orgId },
+      data: { deletedAt: new Date() },
+    });
+  }
 
   // ---- 1. PARSE -------------------------------------------------------------
 
@@ -149,14 +235,18 @@ export class BulkImportService {
     orgId: string,
     buffer: Buffer,
     filename: string
-  ): Promise<{ rows: BulkRow[]; channels: any[] }> {
+  ): Promise<{ fileId: string | null; rows: BulkRow[]; channels: any[] }> {
     const integrations = (
       await this._integrationService.getIntegrationsList(orgId)
     ).filter((i: any) => !i.disabled && i.type === 'social');
 
     const grid = await this.extractGrid(buffer, filename);
     if (grid.length < 2) {
-      return { rows: [], channels: this.channelList(integrations) };
+      return {
+        fileId: null,
+        rows: [],
+        channels: this.channelList(integrations),
+      };
     }
 
     // Dòng đầu = header; map cột theo alias
@@ -227,7 +317,16 @@ export class BulkImportService {
         errors,
       });
     }
-    return { rows, channels: this.channelList(integrations) };
+    // Lưu vào lịch sử file (mở lại được từ trang Agent)
+    const saved = await this._bulkFile.model.bulkFile.create({
+      data: {
+        organizationId: orgId,
+        name: filename,
+        rows: JSON.stringify(rows),
+      },
+      select: { id: true },
+    });
+    return { fileId: saved.id, rows, channels: this.channelList(integrations) };
   }
 
   private channelList(integrations: any[]) {
@@ -356,7 +455,8 @@ export class BulkImportService {
 
   async commit(
     orgId: string,
-    rows: BulkRow[]
+    rows: BulkRow[],
+    fileId?: string
   ): Promise<{ results: { row: number; ok: boolean; error?: string }[] }> {
     const results: { row: number; ok: boolean; error?: string }[] = [];
     for (const row of rows) {
@@ -414,6 +514,44 @@ export class BulkImportService {
           ok: false,
           error: String(e?.message || e).slice(0, 300),
         });
+      }
+    }
+    // Ghi lại vào lịch sử file: rows (bản đã sửa tay) + kết quả GỘP với các
+    // lần commit trước (mỗi lần chỉ gửi dòng chưa lên lịch).
+    if (fileId) {
+      try {
+        const existing = await this._bulkFile.model.bulkFile.findFirst({
+          where: { id: fileId, organizationId: orgId },
+          select: { results: true, rows: true },
+        });
+        if (existing) {
+          let prev: any[] = [];
+          let prevRows: BulkRow[] = [];
+          try {
+            prev = JSON.parse(existing.results);
+          } catch {
+            /* chưa có */
+          }
+          try {
+            prevRows = JSON.parse(existing.rows);
+          } catch {
+            /* chưa có */
+          }
+          const byRow = new Map(prev.map((r: any) => [r.row, r]));
+          for (const r of results) byRow.set(r.row, r);
+          const mergedRows = prevRows.map(
+            (pr) => rows.find((r) => r.row === pr.row) || pr
+          );
+          await this._bulkFile.model.bulkFile.updateMany({
+            where: { id: fileId, organizationId: orgId },
+            data: {
+              results: JSON.stringify([...byRow.values()]),
+              rows: JSON.stringify(mergedRows.length ? mergedRows : rows),
+            },
+          });
+        }
+      } catch {
+        /* lưu lịch sử lỗi — không chặn kết quả commit */
       }
     }
     return { results };

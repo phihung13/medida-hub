@@ -7,7 +7,6 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { MenuItem } from '@gitroom/frontend/components/new-layout/menu-item';
 import { useModals } from '@gitroom/frontend/components/layout/new-modal';
 import { AgentMediaModal } from '@gitroom/frontend/components/layout/agent.media.modal';
-import { BulkComponent } from '@gitroom/frontend/components/bulk/bulk.component';
 
 interface MenuItemInterface {
   name: string;
@@ -30,18 +29,6 @@ export const useMenuItem = () => {
       closeOnClickOutside: true,
       closeOnEscape: true,
       children: <AgentMediaModal />,
-    });
-  }, [openModal, t]);
-
-  // Nhập Excel mở dạng MODAL (giống nút chèn phương tiện trang Agents) —
-  // không rời trang đang làm việc; trang /bulk vẫn tồn tại cho ai gõ URL thẳng.
-  const handleBulkImportClick = useCallback(() => {
-    openModal({
-      title: t('bulk_title', 'Nhập lịch đăng từ Excel'),
-      closeOnClickOutside: false, // tránh lỡ tay đóng mất bảng đang duyệt dở
-      closeOnEscape: true,
-      size: '90%',
-      children: <BulkComponent />,
     });
   }, [openModal, t]);
 
@@ -154,28 +141,6 @@ export const useMenuItem = () => {
         </svg>
       ),
       path: '/analytics',
-    },
-    {
-      name: t('bulk_menu', 'Nhập Excel'),
-      icon: (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="20"
-          height="20"
-          viewBox="0 0 20 20"
-          fill="none"
-        >
-          <path
-            d="M10 3v9m0 0 3-3m-3 3-3-3M3.5 13.5v1.7c0 .63 0 .945.123 1.185.108.212.28.384.492.492.24.123.555.123 1.185.123h9.4c.63 0 .945 0 1.185-.123.212-.108.384-.28.492-.492.123-.24.123-.555.123-1.185v-1.7"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      ),
-      path: '#',
-      onClick: handleBulkImportClick,
     },
     {
       name: t('media', 'Media'),

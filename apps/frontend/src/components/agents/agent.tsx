@@ -24,6 +24,8 @@ import { useParams, usePathname, useRouter } from 'next/navigation';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { deleteDialog } from '@gitroom/react/helpers/delete.dialog';
 import { TrashIcon } from '@gitroom/frontend/components/ui/icons';
+import { useModals } from '@gitroom/frontend/components/layout/new-modal';
+import { BulkComponent } from '@gitroom/frontend/components/bulk/bulk.component';
 
 export const MediaPortal: FC<{
   media: { path: string; id: string }[];
@@ -304,7 +306,118 @@ const Threads: FC = () => {
             </div>
           ))}
         </div>
+        <BulkFilesSection />
       </div>
+    </div>
+  );
+};
+
+// ===== Lịch sử file Excel (GĐ3) — nằm dưới lịch sử chat của trang Agent =====
+const BulkFilesSection: FC = () => {
+  const fetch = useFetch();
+  const t = useT();
+  const modal = useModals();
+
+  const loadFiles = useCallback(
+    async () => (await fetch('/bulk/files')).json(),
+    []
+  );
+  const { data, mutate } = useSWR('bulk-files', loadFiles, {
+    revalidateOnFocus: false,
+  });
+  const files = data?.files || [];
+
+  const openFile = useCallback(
+    (fileId?: string, name?: string) => {
+      modal.openModal({
+        title:
+          name ||
+          t('bulk_title', 'Nhập lịch đăng từ Excel'),
+        closeOnClickOutside: false, // tránh lỡ tay đóng mất bảng đang duyệt dở
+        closeOnEscape: true,
+        size: '90%',
+        children: (
+          <BulkComponent fileId={fileId} onChanged={() => mutate()} />
+        ),
+      });
+    },
+    [modal, mutate, t]
+  );
+
+  const removeFile = useCallback(
+    (fileId: string) => async (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (
+        !(await deleteDialog(
+          t('bulk_delete_file_confirm', 'Xóa file này khỏi lịch sử? (Bài đã lên lịch KHÔNG bị ảnh hưởng)'),
+          t('yes_delete', 'Delete')
+        ))
+      ) {
+        return;
+      }
+      await fetch(`/bulk/files/${fileId}/delete`, { method: 'POST' });
+      mutate();
+    },
+    [fetch, mutate, t]
+  );
+
+  return (
+    <div className="mt-[18px] flex flex-col gap-[6px]">
+      <div className="flex items-center gap-[6px] px-[10px]">
+        <div className="text-[11px] font-[800] tracking-[0.08em] uppercase text-newTableText/50 flex-1">
+          {t('bulk_files_title', 'Lịch sử file')}
+        </div>
+        <button
+          onClick={() => openFile()}
+          title={t('bulk_import_new', 'Nhập file Excel/CSV mới')}
+          className="text-[#1e6fd9] hover:bg-[#1e6fd9]/10 rounded-[6px] px-[6px] py-[2px] text-[16px] leading-none font-[700]"
+        >
+          +
+        </button>
+      </div>
+      {!files.length ? (
+        <div className="px-[10px] text-[11.5px] text-newTableText/40">
+          {t('bulk_files_empty', 'Chưa nhập file nào — bấm + để nhập Excel.')}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-[1px]">
+          {files.map((f: any) => (
+            <div
+              key={f.id}
+              onClick={() => openFile(f.id, f.name)}
+              className="group/file flex items-center gap-[6px] hover:bg-newBgColor px-[10px] py-[6px] rounded-[10px] cursor-pointer"
+            >
+              <span className="shrink-0 text-[13px]">📄</span>
+              <div className="flex-1 min-w-0">
+                <div className="overflow-ellipsis overflow-hidden whitespace-nowrap text-[12.5px]">
+                  {f.name}
+                </div>
+                <div className="text-[10.5px] text-newTableText/45 tabular-nums">
+                  {new Date(f.createdAt).toLocaleDateString('vi-VN')} ·{' '}
+                  <span
+                    className={
+                      f.done >= f.total && f.total > 0
+                        ? 'text-[#32d583]'
+                        : ''
+                    }
+                  >
+                    {f.done}/{f.total}{' '}
+                    {t('bulk_files_scheduled', 'đã lên lịch')}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={removeFile(f.id)}
+                title={t('bulk_delete_file', 'Xóa khỏi lịch sử')}
+                className="shrink-0 opacity-0 group-hover/file:opacity-100 transition-opacity text-textItemBlur hover:text-red-500 p-[2px]"
+              >
+                <TrashIcon />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
