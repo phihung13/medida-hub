@@ -624,6 +624,73 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
     });
   }
 
+  // Liệt kê video của kênh cho lớp phủ Calendar: ĐÃ ĐĂNG (public/unlisted) +
+  // ĐANG HẸN (private kèm publishAt tương lai). Khác Instagram, YouTube cho
+  // đọc video hẹn giờ. search.forMine trả cả video private của chính chủ.
+  async channelVideos(accessToken: string) {
+    const { client, youtube } = clientAndYoutube();
+    client.setCredentials({ access_token: accessToken });
+    const yt = youtube(client);
+
+    const search = await yt.search.list({
+      part: ['id'],
+      forMine: true,
+      type: ['video'],
+      order: 'date',
+      maxResults: 50,
+    });
+    const ids = (search.data.items || [])
+      .map((i) => i.id?.videoId)
+      .filter(Boolean) as string[];
+    if (!ids.length) return [];
+
+    const { data } = await yt.videos.list({
+      part: ['snippet', 'status', 'statistics'],
+      id: ids,
+    });
+
+    const out: {
+      externalId: string;
+      status: 'PUBLISHED' | 'SCHEDULED';
+      content: string;
+      mediaUrls: { type: string; url: string }[];
+      permalink: string | null;
+      publishDate: Date;
+      insights: Record<string, number | null> | null;
+    }[] = [];
+
+    for (const v of data.items || []) {
+      const privacy = v.status?.privacyStatus;
+      const publishAt = v.status?.publishAt;
+      const isScheduled = privacy === 'private' && !!publishAt;
+      // Bỏ qua video private KHÔNG có publishAt (bản nháp, chưa hẹn).
+      if (privacy === 'private' && !publishAt) continue;
+
+      const thumb =
+        v.snippet?.thumbnails?.medium?.url ||
+        v.snippet?.thumbnails?.default?.url ||
+        '';
+      const title = v.snippet?.title || '';
+      const desc = v.snippet?.description || '';
+      out.push({
+        externalId: v.id!,
+        status: isScheduled ? 'SCHEDULED' : 'PUBLISHED',
+        content: (desc ? `${title}\n${desc}` : title).slice(0, 5000),
+        mediaUrls: thumb ? [{ type: 'video', url: thumb }] : [],
+        permalink: `https://www.youtube.com/watch?v=${v.id}`,
+        publishDate: new Date(
+          isScheduled ? publishAt! : v.snippet?.publishedAt || Date.now()
+        ),
+        insights: {
+          views: Number(v.statistics?.viewCount) || null,
+          likes: Number(v.statistics?.likeCount) || null,
+          comments: Number(v.statistics?.commentCount) || null,
+        },
+      });
+    }
+    return out;
+  }
+
   async postAnalytics(
     integrationId: string,
     accessToken: string,

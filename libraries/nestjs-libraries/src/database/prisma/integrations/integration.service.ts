@@ -731,6 +731,20 @@ export class IntegrationService {
     }
   }
 
+  // Cho ContentSync: liệt kê video YouTube (đã đăng + hẹn) để phủ lên Calendar.
+  // Tự refresh Google token (~1h) trước khi gọi provider.
+  async getYoutubeVideosForSync(integration: any) {
+    if (dayjs(integration?.tokenExpiration).isBefore(dayjs())) {
+      const data = await this._refreshIntegrationService.refresh(integration);
+      if (!data) return [];
+      const { accessToken } = data;
+      if (!accessToken) return [];
+      integration.token = accessToken;
+    }
+    const provider = this._integrationManager.getSocialIntegration('youtube');
+    return (provider as any).channelVideos(integration.token);
+  }
+
   // AI phân tích "bài chiến thắng" của kênh + gợi ý content. Cache 1h.
   // Facebook: theo tương tác bài viết; YouTube: theo ngôn ngữ video
   // (watch time / retention / sub conversion).

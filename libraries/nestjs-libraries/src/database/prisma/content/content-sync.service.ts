@@ -171,6 +171,34 @@ export class ContentSyncService {
     return {};
   }
 
+  private async syncYoutube(integration: {
+    id: string;
+    organizationId: string;
+  }) {
+    // YouTube CHO đọc video hẹn giờ (private + publishAt) — khác Instagram.
+    let videos: any[] = [];
+    try {
+      videos = await this._integrationService.getYoutubeVideosForSync(
+        integration
+      );
+    } catch (e: any) {
+      return { error: String(e?.message || e).slice(0, 200) };
+    }
+    if (!videos.length) return {};
+    await this._externalPostRepository.upsertMany(
+      integration.organizationId,
+      integration.id,
+      'youtube',
+      videos
+    );
+    // Video hẹn đã đăng/hủy → không còn SCHEDULED trong danh sách → soft-delete.
+    await this._externalPostRepository.removeStaleScheduled(
+      integration.id,
+      videos.filter((v) => v.status === 'SCHEDULED').map((v) => v.externalId)
+    );
+    return {};
+  }
+
   async syncOrganization(orgId: string, force = false) {
     const integrations = await this._integrationService.getIntegrationsList(
       orgId
@@ -179,7 +207,7 @@ export class ContentSyncService {
       (i: any) =>
         !i.disabled &&
         i.type === 'social' &&
-        ['facebook', 'instagram'].includes(i.providerIdentifier)
+        ['facebook', 'instagram', 'youtube'].includes(i.providerIdentifier)
     );
     const results: Record<string, any> = {};
     for (const integration of targets) {
@@ -192,6 +220,8 @@ export class ContentSyncService {
         results[integration.id] =
           integration.providerIdentifier === 'facebook'
             ? await this.syncFacebook(integration)
+            : integration.providerIdentifier === 'youtube'
+            ? await this.syncYoutube(integration)
             : await this.syncInstagram(integration);
         await ioRedis.set(cooldownKey, '1', 'EX', SYNC_COOLDOWN_SECONDS);
       } catch (e: any) {

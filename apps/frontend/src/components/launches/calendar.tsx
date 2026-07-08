@@ -929,12 +929,18 @@ export const CalendarColumn: FC<{
                   />
                 ) : (
                   <span className="text-[10px] shrink-0">
-                    {ep.platform === 'instagram' ? '📸' : '📘'}
+                    {ep.platform === 'instagram'
+                      ? '📸'
+                      : ep.platform === 'youtube'
+                      ? '▶️'
+                      : '📘'}
                   </span>
                 )}
                 <span className="text-[10px] font-[800] text-[#a78bfa] shrink-0">
                   {ep.state === 'SCHEDULED'
                     ? dayjs.utc(ep.publishDate).local().format('HH:mm')
+                    : ep.platform === 'youtube'
+                    ? 'YT'
                     : 'Meta'}
                 </span>
                 <span className="text-[10.5px] truncate text-textColor/80">
