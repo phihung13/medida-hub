@@ -10,7 +10,7 @@ import React, {
 } from 'react';
 import clsx from 'clsx';
 import useCookie from 'react-use-cookie';
-import useSWR from 'swr';
+import useSWR, { useSWRConfig } from 'swr';
 import { orderBy } from 'lodash';
 import { SVGLine } from '@gitroom/frontend/components/launches/launches.component';
 import ImageWithFallback from '@gitroom/react/helpers/image.with.fallback';
@@ -47,7 +47,7 @@ export const MediaPortal: FC<{
   const t = useT();
   if (!waitForClass) return null;
   return (
-    <div className="pl-[14px] pr-[24px] whitespace-nowrap editor rm-bg">
+    <div className="pl-[14px] pr-[24px] whitespace-nowrap editor rm-bg flex items-center gap-[8px]">
       <MultiMediaComponent
         allData={[{ content: value }]}
         text={value}
@@ -60,7 +60,96 @@ export const MediaPortal: FC<{
         onOpen={() => {}}
         onClose={() => {}}
       />
+      <ExcelAttach />
     </div>
+  );
+};
+
+// Nút "chèn file Excel" cạnh nút chèn phương tiện trong ô chat Agent. Chèn
+// file → parse (tạo BulkFile) → làm mới mục "Lịch sử file" ở sidebar (global
+// SWR mutate 'bulk-files') → mở bảng duyệt luôn.
+export const ExcelAttach: FC = () => {
+  const t = useT();
+  const fetch = useFetch();
+  const modal = useModals();
+  const { mutate } = useSWRConfig();
+  const fileRef = React.useRef<HTMLInputElement>(null);
+  const [loading, setLoading] = React.useState(false);
+
+  const onPick = useCallback(
+    async (f: File | null) => {
+      if (!f) return;
+      setLoading(true);
+      try {
+        const form = new FormData();
+        form.append('file', f);
+        const res = await (
+          await fetch('/bulk/parse', { method: 'POST', body: form })
+        ).json();
+        mutate('bulk-files'); // làm mới lịch sử file ở sidebar
+        modal.openModal({
+          title: f.name,
+          closeOnClickOutside: false,
+          closeOnEscape: true,
+          size: '90%',
+          children: (
+            <BulkComponent
+              fileId={res?.fileId}
+              onChanged={() => mutate('bulk-files')}
+            />
+          ),
+        });
+      } finally {
+        setLoading(false);
+        if (fileRef.current) fileRef.current.value = '';
+      }
+    },
+    [fetch, modal, mutate]
+  );
+
+  return (
+    <>
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".xlsx,.csv"
+        className="hidden"
+        onChange={(e) => onPick(e.target.files?.[0] || null)}
+      />
+      <button
+        type="button"
+        onClick={() => fileRef.current?.click()}
+        disabled={loading}
+        title={t('agent_attach_excel', 'Chèn file Excel lịch đăng')}
+        className="shrink-0 w-[34px] h-[34px] grid place-items-center rounded-[8px] text-textItemBlur hover:text-[#32d583] hover:bg-[#32d583]/10 transition-colors disabled:opacity-50"
+      >
+        {loading ? (
+          <span className="text-[13px]">…</span>
+        ) : (
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 20 20"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M11.5 2.5H6a1.5 1.5 0 0 0-1.5 1.5v12A1.5 1.5 0 0 0 6 17.5h8a1.5 1.5 0 0 0 1.5-1.5V6.5L11.5 2.5Z"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M11.5 2.5V6.5h4M8 11l4 4M12 11l-4 4"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        )}
+      </button>
+    </>
   );
 };
 
