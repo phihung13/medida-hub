@@ -1,6 +1,7 @@
 import { HttpException, Injectable } from '@nestjs/common';
 import { MediaRepository } from '@gitroom/nestjs-libraries/database/prisma/media/media.repository';
 import { OpenaiService } from '@gitroom/nestjs-libraries/openai/openai.service';
+import { GeminiService } from '@gitroom/nestjs-libraries/openai/gemini.service';
 import { generationError } from '@gitroom/nestjs-libraries/openai/generation.error';
 import {
   getImageProvider,
@@ -12,6 +13,7 @@ import { SaveMediaInformationDto } from '@gitroom/nestjs-libraries/dtos/media/sa
 import { GenerateAiCaptionDto } from '@gitroom/nestjs-libraries/dtos/media/generate.ai.caption.dto';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
+import { Readable } from 'stream';
 import sharp from 'sharp';
 import { VideoManager } from '@gitroom/nestjs-libraries/videos/video.manager';
 import { VideoDto } from '@gitroom/nestjs-libraries/dtos/videos/video.dto';
@@ -30,7 +32,8 @@ export class MediaService {
     private _mediaRepository: MediaRepository,
     private _openAi: OpenaiService,
     private _subscriptionService: SubscriptionService,
-    private _videoManager: VideoManager
+    private _videoManager: VideoManager,
+    private _gemini: GeminiService
   ) {}
 
   async deleteMedia(org: string, id: string) {
@@ -208,6 +211,144 @@ export class MediaService {
 
   saveFile(org: string, fileName: string, filePath: string, originalName?: string) {
     return this._mediaRepository.saveFile(org, fileName, filePath, originalName);
+  }
+
+  // Link Google Drive dạng chia sẻ → link tải trực tiếp. File phải để chế độ
+  // "Anyone with the link". Trả null nếu không nhận dạng được ID.
+  private driveDirectUrl(url: string): string | null {
+    const m =
+      url.match(/drive\.google\.com\/file\/d\/([\w-]+)/) ||
+      url.match(/drive\.google\.com\/open\?id=([\w-]+)/) ||
+      url.match(/[?&]id=([\w-]+)/);
+    if (!m) return null;
+    return `https://drive.usercontent.google.com/download?id=${m[1]}&export=download&confirm=t`;
+  }
+
+  // Tải file từ URL công khai (hỗ trợ riêng link Google Drive) rồi lưu vào thư
+  // viện media của tổ chức. Dùng cho ô "dán link Drive" ở màn soạn bài — video
+  // tải về trở thành media chính của bài đăng. Trả về media record đã lưu.
+  async downloadFromUrl(
+    orgId: string,
+    url: string
+  ): Promise<{ id: string; path: string; name: string }> {
+    const clean = (url || '').trim();
+    if (!/^https?:\/\//i.test(clean)) {
+      throw new HttpException('Link không hợp lệ (phải bắt đầu bằng http/https)', 400);
+    }
+    const target = clean.includes('drive.google.com')
+      ? this.driveDirectUrl(clean) || clean
+      : clean;
+
+    const res = await fetch(target, {
+      redirect: 'follow',
+      signal: AbortSignal.timeout(300000), // video lớn — cho 5 phút
+    });
+    if (!res.ok) {
+      throw new HttpException(`Tải media thất bại (HTTP ${res.status})`, 400);
+    }
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('text/html')) {
+      throw new HttpException(
+        'Link Drive trả về trang web thay vì file — kiểm tra file đã để "Anyone with the link" chưa',
+        400
+      );
+    }
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const { fromBuffer } = await import('file-type');
+    const detected = await fromBuffer(buffer);
+    if (!detected) {
+      throw new HttpException('Không nhận dạng được loại file', 400);
+    }
+    const uploaded = await this.storage.uploadFile({
+      buffer,
+      mimetype: detected.mime,
+      size: buffer.length,
+      path: '',
+      fieldname: '',
+      destination: '',
+      stream: new Readable(),
+      filename: '',
+      originalname: `drive.${detected.ext}`,
+      encoding: '',
+    } as any);
+    const saved = await this.saveFile(
+      orgId,
+      uploaded.originalname,
+      uploaded.path
+    );
+    return { id: saved.id, path: saved.path, name: saved.name };
+  }
+
+  // AI viết tiêu đề + mô tả cho video YouTube. Hai engine:
+  //   • chatgpt: nhận các KHUNG HÌNH (base64) trình duyệt cắt sẵn → OpenAI vision
+  //   • gemini : nhận URL video → Gemini XEM VIDEO trực tiếp (File API)
+  async generateYoutubeContent(
+    org: Organization,
+    body: {
+      engine?: 'chatgpt' | 'gemini';
+      context?: string;
+      frames?: string[];
+      videoPath?: string;
+    }
+  ): Promise<{ title: string; description: string }> {
+    const engine = body.engine === 'gemini' ? 'gemini' : 'chatgpt';
+
+    if (engine === 'gemini') {
+      if (!body.videoPath) {
+        throw new HttpException('Thiếu video để Gemini xem.', 400);
+      }
+      const out = await this._gemini.videoToYoutubeContent(
+        body.videoPath,
+        body.context
+      );
+      if (!out) throw new HttpException('Gemini không trả về nội dung.', 400);
+      return out;
+    }
+
+    // chatgpt: các khung hình base64 (dạng data URL hoặc base64 thuần).
+    const frames = (body.frames || []).filter(Boolean).slice(0, 8);
+    if (!frames.length) {
+      throw new HttpException('Thiếu khung hình video để AI đọc.', 400);
+    }
+    const images = frames.map((f) => {
+      const m = f.match(/^data:(.+?);base64,(.*)$/);
+      return m
+        ? { mediaType: m[1], base64: m[2] }
+        : { mediaType: 'image/jpeg', base64: f };
+    });
+    const out = await this._openAi.generateYoutubeContentFromImages(
+      images,
+      body.context
+    );
+    if (!out) throw new HttpException('AI không trả về nội dung.', 400);
+    return out;
+  }
+
+  // AI tạo thumbnail YouTube (ảnh ngang 16:9) → lưu vào thư viện, trả {id,path}.
+  // Engine: 'gemini' (nano banana) hoặc 'openai' (gpt-image).
+  async generateYoutubeThumbnail(
+    org: Organization,
+    body: { engine?: 'gemini' | 'openai'; prompt?: string }
+  ): Promise<{ id: string; path: string }> {
+    const prompt = (body.prompt || '').trim();
+    if (!prompt) throw new HttpException('Thiếu mô tả thumbnail.', 400);
+    const engine = body.engine === 'gemini' ? 'gemini' : 'openai';
+    const fullPrompt =
+      'YouTube thumbnail, tỉ lệ 16:9 ngang, bố cục nổi bật, tương phản cao, ' +
+      'chủ thể rõ ràng, bắt mắt, chữ ít và to nếu có. ' +
+      prompt;
+
+    const b64 =
+      engine === 'gemini'
+        ? await this._gemini.generateImage(fullPrompt)
+        : await this._openAi.generateLandscapeImage(fullPrompt);
+    if (!b64) throw new HttpException('Không tạo được ảnh thumbnail.', 400);
+
+    const file = await this.storage.uploadSimple(
+      `data:image/png;base64,${b64}`
+    );
+    const saved = await this.saveFile(org.id, file.split('/').pop()!, file);
+    return { id: saved.id, path: saved.path };
   }
 
   getMedia(org: string, page: number, search?: string) {

@@ -23,6 +23,10 @@ import {
   ImageProvider,
 } from '@gitroom/nestjs-libraries/openai/image.key';
 import {
+  getGeminiStatus,
+  setGeminiKey,
+} from '@gitroom/nestjs-libraries/openai/gemini.key';
+import {
   CopilotRuntime,
   AnthropicAdapter,
   copilotRuntimeNodeHttpEndpoint,
@@ -201,6 +205,28 @@ export class CopilotController {
     }
     setImageGenConfig(provider, (body?.key || '').trim());
     return { ok: true, ...getImageGenStatus() };
+  }
+
+  // Key Google AI Studio (Gemini) — xem video viết tiêu đề/mô tả + thumbnail
+  // nano banana. Biến toàn cục instance → chỉ super admin.
+  @Get('/gemini-key')
+  geminiKeyStatus(@GetUserFromRequest() user: User) {
+    this.assertSuperAdmin(user);
+    return getGeminiStatus();
+  }
+
+  @Post('/gemini-key')
+  saveGeminiKey(
+    @GetUserFromRequest() user: User,
+    @Body() body: { key?: string; clear?: boolean }
+  ) {
+    this.assertSuperAdmin(user);
+    if (body?.clear) {
+      setGeminiKey('');
+      return { ok: true, cleared: true };
+    }
+    setGeminiKey((body?.key || '').trim());
+    return { ok: true, ...getGeminiStatus() };
   }
 
   // CopilotKit bọc TOÀN BỘ layout và hỏi "availableAgents" ngay khi mount.

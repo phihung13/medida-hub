@@ -70,6 +70,13 @@ export class YoutubeSettingsDto {
   @IsDefined()
   title: string;
 
+  // Mô tả video. Nếu để trống, provider dùng nội dung bài viết (message) làm mô
+  // tả. Có ô riêng để nút AI ghi thẳng mô tả dài cho YouTube.
+  @IsString()
+  @IsOptional()
+  @MaxLength(5000)
+  description?: string;
+
   @IsIn(['public', 'private', 'unlisted'])
   @IsDefined()
   type: string;
@@ -77,6 +84,17 @@ export class YoutubeSettingsDto {
   @IsIn(['yes', 'no'])
   @IsOptional()
   selfDeclaredMadeForKids: 'no' | 'yes';
+
+  // Danh mục video YouTube (categoryId, ví dụ '22' = People & Blogs). Tuỳ chọn —
+  // nếu bỏ trống YouTube dùng danh mục mặc định của kênh.
+  @IsString()
+  @IsOptional()
+  categoryId?: string;
+
+  // Playlist để thêm video vào sau khi đăng. Tuỳ chọn.
+  @IsString()
+  @IsOptional()
+  playlistId?: string;
 
   @IsOptional()
   @ValidateNested()

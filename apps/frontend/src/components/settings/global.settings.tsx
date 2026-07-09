@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic';
 import EmailNotificationsComponent from '@gitroom/frontend/components/settings/email-notifications.component';
 import ShortlinkPreferenceComponent from '@gitroom/frontend/components/settings/shortlink-preference.component';
 import { AnthropicComponent } from '@gitroom/frontend/components/settings/anthropic.component';
+import { GeminiComponent } from '@gitroom/frontend/components/settings/gemini.component';
 import { ImageGenComponent } from '@gitroom/frontend/components/settings/image.gen.component';
 import { SocialKeysComponent } from '@gitroom/frontend/components/settings/social-keys.component';
 
@@ -22,6 +23,7 @@ export const GlobalSettings = () => {
     <div className="flex flex-col">
       <h3 className="text-[20px]">{t('global_settings', 'Global Settings')}</h3>
       <AnthropicComponent />
+      <GeminiComponent />
       <ImageGenComponent />
       <SocialKeysComponent />
       <MetricComponent />

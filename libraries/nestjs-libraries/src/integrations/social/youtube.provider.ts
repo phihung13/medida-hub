@@ -12,6 +12,7 @@ import axios from 'axios';
 import { YoutubeSettingsDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/youtube.settings.dto';
 import {
   BadBody,
+  RefreshToken,
   SocialAbstract,
   ValidityMedia,
 } from '@gitroom/nestjs-libraries/integrations/social.abstract';
@@ -325,6 +326,71 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
     };
   }
 
+  // Ném RefreshToken khi token Google hết hạn để endpoint /integrations/function
+  // tự refresh + gọi lại (Google token sống ~1h). Provider dùng googleapis trực
+  // tiếp nên không tự ném như luồng fetch — phải nhận diện thủ công.
+  private throwIfAuth(err: any) {
+    const msg = String(err?.message || err || '');
+    if (
+      msg.includes('invalid_grant') ||
+      msg.includes('Invalid Credentials') ||
+      msg.includes('UNAUTHENTICATED') ||
+      msg.includes('Unauthorized') ||
+      err?.code === 401
+    ) {
+      throw new RefreshToken('youtube', msg, '', msg);
+    }
+  }
+
+  // Danh mục video cho ô chọn Category ở màn soạn bài. Chỉ trả danh mục
+  // assignable=true (mới gán được khi upload). Theo vùng YOUTUBE_REGION (mặc
+  // định 'US'); danh sách gần như đồng nhất giữa các vùng.
+  async categories(accessToken: string) {
+    const { client, youtube } = clientAndYoutube();
+    client.setCredentials({ access_token: accessToken });
+    try {
+      const { data } = await youtube(client).videoCategories.list({
+        part: ['snippet'],
+        regionCode: process.env.YOUTUBE_REGION || 'US',
+      });
+      return (data.items || [])
+        .filter((c) => c.snippet?.assignable)
+        .map((c) => ({ id: c.id!, name: c.snippet?.title || c.id! }));
+    } catch (err) {
+      this.throwIfAuth(err);
+      return [];
+    }
+  }
+
+  // Playlist của kênh cho ô chọn Playlist ở màn soạn bài.
+  async playlists(accessToken: string) {
+    const { client, youtube } = clientAndYoutube();
+    client.setCredentials({ access_token: accessToken });
+    try {
+      const yt = youtube(client);
+      const out: { id: string; name: string }[] = [];
+      let pageToken: string | undefined = undefined;
+      // Gom tối đa vài trang để không bỏ sót playlist (kênh nhiều playlist).
+      do {
+        const { data }: GaxiosResponse<youtube_v3.Schema$PlaylistListResponse> =
+          await yt.playlists.list({
+            part: ['snippet'],
+            mine: true,
+            maxResults: 50,
+            pageToken,
+          });
+        for (const p of data.items || []) {
+          out.push({ id: p.id!, name: p.snippet?.title || p.id! });
+        }
+        pageToken = data.nextPageToken || undefined;
+      } while (pageToken && out.length < 200);
+      return out;
+    } catch (err) {
+      this.throwIfAuth(err);
+      return [];
+    }
+  }
+
   async pages(accessToken: string) {
     const { client, youtube } = clientAndYoutube();
     client.setCredentials({ access_token: accessToken });
@@ -438,9 +504,12 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
           requestBody: {
             snippet: {
               title: settings.title,
-              description: firstPost?.message,
+              description: settings?.description || firstPost?.message,
               ...(settings?.tags?.length
                 ? { tags: settings.tags.map((p) => p.label) }
+                : {}),
+              ...(settings?.categoryId
+                ? { categoryId: settings.categoryId }
                 : {}),
             },
             status: {
@@ -471,6 +540,29 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
           },
         })
       );
+    }
+
+    // Thêm video vào playlist đã chọn (nếu có). Không chặn kết quả đăng — lỗi
+    // playlist chỉ log, video vẫn coi là đăng thành công.
+    if (settings?.playlistId && all?.data?.id) {
+      try {
+        await this.runInConcurrent(async () =>
+          youtubeClient.playlistItems.insert({
+            part: ['snippet'],
+            requestBody: {
+              snippet: {
+                playlistId: settings.playlistId,
+                resourceId: {
+                  kind: 'youtube#video',
+                  videoId: all.data.id!,
+                },
+              },
+            },
+          })
+        );
+      } catch (err) {
+        console.error('YouTube: thêm video vào playlist thất bại:', err);
+      }
     }
 
     return [

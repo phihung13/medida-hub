@@ -128,6 +128,17 @@ export class MediaController {
     return this._mediaService.saveMediaInformation(org.id, body);
   }
 
+  // Dán link (Google Drive / URL công khai) ở màn soạn bài → tải file về thư
+  // viện media, trả về media record để gắn làm media chính của bài (video
+  // YouTube). Phải khai báo TRƯỚC @Post('/:endpoint') catch-all bên dưới.
+  @Post('/upload-from-url')
+  uploadFromUrl(
+    @GetOrgFromRequest() org: Organization,
+    @Body('url') url: string
+  ) {
+    return this._mediaService.downloadFromUrl(org.id, url);
+  }
+
   // Nút "bút phép thuật" composer: AI đọc ảnh → caption bài + caption từng ảnh.
   // Phải khai báo TRƯỚC @Post('/:endpoint') catch-all bên dưới.
   @Post('/ai-caption')
@@ -136,6 +147,31 @@ export class MediaController {
     @Body() body: GenerateAiCaptionDto
   ) {
     return this._mediaService.generateAiCaptions(org, body);
+  }
+
+  // YouTube: AI xem video (khung hình qua ChatGPT / video native qua Gemini) →
+  // viết tiêu đề + mô tả.
+  @Post('/youtube-ai-content')
+  youtubeAiContent(
+    @GetOrgFromRequest() org: Organization,
+    @Body()
+    body: {
+      engine?: 'chatgpt' | 'gemini';
+      context?: string;
+      frames?: string[];
+      videoPath?: string;
+    }
+  ) {
+    return this._mediaService.generateYoutubeContent(org, body);
+  }
+
+  // YouTube: AI tạo thumbnail 16:9 (Gemini nano banana / OpenAI) → lưu media.
+  @Post('/youtube-thumbnail')
+  youtubeThumbnail(
+    @GetOrgFromRequest() org: Organization,
+    @Body() body: { engine?: 'gemini' | 'openai'; prompt?: string }
+  ) {
+    return this._mediaService.generateYoutubeThumbnail(org, body);
   }
 
   @Post('/upload-simple')

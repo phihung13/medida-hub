@@ -216,6 +216,60 @@ export class OpenaiService {
     return generate.b64_json;
   }
 
+  // Ảnh NGANG 16:9 cho thumbnail YouTube (OpenAI). Trả base64 (không prefix).
+  async generateLandscapeImage(prompt: string) {
+    const generate = (
+      await openai.images.generate({
+        prompt,
+        model: 'chatgpt-image-latest',
+        size: '1536x1024',
+      })
+    ).data[0];
+    return generate.b64_json;
+  }
+
+  // ChatGPT "xem" video qua các KHUNG HÌNH trích ở trình duyệt → viết tiêu đề +
+  // mô tả YouTube. OpenAI vision không nhận file mp4 trực tiếp nên nhận ảnh.
+  async generateYoutubeContentFromImages(
+    images: { base64: string; mediaType: string }[],
+    context?: string
+  ): Promise<{ title: string; description: string } | null> {
+    const content: any[] = images.map((i) => ({
+      type: 'image_url',
+      image_url: { url: `data:${i.mediaType};base64,${i.base64}` },
+    }));
+    content.push({
+      type: 'text',
+      text: [
+        `Đây là ${images.length} khung hình trích đều từ một video (theo thứ tự thời gian).`,
+        'Suy luận nội dung video rồi viết cho YouTube (tiếng Việt):',
+        '- "title": tiêu đề hấp dẫn, tối đa 100 ký tự.',
+        '- "description": mô tả chi tiết, có hook mở đầu, các ý chính, và vài hashtag ở cuối.',
+        context ? `Bối cảnh/gợi ý từ người dùng: ${context}` : '',
+        'CHỈ trả JSON: {"title":"...","description":"..."}',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    });
+
+    const res = await openai.chat.completions.create({
+      model: process.env.OPENAI_VISION_MODEL || 'gpt-4o',
+      messages: [
+        { role: 'system', content: VIET_ANH_SYSTEM },
+        { role: 'user', content },
+      ],
+      max_tokens: 1500,
+      response_format: { type: 'json_object' },
+    });
+    const text = res.choices?.[0]?.message?.content || '';
+    const parsed = parseClaudeJson<{ title: string; description: string }>(text);
+    if (!parsed) return null;
+    return {
+      title: String(parsed.title || '').slice(0, 100),
+      description: String(parsed.description || ''),
+    };
+  }
+
   // Từ mô tả → prompt sinh ảnh (dùng Claude).
   async generatePromptForPicture(prompt: string) {
     const system =

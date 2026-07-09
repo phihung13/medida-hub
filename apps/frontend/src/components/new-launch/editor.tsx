@@ -68,6 +68,7 @@ import {
 } from '@gitroom/frontend/components/ui/icons';
 import { DelayComponent } from '@gitroom/frontend/components/new-launch/delay.component';
 import { MagicCaption } from '@gitroom/frontend/components/new-launch/magic.caption';
+import { MediaFromUrl } from '@gitroom/frontend/components/new-launch/media.from.url';
 
 const MAX_UPLOAD_SIZE = 1024 * 1024 * 1024; // 1 GB
 
@@ -787,6 +788,7 @@ export const Editor: FC<{
                           props.onChange(html);
                         }}
                       />
+                      <MediaFromUrl onMedia={(media) => appendImages([media])} />
                       <SignatureBox editor={editorRef?.current?.editor} />
                       {editorType !== 'none' && (
                         <>

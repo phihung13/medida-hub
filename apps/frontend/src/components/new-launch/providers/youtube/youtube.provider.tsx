@@ -8,10 +8,19 @@ import {
 import { YoutubeSettingsDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/youtube.settings.dto';
 import { useSettings } from '@gitroom/frontend/components/launches/helpers/use.values';
 import { Input } from '@gitroom/react/form/input';
+import { Textarea } from '@gitroom/react/form/textarea';
 import { MediumTags } from '@gitroom/frontend/components/new-launch/providers/medium/medium.tags';
 import { MediaComponent } from '@gitroom/frontend/components/media/media.component';
 import { Select } from '@gitroom/react/form/select';
 import { YoutubePreview } from '@gitroom/frontend/components/new-launch/providers/youtube/youtube.preview';
+import {
+  YoutubeCategory,
+  YoutubePlaylist,
+} from '@gitroom/frontend/components/new-launch/providers/youtube/youtube.selects';
+import {
+  YoutubeAiContent,
+  YoutubeAiThumbnail,
+} from '@gitroom/frontend/components/new-launch/providers/youtube/youtube.ai';
 const type = [
   {
     label: 'Public',
@@ -42,6 +51,12 @@ const YoutubeSettings: FC = () => {
   return (
     <div className="flex flex-col">
       <Input label="Title" {...register('title')} maxLength={100} />
+      <YoutubeAiContent />
+      <Textarea
+        label="Description"
+        name="description"
+        placeholder="Mô tả video (để trống = dùng nội dung bài viết)"
+      />
       <Select
         label="Type"
         {...register('type', {
@@ -66,6 +81,8 @@ const YoutubeSettings: FC = () => {
           </option>
         ))}
       </Select>
+      <YoutubeCategory {...register('categoryId')} />
+      <YoutubePlaylist {...register('playlistId')} />
       <MediumTags label="Tags" {...register('tags')} />
       <div className="mt-[20px]">
         <MediaComponent
@@ -76,6 +93,7 @@ const YoutubeSettings: FC = () => {
           description="Thumbnail picture (optional)"
           {...register('thumbnail')}
         />
+        <YoutubeAiThumbnail />
       </div>
     </div>
   );
