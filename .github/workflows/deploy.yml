@@ -5,18 +5,19 @@ name: Deploy
 # qua CI: chạy sau khi workflow "Build" (pnpm install + build 3 app) kết thúc
 # XANH trên main, rồi gọi Deploy Webhook của resource trong Coolify.
 #
+# QUAN TRỌNG (sửa 2026-07-09): workflow này giờ theo dõi build THẬT trên VPS
+# tới khi finished/failed — trước đây gọi webhook xong là báo xanh ngay dù
+# Coolify build fail (4/5 lần deploy gần nhất fail mà GitHub vẫn xanh).
+#
 # Cần đặt secret trong GitHub (Settings → Secrets and variables → Actions):
-#   COOLIFY_WEBHOOK — URL "Deploy Webhook" của resource (Coolify → resource
-#                     media-hub → Webhooks → Deploy Webhook, dạng
-#                     https://<coolify>/api/v1/deploy?uuid=...)
-#   COOLIFY_TOKEN   — API token (Coolify → Keys & Tokens → API tokens,
-#                     quyền deploy). Webhook không cần token thì bỏ qua.
+#   COOLIFY_WEBHOOK — URL "Deploy Webhook" của resource, dạng
+#                     https://<coolify>/api/v1/deploy?uuid=...
+#                     KHÔNG kèm force=true — force bỏ toàn bộ cache khiến mỗi
+#                     deploy build lại từ đầu (~38 phút) và dễ chết giữa chừng.
+#   COOLIFY_TOKEN   — API token (Coolify → Keys & Tokens → API tokens). Cần để
+#                     xác thực webhook VÀ theo dõi trạng thái deployment.
 # CHƯA đặt secret → job tự bỏ qua (không báo đỏ) — repo dùng được ngay cả khi
 # chưa dựng Coolify.
-#
-# Cách đơn giản hơn (không cần file này): bật "Auto Deploy" ngay trong Coolify
-# (GitHub App) — deploy mỗi lần push, KHÔNG chờ CI. File này là bản nâng cấp
-# để commit lỗi build không bao giờ lên VPS.
 
 on:
   workflow_run:
@@ -30,9 +31,10 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     steps:
-      - name: Gọi Deploy Webhook của Coolify
+      - name: Gọi Deploy Webhook của Coolify và chờ kết quả THẬT
         env:
           WEBHOOK: ${{ secrets.COOLIFY_WEBHOOK }}
           TOKEN: ${{ secrets.COOLIFY_TOKEN }}
@@ -41,6 +43,32 @@ jobs:
             echo "Chưa đặt secret COOLIFY_WEBHOOK — bỏ qua bước deploy."
             exit 0
           fi
-          curl --fail -sS "$WEBHOOK" ${TOKEN:+-H "Authorization: Bearer $TOKEN"}
-          echo ""
-          echo "✅ Đã kích hoạt deploy trên Coolify (theo dõi log build trong Coolify UI)."
+          RESP=$(curl --fail -sS "$WEBHOOK" ${TOKEN:+-H "Authorization: Bearer $TOKEN"})
+          echo "Phản hồi webhook: $RESP"
+          echo "✅ Đã kích hoạt deploy trên Coolify."
+
+          # ---- Theo dõi build thật trên VPS (canary) -------------------------
+          DEP=$(echo "$RESP" | jq -r '.deployments[0].deployment_uuid // empty' 2>/dev/null || true)
+          if [ -z "$DEP" ] || [ -z "$TOKEN" ]; then
+            echo "⚠️ Không lấy được deployment_uuid (hoặc thiếu COOLIFY_TOKEN) — không theo dõi được kết quả build. Kiểm tra tay trong Coolify UI."
+            exit 0
+          fi
+          BASE=$(echo "$WEBHOOK" | sed -E 's#(https?://[^/]+).*#\1#')
+          echo "Theo dõi deployment $DEP trên $BASE (poll 30s, tối đa ~75 phút)..."
+          for i in $(seq 1 150); do
+            sleep 30
+            ST=$(curl -sS -m 20 "$BASE/api/v1/deployments/$DEP" -H "Authorization: Bearer $TOKEN" | jq -r '.status // "unknown"' 2>/dev/null || echo unknown)
+            echo "[$i] status=$ST"
+            case "$ST" in
+              finished)
+                echo "✅ Deploy THẬT đã hoàn tất trên VPS."
+                exit 0
+                ;;
+              failed|cancelled|cancelled-by-user)
+                echo "❌ Build trên VPS thất bại (status=$ST) — xem log trong Coolify UI → media-hub → Deployments."
+                exit 1
+                ;;
+            esac
+          done
+          echo "⏰ Quá ~75 phút chưa xong — coi như FAIL để không báo xanh giả."
+          exit 1

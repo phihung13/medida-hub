@@ -63,6 +63,19 @@ services:
       - media-hub-uploads:/uploads/
     ports:
       - '${PORT:-4007}:5000'
+    # Healthcheck THẬT: hỏi backend :3000 trong container (image không có curl —
+    # dùng node fetch có sẵn). start_period 5' vì backend boot chờ Temporal.
+    # Coolify sẽ hiện đúng healthy/unhealthy thay vì "running:unknown".
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
     # media-hub nằm trên 3 network (2 compose + 1 Coolify tự gắn theo uuid
     # resource). Traefik không có nhãn chỉ định sẽ BỐC HÚ HỌA 1 IP trong số đó
     # → lượt deploy đen đủi trỏ vào network mà proxy không với tới → Gateway
