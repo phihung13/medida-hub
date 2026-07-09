@@ -598,6 +598,89 @@ const ConfigModal: FC = () => {
   );
 };
 
+// ── Hồ sơ 8 chân dung khách hàng (persona động — AI tự làm giàu sau mỗi cào) ──
+const usePersonas = (active: boolean) => {
+  const fetch = useFetch();
+  return useSWR(active ? '/viral/personas' : null, async (u: string) => (await fetch(u)).json());
+};
+
+const PersonasModal: FC = () => {
+  const t = useT();
+  const { data } = usePersonas(true);
+  const items: any[] = data?.items || [];
+
+  // Tải hồ sơ ra file .txt đọc được (chia sẻ / in cho team).
+  const download = useCallback(() => {
+    const lines: string[] = ['HỒ SƠ 8 CHÂN DUNG KHÁCH HÀNG — TRƯỜNG VIỆT ANH', ''];
+    for (const p of items) {
+      let st: any = {};
+      try { st = JSON.parse(p.statics || '{}'); } catch { /* bỏ qua */ }
+      lines.push(`═══ ${p.code} — ${p.label} ═══`);
+      lines.push(`Cấp học / Khu vực: ${p.capHoc || '?'} · ${p.khuVuc || '?'}`);
+      lines.push(`Phân khúc: ${st.phan_khuc || '?'} | Độ tuổi: ${st.do_tuoi || '?'} | Học vấn: ${st.hoc_van || '?'}`);
+      lines.push(`Nghề nghiệp: ${st.nghe_nghiep || '?'} | Thu nhập: ${st.thu_nhap || '?'} | Kinh tế: ${st.kinh_te || '?'}`);
+      lines.push(`Mối quan tâm: ${p.moiQuanTam || ''}`);
+      lines.push(`Tâm lý: ${p.tamLy || ''}`);
+      lines.push(`Hành vi: ${p.hanhVi || ''}`);
+      lines.push(`Insight content: ${p.insights || ''}`);
+      lines.push(`(Điểm dữ liệu: ${p.dataPoints ?? 0}${p.updatedAt ? ` · cập nhật ${String(p.updatedAt).slice(0, 10)}` : ''})`);
+      lines.push('');
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'ho-so-khach-hang-viet-anh.txt';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }, [items]);
+
+  return (
+    <div className="flex flex-col gap-[12px]">
+      <div className="flex items-start gap-[8px] text-[12px] leading-[1.55] text-textItemBlur bg-newColColor border border-newBgLineColor rounded-[9px] px-[13px] py-[8px]">
+        <span className="shrink-0">🧬</span>
+        <span>{t('viral_personas_hint', 'The 8 parent personas AI uses to score & rewrite posts. The dynamic parts (interests, psychology, behaviour, insights) auto-enrich after each crawl from real signals (parent groups, news, winning posts).')}</span>
+      </div>
+      {!items.length ? (
+        <div className="text-[13px] text-textItemBlur p-[24px] text-center">{t('viral_loading', 'Loading…')}</div>
+      ) : (
+        <>
+          <div className="flex flex-col gap-[12px] max-h-[62vh] overflow-auto pr-[4px]">
+            {items.map((p) => {
+              let st: any = {};
+              try { st = JSON.parse(p.statics || '{}'); } catch { /* bỏ qua */ }
+              return (
+                <div key={p.id} className="bg-newColColor border border-newBgLineColor rounded-[11px] p-[13px] flex flex-col gap-[7px]">
+                  <div className="flex items-center gap-[8px] flex-wrap">
+                    <span className="text-[12px] font-[800] px-[9px] py-[3px] rounded-[7px] bg-btnPrimary/15 text-btnPrimary">{p.code}</span>
+                    <span className="text-[13.5px] font-[700] leading-[1.35]">{p.label}</span>
+                    <span className="ms-auto text-[10.5px] text-textItemBlur tabular-nums" title={t('viral_persona_datapoints', 'data points feeding this profile')}>📊 {p.dataPoints ?? 0}</span>
+                  </div>
+                  <div className="text-[11.5px] text-textItemBlur flex gap-[8px] flex-wrap">
+                    <span>🎓 {p.capHoc || '?'} · {p.khuVuc || '?'}</span>
+                    {st.do_tuoi && <span>· {st.do_tuoi}</span>}
+                    {st.thu_nhap && <span>· 💰 {st.thu_nhap}</span>}
+                  </div>
+                  {[
+                    ['💡', t('viral_persona_interest', 'Interests'), p.moiQuanTam],
+                    ['🧠', t('viral_persona_psych', 'Psychology'), p.tamLy],
+                    ['🏃', t('viral_persona_behaviour', 'Behaviour'), p.hanhVi],
+                    ['🎯', t('viral_persona_insight', 'Content insight'), p.insights],
+                  ].filter(([, , v]) => v).map(([ic, lbl, v]) => (
+                    <div key={lbl as string} className="text-[12px] leading-[1.5]">
+                      <b className="text-textColor">{ic} {lbl}:</b> <span className="text-textColor/85">{v as string}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+          <Button onClick={download}>⬇ {t('viral_personas_download', 'Download profiles (.txt)')}</Button>
+        </>
+      )}
+    </div>
+  );
+};
+
 // ── Bài của mình (clone) ──────────────────────────────────────────────────
 const useMine = () => {
   const fetch = useFetch();
@@ -1084,6 +1167,8 @@ export const ViralComponent: FC = () => {
     modal.openModal({ title: t('viral_modal_add_source', 'Add tracked source'), withCloseButton: true, classNames: { modal: 'w-[100%] max-w-[500px]' }, children: <SourceModal onDone={mutate} /> });
   const openConfig = () =>
     modal.openModal({ title: t('viral_modal_config', 'Auto-crawl configuration'), withCloseButton: true, classNames: { modal: 'w-[100%] max-w-[520px]' }, children: <ConfigModal /> });
+  const openPersonas = () =>
+    modal.openModal({ title: t('viral_modal_personas', '8 customer personas'), withCloseButton: true, classNames: { modal: 'w-[100%] max-w-[640px]' }, children: <PersonasModal /> });
   // Sản xuất: từ các thẻ đã chọn → chọn định dạng → job chạy nền → tab Sản phẩm.
   // Tick sẵn theo gợi ý AI: content_type đa số + podcast nếu có bài podcast_score>=75.
   const openProduce = useCallback(() => {
@@ -1220,6 +1305,9 @@ export const ViralComponent: FC = () => {
           ))}
         </div>
         <div className="flex-1" />
+        <button onClick={openPersonas} title={t('viral_modal_personas', '8 customer personas')} className="h-[40px] px-[12px] rounded-[9px] border border-newBgLineColor text-textItemBlur hover:text-textColor text-[13px]">
+          🧬 {t('viral_personas_button', 'Personas')}
+        </button>
         <button onClick={openConfig} title={t('viral_modal_config', 'Auto-crawl configuration')} className="h-[40px] px-[12px] rounded-[9px] border border-newBgLineColor text-textItemBlur hover:text-textColor text-[13px]">
           {t('viral_config_button', 'Settings')}
         </button>
