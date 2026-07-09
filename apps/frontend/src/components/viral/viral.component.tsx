@@ -516,9 +516,32 @@ const ConfigModal: FC = () => {
   const [mmKey, setMmKey] = useState('');
   const [mmGroup, setMmGroup] = useState('');
   const [hours, setHours] = useState<number>(data?.crawlEveryHours ?? 12);
+  // Nhóm Zalo nhận bản tin tuần — danh sách lấy từ bot qua proxy /botapi
+  // (same-origin, cookie đăng nhập Hub đi kèm; KHÔNG qua useFetch backend).
+  const [zaloThread, setZaloThread] = useState<string>(data?.reportZaloThreadId ?? '');
+  const [zaloGroups, setZaloGroups] = useState<{ threadId: string; name?: string }[]>([]);
+  const [zaloGroupsError, setZaloGroupsError] = useState(false);
+  useEffect(() => {
+    if (data?.reportZaloThreadId != null) setZaloThread(data.reportZaloThreadId);
+  }, [data?.reportZaloThreadId]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await window.fetch('/botapi/api/postiz/groups', { signal: AbortSignal.timeout(60000) });
+        if (!r.ok) throw new Error();
+        const j = await r.json();
+        const list = (Array.isArray(j) ? j : j?.groups || [])
+          .map((g: any) => ({ threadId: String(g.threadId || g.id || ''), name: g.name || g.label }))
+          .filter((g: any) => g.threadId);
+        setZaloGroups(list);
+      } catch {
+        setZaloGroupsError(true);
+      }
+    })();
+  }, []);
 
   const save = useCallback(async () => {
-    const body: any = { crawlEveryHours: Number(hours) };
+    const body: any = { crawlEveryHours: Number(hours), reportZaloThreadId: zaloThread };
     if (apify.trim()) body.apifyToken = apify.trim();
     if (yt.trim()) body.youtubeKey = yt.trim();
     if (mmKey.trim()) body.minimaxKey = mmKey.trim();
@@ -530,7 +553,7 @@ const ConfigModal: FC = () => {
     }
     toast.show(t('viral_config_saved', 'Configuration saved.'), 'success');
     modal.closeCurrent();
-  }, [apify, yt, mmKey, mmGroup, hours]);
+  }, [apify, yt, mmKey, mmGroup, hours, zaloThread]);
 
   return (
     <div className="flex flex-col gap-[14px]">
@@ -591,9 +614,43 @@ const ConfigModal: FC = () => {
           <option value={12}>{t('viral_crawl_12h', 'Every 12 hours')}</option>
           <option value={24}>{t('viral_crawl_daily', 'Every day')}</option>
           <option value={72}>{t('viral_crawl_3d', 'Every 3 days')}</option>
+          <option value={246}>{t('viral_crawl_mwf', 'Mon-Wed-Fri 7pm + weekly brief to Zalo/email')}</option>
         </select>
       </Field>
-      <Button onClick={save}>{t('viral_save_config', 'Save configuration')}</Button>
+      {/* Báo cáo tuần: bản tin + todo list gửi về nhóm Zalo (bot trang Zalo) + email */}
+      <Field label={t('viral_report_zalo', 'Zalo group receiving weekly brief (via the Zalo bot)')}>
+        <select value={zaloThread} onChange={(e) => setZaloThread(e.target.value)} className={inputCls}>
+          <option value="">{t('viral_report_zalo_off', "Don't send to Zalo")}</option>
+          {zaloGroups.map((g) => (
+            <option key={g.threadId} value={g.threadId}>{g.name || g.threadId}</option>
+          ))}
+          {/* nhóm đã lưu nhưng không còn trong danh sách bot → vẫn hiện để khỏi mất */}
+          {data?.reportZaloThreadId && !zaloGroups.some((g) => g.threadId === data.reportZaloThreadId) && (
+            <option value={data.reportZaloThreadId}>{data.reportZaloThreadId} ({t('viral_saved', 'saved')})</option>
+          )}
+        </select>
+        {zaloGroupsError && (
+          <span className="text-[11px] text-[#FFC53D] mt-[4px] block">⚠ {t('viral_report_zalo_boterr', 'Could not load groups from the bot — check the Zalo page (bot connected?).')}</span>
+        )}
+      </Field>
+      <div className="flex gap-[8px]">
+        <Button onClick={save} className="flex-1">{t('viral_save_config', 'Save configuration')}</Button>
+        <button
+          onClick={async () => {
+            const res = await fetch('/viral/report/test', { method: 'POST' });
+            toast.show(
+              res.ok
+                ? t('viral_report_test_ok', 'Test brief sent — check the bell, email and Zalo group (save config first).')
+                : t('viral_report_test_fail', 'Could not send test brief.'),
+              res.ok ? 'success' : 'warning'
+            );
+          }}
+          className="px-[14px] rounded-[8px] text-[12.5px] font-[700] border border-newBgLineColor text-textItemBlur hover:text-textColor"
+          title={t('viral_report_test_hint', 'Send the weekly brief right now to test channels')}
+        >
+          📨 {t('viral_report_test', 'Send test')}
+        </button>
+      </div>
     </div>
   );
 };

@@ -87,15 +87,44 @@ export class ViralService implements OnModuleInit {
         /* bỏ qua vòng lỗi */
       }
     };
-    // chạy 1 lần sau 60s khi khởi động, rồi mỗi giờ kiểm xem tới hạn chưa
+    // Chế độ "mỗi N giờ": chạy 1 lần sau 60s khi khởi động, rồi mỗi giờ kiểm
+    // hạn. Giá trị 246 = lịch T2-4-6 19h VN — xử ở vòng 10 phút bên dưới.
     let lastRun = 0;
-    setTimeout(() => tick().then(() => (lastRun = Date.now())), 60000);
-    setInterval(() => {
+    const hourly = () => {
       const hours = getViralConfig().crawlEveryHours;
-      if (hours > 0 && Date.now() - lastRun >= hours * 3600000) {
+      return hours > 0 && hours !== 246 ? hours : 0;
+    };
+    setTimeout(() => {
+      if (hourly()) tick().then(() => (lastRun = Date.now()));
+    }, 60000);
+    setInterval(() => {
+      const hours = hourly();
+      if (hours && Date.now() - lastRun >= hours * 3600000) {
         tick().then(() => (lastRun = Date.now()));
       }
     }, 3600000);
+
+    // Lịch T2-4-6 19h VN (như cron n8n): cào → ĐỢI chấm điểm xong → bản tin
+    // tuần + todo list gửi Zalo/email/in-app.
+    let lastCrawl246Day = '';
+    setInterval(async () => {
+      if (getViralConfig().crawlEveryHours !== 246) return;
+      const vn = new Date(Date.now() + 7 * 3600 * 1000);
+      const day = vn.toISOString().slice(0, 10);
+      // getUTCDay trên trục VN: T2=1, T4=3, T6=5
+      if (![1, 3, 5].includes(vn.getUTCDay())) return;
+      if (vn.getUTCHours() !== 19 || lastCrawl246Day === day) return;
+      lastCrawl246Day = day;
+      try {
+        const orgs = await this._repo.orgIdsWithAutoSources();
+        for (const { organizationId } of orgs) {
+          await this.crawlAll(organizationId, false, true).catch(() => null);
+          await this.sendWeeklyReport(organizationId, 'crawl').catch(() => null);
+        }
+      } catch {
+        /* vòng lỗi — kỳ cào sau thử lại */
+      }
+    }, 10 * 60000);
 
     // Tự dọn Lưu trữ (bỏ qua + đã xóa) cũ hơn 7 ngày + reaper bài chờ duyệt ứ
     // quá 30 ngày → bỏ qua. Chạy sau 2 phút rồi mỗi 6h.
@@ -141,15 +170,8 @@ export class ViralService implements OnModuleInit {
           lastDigestDay = day;
           const orgs = await this._repo.orgIdsWithPosts();
           for (const { organizationId } of orgs) {
-            const d = await this._repo.weeklyDigest(organizationId);
-            await this._notification
-              .inAppNotification(
-                organizationId,
-                'Phát hiện: tổng kết tuần',
-                `📊 Tuần qua: cào ${d.crawled} bài mới · ${d.approved} bài được duyệt · ${d.produced} sản phẩm sản xuất.`,
-                false
-              )
-              .catch(() => null);
+            // Tổng kết CN: AI viết bản tin tuần + todo → in-app + email + Zalo
+            await this.sendWeeklyReport(organizationId, 'sunday').catch(() => null);
           }
         }
       } catch {
@@ -656,9 +678,17 @@ export class ViralService implements OnModuleInit {
   // ── CÀO TỰ ĐỘNG ─────────────────────────────────────────────────────────
   // Scheduler chỉ quét nguồn auto; nút "Cào ngay" (includeManual=true) quét
   // TẤT CẢ nguồn còn sống. Cào xong → AI chấm điểm các bài chưa chấm.
+  // Việc NỀN sau cào: chấm điểm → làm giàu persona. Trả số bài đã chấm.
+  private async afterCrawl(orgId: string): Promise<number> {
+    const n = await this.scoreUnscored(orgId);
+    if (n > 0) await this.enrichPersonas(orgId).catch(() => null);
+    return n;
+  }
+
   async crawlAll(
     orgId: string,
-    includeManual = false
+    includeManual = false,
+    awaitScoring = false // lịch T2-4-6 cần đợi chấm xong mới gửi bản tin
   ): Promise<{ added: number; scanned: number; scored: number }> {
     const sources = includeManual
       ? await this._repo.allSources(orgId)
@@ -676,12 +706,10 @@ export class ViralService implements OnModuleInit {
         /* nguồn lỗi — bỏ qua, cào tiếp nguồn khác */
       }
     }
-    // Chấm điểm chạy NỀN — không giữ request (tunnel Cloudflare cắt ở ~100s);
-    // điểm sẽ tự xuất hiện dần trên thẻ. Chấm xong → làm giàu hồ sơ persona
-    // từ tín hiệu mới (VOICE/TREND/WINNING) như khối K3 của n8n.
-    this.scoreUnscored(orgId)
-      .then((n) => (n > 0 ? this.enrichPersonas(orgId) : null))
-      .catch(() => null);
+    // Chấm điểm + enrich persona: mặc định chạy NỀN — không giữ request
+    // (tunnel Cloudflare cắt ~100s); lịch T2-4-6 thì ĐỢI xong để gửi bản tin.
+    if (awaitScoring) await this.afterCrawl(orgId).catch(() => null);
+    else this.afterCrawl(orgId).catch(() => null);
     return { added, scanned: sources.length, scored: 0 };
   }
 
@@ -1501,6 +1529,92 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
       .replace(/[^a-zA-Z0-9-]/g, '-')
       .slice(0, 60);
     return { fileName: `${slug || 'blog'}.docx`, base64: buf.toString('base64') };
+  }
+
+  // ── BẢN TIN TUẦN + TODO LIST (gửi Zalo/email/in-app) ─────────────────────
+  // Gửi tin nhắn văn bản vào nhóm Zalo qua bot (endpoint /api/postiz/send,
+  // auth x-hub-token — cùng cơ chế proxy /botapi của dashboard).
+  private async sendZaloReport(threadId: string, text: string) {
+    const base = (process.env.ZALO_BOT_URL || 'http://127.0.0.1:8088').replace(/\/$/, '');
+    const res = await fetch(`${base}/api/postiz/send`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(process.env.HUB_BOT_TOKEN
+          ? { 'x-hub-token': process.env.HUB_BOT_TOKEN }
+          : {}),
+      },
+      body: JSON.stringify({ threadId, text }),
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!res.ok) throw new Error(`Bot Zalo trả ${res.status}`);
+  }
+
+  // Tổng hợp 7 ngày → AI viết bản tin (tin nóng + diễn biến thị trường + todo
+  // list) → gửi 3 kênh: chuông in-app, email cả org, nhóm Zalo (nếu cấu hình).
+  // kind: 'crawl' = sau mỗi lần cào theo lịch T2-4-6 · 'sunday' = tổng kết CN.
+  async sendWeeklyReport(orgId: string, kind: 'crawl' | 'sunday') {
+    const [d, counts, { trend, winning }] = await Promise.all([
+      this._repo.weeklyDigest(orgId),
+      this._repo.statusCounts(orgId),
+      this._repo.weeklyBriefPosts(orgId),
+    ]);
+    const trendText = trend
+      .map((t: any) => `- [${t.persona || '?'} · ${t.score ?? '-'}đ] ${decodeEntities(t.title)} (${t.sourceName || ''})`)
+      .join('\n')
+      .slice(0, 6000);
+    const winningText = winning
+      .map(
+        (w: any) =>
+          `- [${w.platform}${w.shares ? ` · ${w.shares} share` : w.views ? ` · ${w.views} view` : ''}] ${decodeEntities(w.title)} (${w.sourceName || ''})`
+      )
+      .join('\n')
+      .slice(0, 4000);
+    const statsText = `7 ngày qua: cào ${d.crawled} bài mới · duyệt ${d.approved} · sản xuất ${d.produced} sản phẩm · đang chờ duyệt ${counts.pending} bài.`;
+    const brief = await this._openai
+      .viralWeeklyBrief({ trendText, winningText, statsText })
+      .catch(() => null);
+
+    const dateVn = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
+    const head =
+      kind === 'sunday'
+        ? `📊 TỔNG KẾT TUẦN — Phát hiện (CN ${dateVn})`
+        : `📰 BẢN TIN SAU CÀO — Phát hiện (${dateVn})`;
+    const lines: string[] = [head, ''];
+    if (brief?.summary) lines.push(brief.summary, '');
+    if (brief?.highlights?.length) {
+      lines.push('🔥 TIN NÓNG TUẦN:');
+      brief.highlights.slice(0, 6).forEach((h, i) => lines.push(`${i + 1}. ${h}`));
+      lines.push('');
+    }
+    if (brief?.market?.length) {
+      lines.push('📈 DIỄN BIẾN THỊ TRƯỜNG:');
+      brief.market.slice(0, 5).forEach((m) => lines.push(`• ${m}`));
+      lines.push('');
+    }
+    if (brief?.todos?.length) {
+      lines.push('✅ VIỆC TUẦN NÀY:');
+      brief.todos
+        .slice(0, 8)
+        .forEach((td, i) => lines.push(`${i + 1}. ${td.title} — ${td.action}`));
+      lines.push('');
+    }
+    lines.push(`📊 ${statsText}`);
+    lines.push('👉 Vào trang Phát hiện để duyệt & sản xuất.');
+    const text = lines.join('\n');
+
+    // 3 kênh — kênh nào lỗi thì bỏ qua kênh đó, không chặn kênh khác.
+    await this._notification
+      .inAppNotification(orgId, head, text.slice(0, 3500), false)
+      .catch(() => null);
+    if (this._notification.hasEmailProvider()) {
+      await this._notification
+        .sendEmailsToOrg(orgId, head, text.replace(/\n/g, '<br/>'), 'info')
+        .catch(() => null);
+    }
+    const threadId = getViralConfig().reportZaloThreadId;
+    if (threadId) await this.sendZaloReport(threadId, text).catch(() => null);
+    return { ok: true, zalo: !!threadId };
   }
 
   // Nhập bộ nguồn mặc định (port sheet Sources của n8n) — bỏ qua nguồn đã có

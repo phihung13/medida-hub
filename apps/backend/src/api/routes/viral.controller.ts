@@ -202,6 +202,7 @@ export class ViralController {
       crawlEveryHours?: number;
       minimaxKey?: string;
       minimaxGroupId?: string;
+      reportZaloThreadId?: string;
     }
   ) {
     if (!user?.isSuperAdmin) {
@@ -214,11 +215,20 @@ export class ViralController {
       ...(typeof body.minimaxGroupId === 'string'
         ? { minimaxGroupId: body.minimaxGroupId }
         : {}),
+      ...(typeof body.reportZaloThreadId === 'string'
+        ? { reportZaloThreadId: body.reportZaloThreadId }
+        : {}),
       ...(typeof body.crawlEveryHours === 'number'
         ? { crawlEveryHours: body.crawlEveryHours }
         : {}),
     });
     return { ok: true, ...getViralStatus() };
+  }
+
+  // Gửi thử bản tin tuần NGAY (không đợi lịch T2-4-6/CN) — test Zalo/email.
+  @Post('/report/test')
+  async testReport(@GetOrgFromRequest() org: Organization) {
+    return this._service.sendWeeklyReport(org.id, 'crawl');
   }
 
   // Nhạc nền podcast: upload mp3 (base64) / xoá — lưu CONFIG_DIR, bền Docker.

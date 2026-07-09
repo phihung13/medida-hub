@@ -10,10 +10,14 @@ const FILE = configPath('viral-config.json');
 interface ViralConfig {
   apifyToken: string;
   youtubeKey: string;
-  crawlEveryHours: number; // 0 = tắt auto
+  // 0 = tắt auto · 6/12/24/72 = mỗi N giờ · 246 = lịch T2-4-6 19h VN (như n8n,
+  // kèm bản tin tuần + todo list gửi Zalo/email sau mỗi lần cào)
+  crawlEveryHours: number;
   // Sản xuất podcast (MiniMax TTS) — key + GroupId lấy ở minimax.io
   minimaxKey: string;
   minimaxGroupId: string;
+  // Nhóm Zalo nhận bản tin tuần/tổng kết CN (threadId; rỗng = không gửi Zalo)
+  reportZaloThreadId: string;
 }
 
 const config: ViralConfig = {
@@ -22,6 +26,7 @@ const config: ViralConfig = {
   crawlEveryHours: 12,
   minimaxKey: '',
   minimaxGroupId: '',
+  reportZaloThreadId: '',
 };
 
 try {
@@ -33,6 +38,8 @@ try {
   config.minimaxKey = typeof raw?.minimaxKey === 'string' ? raw.minimaxKey : '';
   config.minimaxGroupId =
     typeof raw?.minimaxGroupId === 'string' ? raw.minimaxGroupId : '';
+  config.reportZaloThreadId =
+    typeof raw?.reportZaloThreadId === 'string' ? raw.reportZaloThreadId : '';
 } catch {
   /* chưa có file — mặc định */
 }
@@ -82,6 +89,7 @@ export function getViralStatus() {
     minimaxMasked: config.minimaxKey ? config.minimaxKey.slice(0, 8) + '…' : '',
     minimaxGroupId: config.minimaxGroupId,
     hasBgm: hasBgm(),
+    reportZaloThreadId: config.reportZaloThreadId,
   };
 }
 export function setViralConfig(patch: Partial<ViralConfig>) {
@@ -93,6 +101,8 @@ export function setViralConfig(patch: Partial<ViralConfig>) {
     config.minimaxKey = patch.minimaxKey.trim();
   if (typeof patch.minimaxGroupId === 'string')
     config.minimaxGroupId = patch.minimaxGroupId.trim();
+  if (typeof patch.reportZaloThreadId === 'string')
+    config.reportZaloThreadId = patch.reportZaloThreadId.trim();
   if (typeof patch.crawlEveryHours === 'number')
     config.crawlEveryHours = Math.max(0, Math.min(168, patch.crawlEveryHours));
   try {

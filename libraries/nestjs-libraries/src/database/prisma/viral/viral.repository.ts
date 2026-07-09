@@ -394,6 +394,37 @@ export class ViralRepository {
     });
   }
 
+  // Nguyên liệu bản tin tuần: tin báo nổi bật + bài đối thủ share cao (7 ngày).
+  async weeklyBriefPosts(orgId: string) {
+    const since = new Date(Date.now() - 7 * 24 * 3600 * 1000);
+    const [trend, winning] = await Promise.all([
+      this._posts.model.viralPost.findMany({
+        where: {
+          organizationId: orgId,
+          platform: 'news',
+          createdAt: { gte: since },
+          deletedAt: null,
+          status: { not: 'skipped' },
+        },
+        orderBy: [{ score: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
+        take: 25,
+        select: { title: true, sourceName: true, score: true, persona: true },
+      }),
+      this._posts.model.viralPost.findMany({
+        where: {
+          organizationId: orgId,
+          platform: { not: 'news' },
+          createdAt: { gte: since },
+          deletedAt: null,
+        },
+        orderBy: [{ shares: { sort: 'desc', nulls: 'last' } }, { views: { sort: 'desc', nulls: 'last' } }],
+        take: 15,
+        select: { title: true, sourceName: true, platform: true, shares: true, views: true, persona: true },
+      }),
+    ]);
+    return { trend, winning };
+  }
+
   // Số liệu 7 ngày cho digest tuần: cào mới / duyệt / sản phẩm.
   async weeklyDigest(orgId: string) {
     const since = new Date(Date.now() - 7 * 24 * 3600 * 1000);

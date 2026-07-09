@@ -595,6 +595,35 @@ CHI tra JSON array: [{"profile_id","moi_quan_tam","tam_ly","hanh_vi","insights"}
     return claudeJson(sys, `8 nhom persona va tin hieu hom nay:\n\n${blocks}`, 4000);
   }
 
+  // BẢN TIN TUẦN cho trang Phát hiện: từ bài đã cào/chấm 7 ngày → tin nóng,
+  // diễn biến thị trường/đối thủ, và TODO LIST hành động tuần này. Gửi về
+  // Zalo/email sau mỗi lần cào theo lịch T2-4-6 + tổng kết CN.
+  async viralWeeklyBrief(input: {
+    trendText: string; // tin báo chí nổi bật (đã chấm điểm cao)
+    winningText: string; // bài đối thủ/KOL share cao
+    statsText: string; // số liệu 7 ngày (cào/duyệt/sản xuất/chờ duyệt)
+  }): Promise<{
+    summary: string;
+    highlights: string[];
+    market: string[];
+    todos: { title: string; action: string }[];
+  } | null> {
+    const system =
+      'Bạn là trợ lý chiến lược nội dung của Trường Việt Anh (K-12, TP.HCM). ' +
+      'Từ dữ liệu cào 7 ngày (tin giáo dục nóng + bài đối thủ/KOL thắng + số liệu vận hành), viết BẢN TIN TUẦN NGẮN GỌN cho đội marketing:\n' +
+      '- "summary": 2-3 câu nắm bắt tuần này có gì đáng chú ý nhất (nóng hổi, thiết thực, tiếng Việt tự nhiên).\n' +
+      '- "highlights": 3-5 tin NÓNG nhất tuần (mỗi dòng: tin gì + vì sao phụ huynh quan tâm — ngắn, 1 câu/dòng).\n' +
+      '- "market": 2-4 diễn biến thị trường/đối thủ đáng để ý (đối thủ đang đánh chủ đề gì, format nào đang thắng).\n' +
+      '- "todos": 4-7 việc CỤ THỂ tuần này cho đội content (mỗi việc: "title" ngắn + "action" 1 câu làm gì — vd viết blog chủ đề X cho nhóm THPT, sản xuất podcast Y, bám sự kiện Z). Ưu tiên việc ăn theo tin nóng + lỗ hổng đối thủ chưa làm.\n' +
+      'KHÔNG bịa số liệu, KHÔNG nhắc tên trường đối thủ trong todos (chỉ trong market). ' +
+      'Trả CHỈ JSON: {"summary","highlights":[],"market":[],"todos":[{"title","action"}]}';
+    const user =
+      `TIN GIÁO DỤC NÓNG (7 ngày):\n${input.trendText || '(không có)'}\n\n` +
+      `BÀI THẮNG CỦA ĐỐI THỦ/KOL:\n${input.winningText || '(không có)'}\n\n` +
+      `SỐ LIỆU VẬN HÀNH:\n${input.statsText}`;
+    return claudeJson(system, user, 3000);
+  }
+
   // Mở rộng TỪ KHOÁ thành 6-7 truy vấn tìm tin cùng chủ đề (nguồn Google News)
   // — port node n8n "🔑 Mở rộng chủ đề".
   async viralExpandQueries(keyword: string): Promise<string[]> {
