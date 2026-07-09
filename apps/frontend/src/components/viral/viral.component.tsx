@@ -1,6 +1,6 @@
 'use client';
 
-import { FC, useCallback, useEffect, useRef, useState } from 'react';
+import { FC, Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import useSWR from 'swr';
 import clsx from 'clsx';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
@@ -1227,33 +1227,66 @@ export const ViralComponent: FC = () => {
         <Button onClick={openCapture}>{t('viral_add_post_button', 'Add viral post')}</Button>
       </div>
 
-      {/* 4 mục: Chờ duyệt · Đã duyệt · Bài của mình · Lưu trữ */}
-      <div className="flex gap-[6px] flex-wrap">
+      {/* LUỒNG 4 BƯỚC: ①Chờ duyệt → ②Đã duyệt → ③Bài của mình → ④Sản phẩm.
+          Lưu trữ nằm NGOÀI luồng (bên phải). Dưới tabs có dòng hướng dẫn bước. */}
+      <div className="flex items-center gap-[6px] flex-wrap">
         {[
-          ['pending', t('viral_status_pending', 'To review'), data?.statusCounts?.pending, 'btnPrimary'],
-          ['approved', t('viral_status_approved', 'Approved'), data?.statusCounts?.approved, 'green'],
-          ['mine', t('viral_tab_mine', 'My posts'), data?.statusCounts?.mine, 'btnPrimary'],
-          ['products', `🏭 ${t('viral_tab_products', 'Products')}`, data?.statusCounts?.products, 'green'],
-          ['archive', t('viral_tab_archive', 'Archive'), data?.statusCounts?.archive, 'muted'],
-        ].map(([k, l, count, tone]) => (
-          <button
-            key={k as string}
-            onClick={() => setTab(k as string)}
-            className={clsx(
-              'px-[14px] py-[7px] rounded-[8px] text-[12.5px] font-[700] border',
-              tab === k
-                ? tone === 'green'
-                  ? 'bg-[#57D9A3]/15 border-[#57D9A3]/50 text-[#57D9A3]'
-                  : tone === 'muted'
-                  ? 'bg-newColColor border-newTableBorder text-textColor'
-                  : 'bg-btnPrimary/15 border-btnPrimary/50 text-btnPrimary'
-                : 'border-newBgLineColor text-textItemBlur hover:text-textColor'
-            )}
-          >
-            {l as string}
-            {count != null && <span className="ms-[6px] tabular-nums opacity-80">{count as number}</span>}
-          </button>
+          ['pending', t('viral_status_pending', 'To review'), data?.statusCounts?.pending],
+          ['approved', t('viral_status_approved', 'Approved'), data?.statusCounts?.approved],
+          ['mine', t('viral_tab_mine', 'My posts'), data?.statusCounts?.mine],
+          ['products', t('viral_tab_products', 'Products'), data?.statusCounts?.products],
+        ].map(([k, l, count], i) => (
+          <Fragment key={k as string}>
+            {i > 0 && <span className="text-textItemBlur/50 text-[14px] font-[700] select-none px-[1px]">→</span>}
+            <button
+              onClick={() => setTab(k as string)}
+              className={clsx(
+                'flex items-center gap-[7px] px-[12px] py-[7px] rounded-[8px] text-[12.5px] font-[700] border',
+                tab === k
+                  ? 'bg-btnPrimary/15 border-btnPrimary/50 text-btnPrimary'
+                  : 'border-newBgLineColor text-textItemBlur hover:text-textColor'
+              )}
+            >
+              <span
+                className={clsx(
+                  'w-[18px] h-[18px] rounded-full grid place-items-center text-[10.5px] font-[800] shrink-0',
+                  tab === k ? 'bg-btnPrimary text-white' : 'bg-newColColor border border-newBgLineColor'
+                )}
+              >
+                {i + 1}
+              </span>
+              {l as string}
+              {count != null && <span className="tabular-nums opacity-80">{count as number}</span>}
+            </button>
+          </Fragment>
         ))}
+        <div className="flex-1" />
+        <button
+          onClick={() => setTab('archive')}
+          className={clsx(
+            'px-[12px] py-[7px] rounded-[8px] text-[12.5px] font-[700] border',
+            tab === 'archive'
+              ? 'bg-newColColor border-newTableBorder text-textColor'
+              : 'border-newBgLineColor text-textItemBlur hover:text-textColor'
+          )}
+        >
+          🗄 {t('viral_tab_archive', 'Archive')}
+          {data?.statusCounts?.archive != null && (
+            <span className="ms-[6px] tabular-nums opacity-80">{data.statusCounts.archive}</span>
+          )}
+        </button>
+      </div>
+
+      {/* hướng dẫn bước hiện tại — ai mới vào nhìn là biết làm gì tiếp */}
+      <div className="flex items-start gap-[8px] text-[12px] leading-[1.55] text-textItemBlur bg-newColColor border border-newBgLineColor rounded-[9px] px-[13px] py-[8px]">
+        <span className="shrink-0">💡</span>
+        <span>
+          {tab === 'pending' && t('viral_flow_pending', 'Step 1 · AI crawled & scored these posts. ✓ Approve → moves to "Approved" · ✕ Skip → goes to Archive (auto-deleted after 7 days). Posts scoring ≥90 are auto-approved.')}
+          {tab === 'approved' && t('viral_flow_approved', 'Step 2 · Posts you approved. Select cards → "⧉ Clone" lets AI rewrite them as your own posts (step 3), or "🏭 Produce" turns them straight into blog/infographic/podcast (step 4).')}
+          {tab === 'mine' && t('viral_flow_mine', 'Step 3 · AI-rewritten posts for Việt Anh (scored higher than the original). 📤 Post to Calendar as a draft, ↻ regenerate a better version, or 🏭 Produce final products.')}
+          {tab === 'products' && t('viral_flow_products', 'Step 4 · Final products: read the blog & download .docx, view/download the infographic, listen/download the podcast mp3 — ready to publish on the website, YouTube or fanpage.')}
+          {tab === 'archive' && t('viral_flow_archive', 'Outside the flow · Skipped + deleted posts rest here. Everything is permanently deleted after 7 days. You can still ↩ Restore a post back to "To review".')}
+        </span>
       </div>
 
       {/* thanh thao tác hàng loạt + điều khiển Lưu trữ */}
