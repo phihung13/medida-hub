@@ -241,7 +241,7 @@ const DetailModal: FC<{ post: any; onDone: () => void }> = ({ post, onDone }) =>
         body: JSON.stringify({ ids: [post.id], action: 'clone' }),
       });
       if (!res.ok) throw new Error();
-      toast.show(t('viral_clone_to_mine_success', 'Creating your post — check the "My posts" tab in a few minutes.'), 'success');
+      toast.show(t('viral_clone_to_mine_success', 'Creating your social post — check the "Ready to post" tab in a few minutes.'), 'success');
       onDone();
       modal.closeCurrent();
     } catch {
@@ -957,12 +957,13 @@ export const ViralComponent: FC = () => {
   const [sort, setSort] = useState('shares');
   const [tab, setTab] = useState('pending');
   const [crawling, setCrawling] = useState(false);
-  const isMine = tab === 'mine';
+  // "Chờ đăng" (ready) gộp Bài của mình (caption social) + Sản phẩm (blog/ảnh/
+  // podcast) — 1 bước cuối trước Lưu trữ, chia 2 khu theo cách đăng.
+  const isReady = tab === 'ready';
   const isArchive = tab === 'archive';
-  const isProducts = tab === 'products';
   const { data, isLoading, mutate } = useViral(platform, level, sort, tab);
   const { data: mineData, mutate: mutateMine } = useMine();
-  const { data: productsData, mutate: mutateProducts } = useProducts(isProducts);
+  const { data: productsData, mutate: mutateProducts } = useProducts(isReady);
   const refreshAll = useCallback(() => {
     mutate();
     mutateMine();
@@ -1054,7 +1055,8 @@ export const ViralComponent: FC = () => {
       }
       const res = await (await fetch('/viral/bulk', { method: 'POST', body: JSON.stringify({ ids, action }) })).json();
       if (action === 'clone') {
-        toast.show(`${t('viral_cloning_n', 'Creating')} ${res?.queued ?? ids.length} ${t('viral_cloning_n_suffix', 'posts of yours — check the "My posts" tab in a few minutes.')}`, 'success');
+        toast.show(`${t('viral_cloning_n', 'Creating')} ${res?.queued ?? ids.length} ${t('viral_cloning_n_suffix', 'social posts — check the "Ready to post" tab in a few minutes.')}`, 'success');
+        setTab('ready');
       }
       setSelected(new Set());
       refreshAll();
@@ -1112,7 +1114,7 @@ export const ViralComponent: FC = () => {
           defaults={defaults}
           onDone={() => {
             setSelected(new Set());
-            setTab('products');
+            setTab('ready');
             refreshAll();
           }}
         />
@@ -1233,8 +1235,7 @@ export const ViralComponent: FC = () => {
         {[
           ['pending', t('viral_status_pending', 'To review'), data?.statusCounts?.pending],
           ['approved', t('viral_status_approved', 'Approved'), data?.statusCounts?.approved],
-          ['mine', t('viral_tab_mine', 'My posts'), data?.statusCounts?.mine],
-          ['products', t('viral_tab_products', 'Products'), data?.statusCounts?.products],
+          ['ready', t('viral_tab_ready', 'Ready to post'), (data?.statusCounts?.mine || 0) + (data?.statusCounts?.products || 0)],
         ].map(([k, l, count], i) => (
           <Fragment key={k as string}>
             {i > 0 && <span className="text-textItemBlur/50 text-[14px] font-[700] select-none px-[1px]">→</span>}
@@ -1282,9 +1283,8 @@ export const ViralComponent: FC = () => {
         <span className="shrink-0">💡</span>
         <span>
           {tab === 'pending' && t('viral_flow_pending', 'Step 1 · AI crawled & scored these posts. ✓ Approve → moves to "Approved" · ✕ Skip → goes to Archive (auto-deleted after 7 days). Posts scoring ≥90 are auto-approved.')}
-          {tab === 'approved' && t('viral_flow_approved', 'Step 2 · Posts you approved. Select cards → "⧉ Clone" lets AI rewrite them as your own posts (step 3), or "🏭 Produce" turns them straight into blog/infographic/podcast (step 4).')}
-          {tab === 'mine' && t('viral_flow_mine', 'Step 3 · AI-rewritten posts for Việt Anh (scored higher than the original). 📤 Post to Calendar as a draft, ↻ regenerate a better version, or 🏭 Produce final products.')}
-          {tab === 'products' && t('viral_flow_products', 'Step 4 · Final products: read the blog & download .docx, view/download the infographic, listen/download the podcast mp3 — ready to publish on the website, YouTube or fanpage.')}
+          {tab === 'approved' && t('viral_flow_approved', 'Step 2 · Posts you approved. Select cards → "⧉ Clone" (AI rewrites them into social posts) or "🏭 Produce" (into blog/infographic/podcast) — both land in "Ready to post".')}
+          {tab === 'ready' && t('viral_flow_ready', 'Step 3 · Everything finished, waiting to publish. ✍️ Social posts → 📤 push to the Calendar (Facebook…). 🏭 Blog/infographic/podcast → download & publish to the website / YouTube / fanpage.')}
           {tab === 'archive' && t('viral_flow_archive', 'Outside the flow · Skipped + deleted posts rest here. Everything is permanently deleted after 7 days. You can still ↩ Restore a post back to "To review".')}
         </span>
       </div>
@@ -1323,7 +1323,7 @@ export const ViralComponent: FC = () => {
       )}
 
       {/* filters (không áp dụng cho tab Bài của mình / Sản phẩm) */}
-      {!isMine && !isProducts && (
+      {!isReady && (
       <div className="flex flex-col gap-[8px]">
         <div className="flex gap-[6px] flex-wrap">
           {PLATFORMS.map((p) => (
@@ -1360,36 +1360,46 @@ export const ViralComponent: FC = () => {
       </div>
       )}
 
-      {/* Sản phẩm sản xuất */}
-      {isProducts ? (
-        !(productsData?.items || []).length ? (
+      {/* BƯỚC 3 · "Chờ đăng" — gộp Sản phẩm (blog/ảnh/podcast, đăng web) +
+          Bài của mình (caption social, đăng Lịch), chia 2 khu theo cách đăng. */}
+      {isReady ? (
+        !(productsData?.items || []).length && !(mineData?.items || []).length ? (
           <div className="border border-dashed border-newBgLineColor rounded-[12px] p-[36px] text-center">
-            <div className="text-[15px] font-[600] mb-[6px]">{t('viral_products_empty_title', 'No products yet')}</div>
+            <div className="text-[15px] font-[600] mb-[6px]">{t('viral_ready_empty_title', 'Nothing waiting to post yet')}</div>
             <div className="text-[12.5px] text-textItemBlur max-w-[480px] mx-auto">
-              {t('viral_products_empty_desc', 'Select approved posts (or use "My posts") and press "🏭 Produce" — AI turns each into a blog, infographic, or podcast that lands here.')}
+              {t('viral_ready_empty_desc', 'Go to "Approved", select posts, then "🏭 Produce" (blog/infographic/podcast) or "⧉ Clone" (social post). Finished items land here, ready to publish.')}
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-[14px]">
-            {(productsData.items || []).map((p: any) => (
-              <ProductCard key={p.id} product={p} onDone={refreshAll} />
-            ))}
-          </div>
-        )
-      ) : /* Bài của mình */
-      isMine ? (
-        !(mineData?.items || []).length ? (
-          <div className="border border-dashed border-newBgLineColor rounded-[12px] p-[36px] text-center">
-            <div className="text-[15px] font-[600] mb-[6px]">{t('viral_mine_empty_title', 'No posts of yours yet')}</div>
-            <div className="text-[12.5px] text-textItemBlur max-w-[460px] mx-auto">
-              {t('viral_mine_empty_desc', 'In "To review" or "Approved", select posts and press "Clone → My posts". AI rewrites each into a better, higher-scoring post that lands here — ready to post.')}
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-[14px]">
-            {(mineData.items || []).map((c: any) => (
-              <MineCard key={c.id} clone={c} onDone={refreshAll} />
-            ))}
+          <div className="flex flex-col gap-[20px]">
+            {/* Khu 1 — Sản phẩm: tải về đăng website / YouTube / fanpage */}
+            {(productsData?.items || []).length > 0 && (
+              <div className="flex flex-col gap-[10px]">
+                <div className="text-[13px] font-[700] flex items-center gap-[7px]">
+                  🏭 {t('viral_ready_products_head', 'Products — download & publish to website / YouTube / fanpage')}
+                  <span className="text-[11px] text-textItemBlur font-[400]">{(productsData.items || []).length}</span>
+                </div>
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-[14px]">
+                  {(productsData.items || []).map((p: any) => (
+                    <ProductCard key={p.id} product={p} onDone={refreshAll} />
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Khu 2 — Bài social: đẩy lên Lịch (Facebook…) */}
+            {(mineData?.items || []).length > 0 && (
+              <div className="flex flex-col gap-[10px]">
+                <div className="text-[13px] font-[700] flex items-center gap-[7px]">
+                  ✍️ {t('viral_ready_social_head', 'Social posts — push to the Calendar (Facebook…)')}
+                  <span className="text-[11px] text-textItemBlur font-[400]">{(mineData.items || []).length}</span>
+                </div>
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-[14px]">
+                  {(mineData.items || []).map((c: any) => (
+                    <MineCard key={c.id} clone={c} onDone={refreshAll} />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )
       ) : /* các tab bài viral: chờ duyệt / đã duyệt / lưu trữ */
