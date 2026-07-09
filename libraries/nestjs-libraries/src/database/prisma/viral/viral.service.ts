@@ -25,6 +25,7 @@ import {
 } from '@gitroom/nestjs-libraries/viral/viral.produce.prompts';
 import { VIRAL_DEFAULT_SOURCES } from '@gitroom/nestjs-libraries/viral/viral.default.sources';
 import { VIRAL_PERSONA_SEEDS } from '@gitroom/nestjs-libraries/viral/viral.personas.seed';
+import { getSkill } from '@gitroom/nestjs-libraries/viral/viral.skills';
 import { NotificationService } from '@gitroom/nestjs-libraries/database/prisma/notifications/notification.service';
 import { blogHtmlToDocx } from '@gitroom/nestjs-libraries/viral/viral.docx';
 
@@ -555,7 +556,7 @@ export class ViralService implements OnModuleInit {
         prevScore: post.score,
         persona: post.persona,
         personasText,
-        rubric: VIRAL_RUBRIC,
+        rubric: getSkill('tieu-chi-cham-diem') || VIRAL_RUBRIC,
       })
       .catch(() => null);
     if (!res?.content) return null;
@@ -601,7 +602,7 @@ export class ViralService implements OnModuleInit {
         prevScore: clone.score,
         persona: clone.persona,
         personasText,
-        rubric: VIRAL_RUBRIC,
+        rubric: getSkill('tieu-chi-cham-diem') || VIRAL_RUBRIC,
       })
       .catch(() => null);
     if (!res?.content) return null;
@@ -828,6 +829,8 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
     const posts = await this._repo.unscored(orgId, limit);
     if (!posts.length) return 0;
     const personasText = await this.personasTextFor(orgId);
+    // Rubric đọc ĐỘNG từ kho skill (tab 🧪 Công thức AI) — chỉnh là ăn ngay.
+    const rubric = getSkill('tieu-chi-cham-diem') || VIRAL_RUBRIC;
     let scored = 0;
     for (let i = 0; i < posts.length; i += 8) {
       const batch = posts.slice(i, i + 8);
@@ -842,7 +845,7 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
             likes: p.likes,
           })),
           personasText,
-          VIRAL_RUBRIC
+          rubric
         )
         .catch(() => null);
       if (!results) continue;

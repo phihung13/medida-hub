@@ -1086,6 +1086,150 @@ const ProductCard: FC<{ product: any; onDone: () => void }> = ({ product, onDone
   );
 };
 
+// ── KHO SKILL / CÔNG THỨC AI (tab 🧪) — mỗi skill 1 file markdown, chỉnh là
+// AI ăn ngay: công thức blog/podcast/infographic, rubric chấm, chọn nhóm,
+// viết lại, bản tin tuần... như harness riêng cho từng việc.
+const useSkills = (active: boolean) => {
+  const fetch = useFetch();
+  return useSWR(active ? '/viral/skills' : null, async (u: string) => (await fetch(u)).json());
+};
+
+const SkillsPanel: FC = () => {
+  const t = useT();
+  const fetch = useFetch();
+  const toast = useToaster();
+  const { data, mutate } = useSkills(true);
+  const items: any[] = data?.items || [];
+  const [sel, setSel] = useState<string>('');
+  const [draft, setDraft] = useState<string>('');
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const current = items.find((s) => s.key === sel) || null;
+
+  // chọn skill → nạp nội dung vào editor
+  useEffect(() => {
+    if (!sel && items.length) setSel(items[0].key);
+  }, [items, sel]);
+  useEffect(() => {
+    if (current) setDraft(current.content || '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sel, data]);
+
+  const groups = [...new Set(items.map((s) => s.group))];
+  const dirty = current && draft !== (current.content || '');
+
+  const save = async () => {
+    if (!current) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/viral/skills/${current.key}`, { method: 'POST', body: JSON.stringify({ content: draft }) });
+      toast.show(res.ok ? t('viral_skill_saved', 'Skill saved — AI uses it from the next run.') : t('viral_need_admin', 'System administrator permission required.'), res.ok ? 'success' : 'warning');
+      mutate();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const reset = async () => {
+    if (!current) return;
+    if (!(await deleteDialog(t('viral_skill_reset_confirm', 'Reset this skill to the built-in default?'), t('viral_skill_reset', 'Reset')))) return;
+    setBusy(true);
+    try {
+      await fetch(`/viral/skills/${current.key}`, { method: 'DELETE' });
+      mutate();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const importFile = async (f?: File | null) => {
+    if (!f) return;
+    const text = await f.text();
+    setDraft(text);
+    toast.show(t('viral_skill_imported', 'File loaded into the editor — press Save to apply.'), 'success');
+  };
+  const download = () => {
+    if (!current) return;
+    const blob = new Blob([draft], { type: 'text/markdown;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${current.key}.md`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  return (
+    <div className="flex gap-[14px] mobile:flex-col">
+      {/* cột trái: danh sách skill theo nhóm */}
+      <div className="w-[290px] mobile:w-full shrink-0 flex flex-col gap-[10px] max-h-[68vh] overflow-auto pr-[4px]">
+        {groups.map((g) => (
+          <div key={g} className="flex flex-col gap-[4px]">
+            <div className="text-[10.5px] uppercase tracking-[0.07em] text-textItemBlur px-[4px]">{g}</div>
+            {items.filter((s) => s.group === g).map((s) => (
+              <button
+                key={s.key}
+                onClick={() => setSel(s.key)}
+                className={clsx(
+                  'text-left px-[11px] py-[8px] rounded-[9px] border text-[12.5px] leading-[1.35]',
+                  sel === s.key
+                    ? 'bg-btnPrimary/15 border-btnPrimary/50 text-btnPrimary font-[700]'
+                    : 'border-newBgLineColor text-textColor hover:border-newTableBorder'
+                )}
+              >
+                {s.label}
+                {s.isCustom && (
+                  <span className="ms-[6px] text-[9.5px] font-[800] px-[6px] py-[1px] rounded-full bg-[#FFC53D]/15 text-[#FFC53D] align-[2px]">
+                    {t('viral_skill_custom', 'edited')}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {/* cột phải: editor markdown */}
+      <div className="flex-1 flex flex-col gap-[9px] min-w-0">
+        {current ? (
+          <>
+            <div className="flex items-center gap-[8px] flex-wrap">
+              <div className="text-[14px] font-[700]">{current.label}</div>
+              <span className={clsx('text-[10.5px] font-[700] px-[8px] py-[2px] rounded-full', current.isCustom ? 'bg-[#FFC53D]/15 text-[#FFC53D]' : 'bg-newColColor border border-newBgLineColor text-textItemBlur')}>
+                {current.isCustom ? t('viral_skill_custom_full', 'Customized') : t('viral_skill_default', 'Built-in default')}
+              </span>
+              <span className="ms-auto text-[11px] text-textItemBlur tabular-nums">{draft.length.toLocaleString()} {t('viral_skill_chars', 'chars')}</span>
+            </div>
+            <div className="text-[12px] text-textItemBlur leading-[1.5]">📌 {current.description}</div>
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              spellCheck={false}
+              className="bg-input border border-fifth rounded-[10px] p-[13px] min-h-[46vh] text-[12.5px] leading-[1.6] text-inputText outline-none font-mono resize-y"
+            />
+            <div className="flex gap-[8px] flex-wrap">
+              <Button onClick={save} loading={busy} disabled={!dirty}>
+                💾 {t('viral_skill_save', 'Save skill')}
+              </Button>
+              <input ref={fileRef} type="file" accept=".md,.txt,text/markdown,text/plain" className="hidden" onChange={(e) => importFile(e.target.files?.[0])} />
+              <button onClick={() => fileRef.current?.click()} className="px-[13px] rounded-[8px] text-[12.5px] font-[700] border border-newBgLineColor text-textItemBlur hover:text-textColor">
+                📥 {t('viral_skill_import', 'Import .md')}
+              </button>
+              <button onClick={download} className="px-[13px] rounded-[8px] text-[12.5px] font-[700] border border-newBgLineColor text-textItemBlur hover:text-textColor">
+                ⬇ {t('viral_skill_export', 'Download')}
+              </button>
+              {current.isCustom && (
+                <button onClick={reset} disabled={busy} className="ms-auto px-[13px] rounded-[8px] text-[12.5px] font-[700] text-[#FF5A52] border border-[#FF5A52]/35 hover:bg-[#FF5A52]/10">
+                  ↩ {t('viral_skill_reset', 'Reset')}
+                </button>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="text-[13px] text-textItemBlur p-[30px] text-center">{t('viral_loading', 'Loading…')}</div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // ── Trang chính ───────────────────────────────────────────────────────────
 export const ViralComponent: FC = () => {
   const t = useT();
@@ -1101,6 +1245,7 @@ export const ViralComponent: FC = () => {
   // podcast) — 1 bước cuối trước Lưu trữ, chia 2 khu theo cách đăng.
   const isReady = tab === 'ready';
   const isArchive = tab === 'archive';
+  const isSkills = tab === 'skills';
   const { data, isLoading, mutate } = useViral(platform, level, sort, tab);
   const { data: mineData, mutate: mutateMine } = useMine();
   const { data: productsData, mutate: mutateProducts } = useProducts(isReady);
@@ -1408,6 +1553,18 @@ export const ViralComponent: FC = () => {
         ))}
         <div className="flex-1" />
         <button
+          onClick={() => setTab('skills')}
+          title={t('viral_tab_skills_hint', 'Edit the AI recipes: blog/podcast/infographic formulas, scoring rubric, rewrite rules…')}
+          className={clsx(
+            'px-[12px] py-[7px] rounded-[8px] text-[12.5px] font-[700] border',
+            tab === 'skills'
+              ? 'bg-newColColor border-newTableBorder text-textColor'
+              : 'border-newBgLineColor text-textItemBlur hover:text-textColor'
+          )}
+        >
+          🧪 {t('viral_tab_skills', 'AI recipes')}
+        </button>
+        <button
           onClick={() => setTab('archive')}
           className={clsx(
             'px-[12px] py-[7px] rounded-[8px] text-[12.5px] font-[700] border',
@@ -1431,6 +1588,7 @@ export const ViralComponent: FC = () => {
           {tab === 'approved' && t('viral_flow_approved', 'Step 2 · Posts you approved. Select cards → "⧉ Clone" (AI rewrites them into social posts) or "🏭 Produce" (into blog/infographic/podcast) — both land in "Ready to post".')}
           {tab === 'ready' && t('viral_flow_ready', 'Step 3 · Everything finished, waiting to publish. ✍️ Social posts → 📤 push to the Calendar (Facebook…). 🏭 Blog/infographic/podcast → download & publish to the website / YouTube / fanpage.')}
           {tab === 'archive' && t('viral_flow_archive', 'Outside the flow · Skipped + deleted posts rest here. Everything is permanently deleted after 7 days. You can still ↩ Restore a post back to "To review".')}
+          {tab === 'skills' && t('viral_flow_skills', 'Outside the flow · The AI recipes behind every step: writing formulas, scoring rubric, group routing, weekly brief… Edit as markdown, import a .md file, or reset to the built-in default — changes apply from the very next AI run.')}
         </span>
       </div>
 
@@ -1467,8 +1625,8 @@ export const ViralComponent: FC = () => {
         </div>
       )}
 
-      {/* filters (không áp dụng cho tab Bài của mình / Sản phẩm) */}
-      {!isReady && (
+      {/* filters (không áp dụng cho tab Chờ đăng / Công thức) */}
+      {!isReady && !isSkills && (
       <div className="flex flex-col gap-[8px]">
         <div className="flex gap-[6px] flex-wrap">
           {PLATFORMS.map((p) => (
@@ -1505,9 +1663,12 @@ export const ViralComponent: FC = () => {
       </div>
       )}
 
-      {/* BƯỚC 3 · "Chờ đăng" — gộp Sản phẩm (blog/ảnh/podcast, đăng web) +
-          Bài của mình (caption social, đăng Lịch), chia 2 khu theo cách đăng. */}
-      {isReady ? (
+      {/* 🧪 Công thức AI — kho skill chỉnh được */}
+      {isSkills ? (
+        <SkillsPanel />
+      ) : /* BƯỚC 3 · "Chờ đăng" — gộp Sản phẩm (blog/ảnh/podcast, đăng web) +
+          Bài của mình (caption social, đăng Lịch), chia 2 khu theo cách đăng. */
+      isReady ? (
         !(productsData?.items || []).length && !(mineData?.items || []).length ? (
           <div className="border border-dashed border-newBgLineColor rounded-[12px] p-[36px] text-center">
             <div className="text-[15px] font-[600] mb-[6px]">{t('viral_ready_empty_title', 'Nothing waiting to post yet')}</div>

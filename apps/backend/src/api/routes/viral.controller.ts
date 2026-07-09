@@ -19,6 +19,11 @@ import {
   saveBgm,
   deleteBgm,
 } from '@gitroom/nestjs-libraries/viral/viral.keys';
+import {
+  listSkills,
+  setSkill,
+  resetSkill,
+} from '@gitroom/nestjs-libraries/viral/viral.skills';
 
 // "Lò Bài Thắng": tường bài viral giáo dục → AI mổ công thức → nhân bản
 // thành bản nháp vào hàng chờ duyệt. Thước đo chính: lượt share.
@@ -308,6 +313,42 @@ export class ViralController {
     @Param('id') id: string
   ) {
     await this._service.deleteProduct(org.id, id);
+    return { ok: true };
+  }
+
+  // ── KHO SKILL (tab 🧪 Công thức AI): xem / sửa / reset về mặc định ────────
+  @Get('/skills')
+  listSkills() {
+    return { items: listSkills() };
+  }
+
+  @Post('/skills/:key')
+  saveSkill(
+    @GetUserFromRequest() user: User,
+    @Param('key') key: string,
+    @Body('content') content: string
+  ) {
+    if (!user?.isSuperAdmin) {
+      throw new HttpException('Chỉ quản trị hệ thống mới sửa được công thức.', 403);
+    }
+    if (typeof content !== 'string' || content.length > 60000) {
+      throw new HttpException('Nội dung không hợp lệ (tối đa 60.000 ký tự).', 400);
+    }
+    if (!setSkill(key, content)) {
+      throw new HttpException('Không có công thức này.', 404);
+    }
+    return { ok: true };
+  }
+
+  @Delete('/skills/:key')
+  resetSkillToDefault(
+    @GetUserFromRequest() user: User,
+    @Param('key') key: string
+  ) {
+    if (!user?.isSuperAdmin) {
+      throw new HttpException('Chỉ quản trị hệ thống mới sửa được công thức.', 403);
+    }
+    if (!resetSkill(key)) throw new HttpException('Không có công thức này.', 404);
     return { ok: true };
   }
 

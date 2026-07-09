@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import OpenAI from 'openai';
 import { shuffle } from 'lodash';
+import { getSkill } from '@gitroom/nestjs-libraries/viral/viral.skills';
 
 // ============================================================================
 //  AI service — Social Hub
@@ -22,6 +23,11 @@ const VIET_ANH_SYSTEM =
   'Bạn là chuyên viên truyền thông của Trường Việt Anh. ' +
   'Viết nội dung mạng xã hội bằng tiếng Việt, tự nhiên, ấm áp, đúng chuẩn mực giáo dục, ' +
   'phù hợp phụ huynh và học sinh. Không bịa thông tin không có trong dữ liệu đầu vào.';
+
+// Các luồng trang Phát hiện đọc "vai hệ thống" ĐỘNG từ kho skill (tab 🧪
+// Công thức AI) — user chỉnh là ăn ngay; chưa chỉnh thì trùng bản trên.
+const vietAnhSystem = () =>
+  getSkill('he-thong-viet-anh') || VIET_ANH_SYSTEM;
 
 // Gọi Claude, trả về text.
 async function claudeText(
@@ -468,9 +474,8 @@ export class OpenaiService {
     whyShared: string;
   } | null> {
     const system =
-      'Bạn là chuyên gia phân tích nội dung viral giáo dục Việt Nam. Mổ xẻ VÌ SAO bài này được chia sẻ nhiều. ' +
-      'Phân tích sắc, cụ thể, có thể áp dụng lại — không chung chung. Tiếng Việt. ' +
-      'Trả JSON: {"hook": "câu mở đánh vào đâu", "structure": "cấu trúc bài theo trình tự", ' +
+      getSkill('skill-mo-cong-thuc') +
+      ' Trả JSON: {"hook": "câu mở đánh vào đâu", "structure": "cấu trúc bài theo trình tự", ' +
       '"emotion": "đòn cảm xúc khiến người ta share", "format": "định dạng trình bày", ' +
       '"whyShared": "chốt: người share nhận được danh tính/giá trị gì khi bấm share"}';
     return claudeJson(
@@ -491,7 +496,7 @@ export class OpenaiService {
         params.target.level
       ] || 'phụ huynh nói chung';
     const system =
-      VIET_ANH_SYSTEM +
+      vietAnhSystem() +
       ' Nhiệm vụ: viết BÀI MỚI cho kênh của trường theo CÔNG THỨC THẮNG được cung cấp. ' +
       'TUYỆT ĐỐI không sao chép nội dung bài gốc — chỉ tái sử dụng công thức (hook, cấu trúc, đòn cảm xúc, format). ' +
       'Nội dung phải về Trường Việt Anh / chủ đề giáo dục phù hợp cấp học. Chỉ trả về nội dung bài, không giải thích.';
@@ -530,28 +535,15 @@ export class OpenaiService {
       }[]
     | null
   > {
-    // Nguyên tắc chọn nhóm — port NGUYÊN VĂN khối "A. NGUYEN TAC CHON NHOM"
-    // của n8n (kèm A*: bản chính đúng 1 nhóm; variants chỉ là bản phụ tham khảo).
-    const ROUTING = `NGUYÊN TẮC CHỌN NHÓM (BẮT BUỘC):
-- Mã nhóm = CẤP HỌC x CƠ SỞ. Phần "CƠ SỞ" (HCM/CG/RG) CHỈ là mã định tuyến nội bộ (quyết định content đăng lên kênh nào) — KHÔNG phải căn cứ để viết nội dung.
-- Mã cấp: mầm non → MN-*; tiểu học → TH-*; THCS → THCS-HCM; THPT → THPT-HCM.
-- CHỌN ĐÚNG 1 CẤP theo DẤU HIỆU của bài (đọc kỹ độ tuổi/lớp để không nhầm cấp liền kề):
-  + MẦM NON (2-5 tuổi, nhà trẻ/mẫu giáo): ăn-ngủ, tập tự lập, lần đầu xa mẹ, đi học khóc, biếng ăn, Montessori/immersion mầm non, chuẩn bị vào lớp 1.
-  + TIỂU HỌC (lớp 1-5): vào lớp 1, tập đọc/tập viết/làm toán, nền tảng tiểu học, tiếng Anh tiểu học, bài tập về nhà tiểu học.
-  + THCS = CẤP 2 (lớp 6-9): tuyển sinh lớp 6, dậy thì, điện thoại/game, bạn bè tuổi teen, ôn thi vào lớp 10, tâm lý tuổi mới lớn.
-  + THPT (lớp 10-12): thi/tuyển sinh vào lớp 10, thi tốt nghiệp THPT, hướng nghiệp, chọn ngành, đại học/du học, luyện thi/IELTS, áp lực thi cử. Tin thuần về đại học → gắn THPT theo góc hướng nghiệp sau lớp 12 (trường chỉ có tới THPT).
-- Bài RÕ 1 CẤP (có dấu hiệu đặc trưng ở trên) → BẮT BUỘC chọn đúng cấp đó. TUYỆT ĐỐI KHÔNG nhảy cấp: nội dung lớp 10/THPT KHÔNG gắn mầm non hay tiểu học; nội dung dậy thì/cấp 2 KHÔNG gắn tiểu học; và ngược lại.
-- Bài PHỔ QUÁT (không gắn cấp nào cụ thể — vd nuôi dạy con nói chung, đồng hành cùng con, cảm xúc/tâm lý gia đình, dùng công nghệ/AI trong học tập, triết lý giáo dục): chọn cấp hợp nhất, KHÔNG bị coi là sai. Vẫn CHỈ 1 nhóm chính.
-- MẶC ĐỊNH chọn cơ sở chính là HCM. Chỉ thu hẹp về CG hoặc RG khi bài THẬT SỰ nói về Cần Giuộc/Long An hoặc Rạch Giá.`;
+    // Vai + nguyên tắc chọn nhóm + nhiệm vụ 4 bước: đọc ĐỘNG từ kho skill
+    // (tab 🧪 Công thức AI). Giao kèo JSON giữ ở code — chỉnh skill không vỡ parser.
     const system =
-      VIET_ANH_SYSTEM +
+      vietAnhSystem() +
       '\n\n' +
-      ROUTING +
-      '\n\nNhiệm vụ: với TỪNG bài trong danh sách, làm 4 bước:\n' +
-      '(A) Chọn ĐÚNG 1 nhóm chân dung phù hợp nhất theo NGUYÊN TẮC CHỌN NHÓM ở trên.\n' +
-      '(B) VIẾT LẠI nội dung thành bài đăng cho nhóm đó: 2-4 câu, giọng "Vui Vẻ & Thực Dụng", kết bằng CTA tự nhiên + 4-6 hashtag. CẤM: định kiến vùng miền/giàu nghèo, tên trường đối thủ, sao chép nguyên văn bài gốc. THÊM "variants": nếu nội dung cũng hợp với các nhóm KHÁC CÙNG CẤP HỌC (vd chọn TH-HCM mà bài hợp cả TH-CG, TH-RG), viết TỐI ĐA 2 biến thể — mỗi biến thể 2-4 câu VIẾT RIÊNG đúng chân dung tâm lý nhóm đó (không đổi cấp học, không copy bản chính); không hợp nhóm nào khác → mảng rỗng.\n' +
-      '(C) Chấm BẢN VIẾT LẠI theo rubric.\n' +
-      '(D) GÁN LOẠI SẢN XUẤT phù hợp nhất: "content_type" ∈ ["blog","infographic","video"] (blog = chủ đề sâu cần giải thích; infographic = liệt kê/số liệu/mẹo nhìn nhanh; video = câu chuyện/cảm xúc/trình diễn). Kèm "podcast_score" 0-100: nội dung này ĐỌC THÀNH AUDIO có hay không (câu chuyện/tâm sự/lời khuyên nghe được → cao; bảng số liệu/so sánh nhìn mắt → thấp).\n\n' +
+      getSkill('nguyen-tac-chon-nhom') +
+      '\n\n' +
+      getSkill('skill-phan-loai-viet-lai') +
+      '\n\n' +
       `CÁC NHÓM CHÂN DUNG:\n${personasText}\n\n${rubric}\n\n` +
       'verdict ∈ ["xuất sắc - đăng ngay","đăng ngay","sửa nhẹ","sửa nhiều","bỏ qua"].\n' +
       'Trả JSON: mảng [{"i","persona","score","scores":{"hook","clarity","brand_voice","value","cta","seo"},"verdict","rewritten","variants":[{"persona","text"}],"reason","content_type","podcast_score"}] — đúng thứ tự "i" của đầu vào, đủ mọi phần tử.';
@@ -609,14 +601,8 @@ CHI tra JSON array: [{"profile_id","moi_quan_tam","tam_ly","hanh_vi","insights"}
     todos: { title: string; action: string }[];
   } | null> {
     const system =
-      'Bạn là trợ lý chiến lược nội dung của Trường Việt Anh (K-12, TP.HCM). ' +
-      'Từ dữ liệu cào 7 ngày (tin giáo dục nóng + bài đối thủ/KOL thắng + số liệu vận hành), viết BẢN TIN TUẦN NGẮN GỌN cho đội marketing:\n' +
-      '- "summary": 2-3 câu nắm bắt tuần này có gì đáng chú ý nhất (nóng hổi, thiết thực, tiếng Việt tự nhiên).\n' +
-      '- "highlights": 3-5 tin NÓNG nhất tuần (mỗi dòng: tin gì + vì sao phụ huynh quan tâm — ngắn, 1 câu/dòng).\n' +
-      '- "market": 2-4 diễn biến thị trường/đối thủ đáng để ý (đối thủ đang đánh chủ đề gì, format nào đang thắng).\n' +
-      '- "todos": 4-7 việc CỤ THỂ tuần này cho đội content (mỗi việc: "title" ngắn + "action" 1 câu làm gì — vd viết blog chủ đề X cho nhóm THPT, sản xuất podcast Y, bám sự kiện Z). Ưu tiên việc ăn theo tin nóng + lỗ hổng đối thủ chưa làm.\n' +
-      'KHÔNG bịa số liệu, KHÔNG nhắc tên trường đối thủ trong todos (chỉ trong market). ' +
-      'Trả CHỈ JSON: {"summary","highlights":[],"market":[],"todos":[{"title","action"}]}';
+      getSkill('skill-ban-tin-tuan') +
+      '\nTrả CHỈ JSON: {"summary","highlights":[],"market":[],"todos":[{"title","action"}]}';
     const user =
       `TIN GIÁO DỤC NÓNG (7 ngày):\n${input.trendText || '(không có)'}\n\n` +
       `BÀI THẮNG CỦA ĐỐI THỦ/KOL:\n${input.winningText || '(không có)'}\n\n` +
@@ -681,7 +667,7 @@ CHI tra JSON array: [{"profile_id","moi_quan_tam","tam_ly","hanh_vi","insights"}
     reason: string;
   } | null> {
     const system =
-      VIET_ANH_SYSTEM +
+      vietAnhSystem() +
       '\n\nNhiệm vụ: tạo bài đăng "của trường" TỐT HƠN hẳn bản trước, cho 1 nhóm chân dung, rồi chấm điểm.\n' +
       '(A) Chọn 1 nhóm chân dung phù hợp nhất' +
       (input.persona ? ` (ưu tiên nhóm ${input.persona} nếu vẫn hợp)` : '') +
