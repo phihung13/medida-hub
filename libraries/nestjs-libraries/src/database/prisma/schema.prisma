@@ -444,6 +444,7 @@ model ViralPost {
   scoreDetail    String? // JSON {scores:{hook,clarity,brand_voice,value,cta,seo}, verdict, reason}
   persona        String? // nhóm chân dung phù hợp nhất (MN-HCM, TH-HCM, ...)
   aiContent      String? // bản AI viết lại cho persona đó (dùng để đăng)
+  aiVariants     String? // JSON [{persona, text}] — biến thể cho các nhóm khác cùng cấp
   status         String    @default("pending") // approved | pending | skipped
   deletedAt      DateTime?
   createdAt      DateTime  @default(now())
@@ -489,6 +490,66 @@ model ViralClone {
 
   @@index([organizationId])
   @@index([status])
+}
+
+// Sản phẩm SẢN XUẤT từ bài đã duyệt (port từ n8n WF-SanXuat): blog (HTML →
+// .docx), infographic (ảnh Gemini), podcast (kịch bản Claude → MiniMax TTS).
+// Chạy nền — status: processing → done | error (kèm lý do).
+model ViralProduct {
+  id             String    @id @default(cuid())
+  organizationId String
+  postId         String? // ViralPost nguồn (sản xuất từ thẻ đã duyệt)
+  cloneId        String? // ViralClone nguồn (sản xuất từ "Bài của mình")
+  format         String // blog | infographic | podcast
+  status         String    @default("processing") // processing | done | error
+  title          String?
+  topic          String? // chủ đề nguồn (hiển thị trên thẻ)
+  textContent    String? // blog: body_html · podcast: full_script
+  meta           String? // JSON {slug, meta_description, tags, est_minutes, ratio}
+  mediaPath      String? // infographic: URL ảnh · podcast: URL mp3
+  error          String?
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime? @updatedAt
+
+  @@index([organizationId])
+  @@index([status])
+}
+
+// URL đã cào (tombstone) — dedup BỀN qua purge: bài đã duyệt/bỏ qua/xóa vẫn
+// không bị cào lại (n8n giữ mọi dòng trong sheet; ta purge post nhưng giữ URL).
+// URL lưu dạng CHUẨN HOÁ: bỏ query + slash cuối + lowercase.
+model ViralSeen {
+  id             String   @id @default(cuid())
+  organizationId String
+  url            String
+  createdAt      DateTime @default(now())
+
+  @@unique([organizationId, url])
+  @@index([organizationId])
+}
+
+// 8 chân dung phụ huynh (persona) — seed từ sheet Profiles của n8n; phần ĐỘNG
+// (moiQuanTam/tamLy/hanhVi/insights) được AI làm giàu sau mỗi lần cào từ 3 tín
+// hiệu: VOICE (group phụ huynh), TREND (báo chí), WINNING (bài share cao).
+model ViralPersona {
+  id             String    @id @default(cuid())
+  organizationId String
+  code           String // MN-HCM | MN-CG | MN-RG | TH-HCM | TH-CG | TH-RG | THCS-HCM | THPT-HCM
+  label          String
+  capHoc         String?
+  khuVuc         String?
+  statics        String? // JSON nhân khẩu TĨNH (phan_khuc, do_tuoi, hoc_van, nghe_nghiep, thu_nhap, kinh_te, fanpage) — AI không sửa
+  moiQuanTam     String?
+  tamLy          String?
+  hanhVi         String?
+  insights       String? // trường ĐỘNG nhất — chưng cất hiểu biết mới, ~450 ký tự
+  dataPoints     Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime? @updatedAt
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
 }
 
 model Signatures {

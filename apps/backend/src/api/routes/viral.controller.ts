@@ -16,6 +16,8 @@ import { ViralService } from '@gitroom/nestjs-libraries/database/prisma/viral/vi
 import {
   getViralStatus,
   setViralConfig,
+  saveBgm,
+  deleteBgm,
 } from '@gitroom/nestjs-libraries/viral/viral.keys';
 
 // "Lò Bài Thắng": tường bài viral giáo dục → AI mổ công thức → nhân bản
@@ -198,6 +200,8 @@ export class ViralController {
       apifyToken?: string;
       youtubeKey?: string;
       crawlEveryHours?: number;
+      minimaxKey?: string;
+      minimaxGroupId?: string;
     }
   ) {
     if (!user?.isSuperAdmin) {
@@ -206,6 +210,10 @@ export class ViralController {
     setViralConfig({
       ...(typeof body.apifyToken === 'string' ? { apifyToken: body.apifyToken } : {}),
       ...(typeof body.youtubeKey === 'string' ? { youtubeKey: body.youtubeKey } : {}),
+      ...(typeof body.minimaxKey === 'string' ? { minimaxKey: body.minimaxKey } : {}),
+      ...(typeof body.minimaxGroupId === 'string'
+        ? { minimaxGroupId: body.minimaxGroupId }
+        : {}),
       ...(typeof body.crawlEveryHours === 'number'
         ? { crawlEveryHours: body.crawlEveryHours }
         : {}),
@@ -213,10 +221,104 @@ export class ViralController {
     return { ok: true, ...getViralStatus() };
   }
 
+  // Nhạc nền podcast: upload mp3 (base64) / xoá — lưu CONFIG_DIR, bền Docker.
+  @Post('/config/bgm')
+  setBgm(
+    @GetUserFromRequest() user: User,
+    @Body() body: { base64?: string }
+  ) {
+    if (!user?.isSuperAdmin) {
+      throw new HttpException('Chỉ quản trị hệ thống mới đổi được.', 403);
+    }
+    const b64 = String(body?.base64 || '');
+    if (!b64) throw new HttpException('Thiếu file nhạc.', 400);
+    const buf = Buffer.from(b64, 'base64');
+    if (buf.length < 10000 || buf.length > 30 * 1024 * 1024) {
+      throw new HttpException('File nhạc phải là mp3, 10KB–30MB.', 400);
+    }
+    saveBgm(buf);
+    return { ok: true, ...getViralStatus() };
+  }
+
+  @Delete('/config/bgm')
+  removeBgm(@GetUserFromRequest() user: User) {
+    if (!user?.isSuperAdmin) {
+      throw new HttpException('Chỉ quản trị hệ thống mới đổi được.', 403);
+    }
+    deleteBgm();
+    return { ok: true, ...getViralStatus() };
+  }
+
+  // ── SẢN XUẤT: blog / infographic / podcast từ bài đã duyệt ────────────────
+  @Post('/produce')
+  async produce(
+    @GetOrgFromRequest() org: Organization,
+    @Body() body: { ids?: string[]; source?: string; formats?: string[]; bgm?: boolean }
+  ) {
+    const res = await this._service
+      .produce(org.id, body)
+      .catch((e) => {
+        throw new HttpException(String(e?.message || 'Không tạo được job.'), 400);
+      });
+    if (!res.queued) {
+      throw new HttpException('Chưa chọn bài hoặc định dạng hợp lệ.', 400);
+    }
+    return res;
+  }
+
+  @Get('/products')
+  async products(@GetOrgFromRequest() org: Organization) {
+    return { items: await this._service.listProducts(org.id) };
+  }
+
+  @Post('/products/:id/retry')
+  async retryProduct(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string
+  ) {
+    const ok = await this._service.retryProduct(org.id, id);
+    if (!ok) throw new HttpException('Không tìm thấy sản phẩm.', 404);
+    return { ok: true };
+  }
+
+  // Blog → .docx (base64) — frontend tự tạo file tải về.
+  @Get('/products/:id/docx')
+  async productDocx(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string
+  ) {
+    const out = await this._service.productDocx(org.id, id);
+    if (!out) throw new HttpException('Sản phẩm không phải blog hoặc chưa xong.', 404);
+    return out;
+  }
+
+  @Delete('/products/:id')
+  async deleteProduct(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string
+  ) {
+    await this._service.deleteProduct(org.id, id);
+    return { ok: true };
+  }
+
+  // 8 chân dung khách hàng (persona động — AI tự làm giàu sau mỗi lần cào).
+  @Get('/personas')
+  async personas(@GetOrgFromRequest() org: Organization) {
+    return { items: await this._service.listPersonas(org.id) };
+  }
+
   // nguồn theo dõi
   @Post('/sources')
   createSource(@GetOrgFromRequest() org: Organization, @Body() body: any) {
     return this._service.createSource(org.id, body);
+  }
+
+  // Nhập bộ nguồn mặc định (KOL/đối thủ/group từ workflow n8n + 10 keyword
+  // Google News) — bỏ qua nguồn trùng.
+  @Post('/sources/import-defaults')
+  async importDefaultSources(@GetOrgFromRequest() org: Organization) {
+    const added = await this._service.importDefaultSources(org.id);
+    return { added };
   }
 
   @Delete('/sources/:id')

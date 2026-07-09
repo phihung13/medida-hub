@@ -361,7 +361,33 @@ const DetailModal: FC<{ post: any; onDone: () => void }> = ({ post, onDone }) =>
               <div className="text-[12.5px] leading-[1.6] whitespace-pre-line max-h-[150px] overflow-auto">{post.aiContent}</div>
             </div>
           )}
+          {(() => {
+            // biến thể cho các nhóm khác cùng cấp học (multi-variant)
+            try {
+              const vs = JSON.parse(post.aiVariants || '[]');
+              if (!Array.isArray(vs) || !vs.length) return null;
+              return vs.map((v: any, i: number) => (
+                <div key={i}>
+                  <div className="text-[10.5px] font-[800] tracking-[0.08em] uppercase text-textItemBlur mb-[4px]">
+                    ↳ {t('viral_ai_variant', 'Variant')} · {v.persona}
+                  </div>
+                  <div className="text-[12.5px] leading-[1.6] whitespace-pre-line max-h-[120px] overflow-auto text-textColor/85">{v.text}</div>
+                </div>
+              ));
+            } catch {
+              return null;
+            }
+          })()}
           {detail?.reason && <div className="text-[11.5px] text-textItemBlur">🎯 {detail.reason}</div>}
+          {detail?.content_type && (
+            <div className="text-[11.5px] text-textItemBlur">
+              🏭 {t('viral_produce_suggest', 'AI production suggestion')}:{' '}
+              <b className="text-textColor">
+                {detail.content_type === 'infographic' ? '🖼 Infographic' : detail.content_type === 'video' ? '🎬 Video' : '📝 Blog'}
+              </b>
+              {(detail.podcast_score ?? 0) >= 75 && <b className="text-textColor"> + 🎧 Podcast ({detail.podcast_score})</b>}
+            </div>
+          )}
           <div className="flex gap-[8px] mt-[2px]">
             {post.status !== 'approved' && (
               <button onClick={setStatus('approved')} className="flex-1 py-[8px] rounded-[8px] text-[12.5px] font-[700] bg-[#57D9A3]/15 text-[#57D9A3] border border-[#57D9A3]/35 hover:bg-[#57D9A3]/25">
@@ -434,7 +460,10 @@ const SourceModal: FC<{ onDone: () => void }> = ({ onDone }) => {
       ? t('viral_help_news', 'URL = RSS feed link of the news site/blog (e.g. .../rss). Crawling is FREE, no key needed.')
       : platform === 'youtube'
       ? t('viral_help_youtube', 'Name = search keyword. Requires a YouTube key (free) in Settings.')
+      : platform === 'gnews'
+      ? t('viral_help_gnews', 'Keyword = topic (e.g. "nuôi dạy con"). AI expands it into 6-7 related queries, then crawls Google News (last 7 days) — FREE, no key needed.')
       : t('viral_help_apify', 'URL = page/channel link. Requires an Apify token (paid) in Settings to crawl.');
+  const isKeyword = platform === 'youtube' || platform === 'gnews';
 
   const save = useCallback(async () => {
     if (!name.trim()) return;
@@ -448,16 +477,17 @@ const SourceModal: FC<{ onDone: () => void }> = ({ onDone }) => {
       <Field label={t('viral_platform', 'Platform')}>
         <select value={platform} onChange={(e) => setPlatform(e.target.value)} className={inputCls}>
           <option value="news">{t('viral_source_news', 'Blog / News (RSS — free)')}</option>
+          <option value="gnews">{t('viral_source_gnews', 'Google News (keyword + AI expand — free)')}</option>
           <option value="youtube">{t('viral_source_youtube', 'YouTube (keyword — free)')}</option>
           <option value="facebook">{t('viral_source_facebook', 'Facebook (Apify)')}</option>
           <option value="instagram">{t('viral_source_instagram', 'Instagram (Apify)')}</option>
           <option value="tiktok">{t('viral_source_tiktok', 'TikTok (Apify)')}</option>
         </select>
       </Field>
-      <Field label={platform === 'youtube' ? t('viral_search_keyword', 'Search keyword') : t('viral_source_name', 'Source name')}>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder={platform === 'youtube' ? t('viral_keyword_example', 'e.g. raising a teenager') : t('viral_source_example', 'e.g. VnExpress Education')} className={inputCls} />
+      <Field label={isKeyword ? t('viral_search_keyword', 'Search keyword') : t('viral_source_name', 'Source name')}>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder={isKeyword ? t('viral_keyword_example', 'e.g. raising a teenager') : t('viral_source_example', 'e.g. VnExpress Education')} className={inputCls} />
       </Field>
-      {platform !== 'youtube' && (
+      {!isKeyword && (
         <Field label={t('viral_url_label', 'URL')}>
           <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder={platform === 'news' ? 'https://vnexpress.net/rss/giao-duc.rss' : 'https://facebook.com/tenTrang'} className={inputCls} />
         </Field>
@@ -480,15 +510,19 @@ const ConfigModal: FC = () => {
   const fetch = useFetch();
   const toast = useToaster();
   const modal = useModals();
-  const { data } = useSWR('viral-config', async () => (await fetch('/viral/config')).json());
+  const { data, mutate: mutateCfg } = useSWR('viral-config', async () => (await fetch('/viral/config')).json());
   const [apify, setApify] = useState('');
   const [yt, setYt] = useState('');
+  const [mmKey, setMmKey] = useState('');
+  const [mmGroup, setMmGroup] = useState('');
   const [hours, setHours] = useState<number>(data?.crawlEveryHours ?? 12);
 
   const save = useCallback(async () => {
     const body: any = { crawlEveryHours: Number(hours) };
     if (apify.trim()) body.apifyToken = apify.trim();
     if (yt.trim()) body.youtubeKey = yt.trim();
+    if (mmKey.trim()) body.minimaxKey = mmKey.trim();
+    if (mmGroup.trim()) body.minimaxGroupId = mmGroup.trim();
     const res = await fetch('/viral/config', { method: 'POST', body: JSON.stringify(body) });
     if (res.status >= 400) {
       toast.show(t('viral_need_admin', 'System administrator permission required.'), 'warning');
@@ -496,7 +530,7 @@ const ConfigModal: FC = () => {
     }
     toast.show(t('viral_config_saved', 'Configuration saved.'), 'success');
     modal.closeCurrent();
-  }, [apify, yt, hours]);
+  }, [apify, yt, mmKey, mmGroup, hours]);
 
   return (
     <div className="flex flex-col gap-[14px]">
@@ -511,6 +545,44 @@ const ConfigModal: FC = () => {
       </Field>
       <Field label={`${t('viral_youtube_label', 'YouTube Data key — free')} ${data?.hasYoutube ? `(${t('viral_saved', 'saved')} ${data.youtubeMasked})` : ''}`}>
         <input type="password" value={yt} onChange={(e) => setYt(e.target.value)} placeholder="AIza..." className={inputCls} />
+      </Field>
+      <Field label={`${t('viral_minimax_label', 'MiniMax TTS key — for podcast production')} ${data?.hasMinimax ? `(${t('viral_saved', 'saved')} ${data.minimaxMasked})` : ''}`}>
+        <input type="password" value={mmKey} onChange={(e) => setMmKey(e.target.value)} placeholder="eyJhbGci..." className={inputCls} />
+      </Field>
+      <Field label={t('viral_minimax_group', 'MiniMax GroupId')}>
+        <input value={mmGroup} onChange={(e) => setMmGroup(e.target.value)} placeholder={data?.minimaxGroupId || '19xxxxxxxxxxxxxxxxx'} className={inputCls} />
+      </Field>
+      <Field label={`${t('viral_bgm_label', 'Podcast background music (mp3)')} ${data?.hasBgm ? `— ✓ ${t('viral_bgm_saved', 'uploaded')}` : ''}`}>
+        <div className="flex gap-[8px] items-center">
+          <input
+            type="file"
+            accept="audio/mpeg,.mp3"
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              if (!f) return;
+              const b64 = await new Promise<string>((res) => {
+                const r = new FileReader();
+                r.onload = () => res(String(r.result).split(',')[1] || '');
+                r.readAsDataURL(f);
+              });
+              const resp = await fetch('/viral/config/bgm', { method: 'POST', body: JSON.stringify({ base64: b64 }) });
+              toast.show(resp.ok ? t('viral_bgm_ok', 'Background music uploaded.') : t('viral_bgm_fail', 'Upload failed (admin only, mp3 ≤30MB).'), resp.ok ? 'success' : 'warning');
+              mutateCfg();
+            }}
+            className="text-[12px] text-textItemBlur file:mr-[8px] file:py-[6px] file:px-[10px] file:rounded-[7px] file:border-0 file:bg-btnPrimary/15 file:text-btnPrimary"
+          />
+          {data?.hasBgm && (
+            <button
+              onClick={async () => {
+                await fetch('/viral/config/bgm', { method: 'DELETE' });
+                mutateCfg();
+              }}
+              className="text-[12px] text-[#FF5A52] hover:underline"
+            >
+              ✕ {t('viral_bgm_remove', 'Remove')}
+            </button>
+          )}
+        </div>
       </Field>
       <Field label={t('viral_crawl_cycle', 'Auto-crawl cycle')}>
         <select value={hours} onChange={(e) => setHours(Number(e.target.value))} className={inputCls}>
@@ -593,6 +665,8 @@ const MineCard: FC<{ clone: any; onDone: () => void }> = ({ clone, onDone }) => 
   const better = clone.score != null && clone.sourceScore != null && clone.score > clone.sourceScore;
   const openPost = () =>
     modal.openModal({ title: t('viral_post_mine', 'Post this'), withCloseButton: true, classNames: { modal: 'w-[100%] max-w-[520px]' }, children: <PostMineModal clone={clone} onDone={onDone} /> });
+  const openProduceMine = () =>
+    modal.openModal({ title: t('viral_modal_produce', 'Produce content'), withCloseButton: true, classNames: { modal: 'w-[100%] max-w-[520px]' }, children: <ProduceModal ids={[clone.id]} source="clone" onDone={onDone} /> });
   const regen = async () => {
     setBusy('regen');
     try {
@@ -633,10 +707,240 @@ const MineCard: FC<{ clone: any; onDone: () => void }> = ({ clone, onDone }) => 
         <button onClick={openPost} className="flex-1 py-[7px] rounded-[8px] text-[12px] font-[700] bg-btnPrimary/15 text-btnPrimary hover:bg-btnPrimary/25">
           📤 {t('viral_post_mine', 'Post')}
         </button>
+        <button onClick={openProduceMine} className="px-[11px] py-[7px] rounded-[8px] text-[12px] font-[700] bg-[#57D9A3]/15 text-[#57D9A3] hover:bg-[#57D9A3]/25" title={t('viral_produce_bulk', 'Produce')}>
+          🏭
+        </button>
         <button onClick={regen} disabled={!!busy} className="px-[11px] py-[7px] rounded-[8px] text-[12px] text-textItemBlur border border-newBgLineColor hover:text-textColor disabled:opacity-50" title={t('viral_regenerate', 'Regenerate a better version')}>
           {busy === 'regen' ? '…' : '↻'}
         </button>
         <button onClick={del} disabled={!!busy} className="px-[11px] py-[7px] rounded-[8px] text-[12px] text-[#FF5A52] hover:bg-[#FF5A52]/10 disabled:opacity-50">✕</button>
+      </div>
+    </div>
+  );
+};
+
+// ── SẢN XUẤT (blog / infographic / podcast) ─────────────────────────────────
+const useProducts = (active: boolean) => {
+  const fetch = useFetch();
+  return useSWR(
+    active ? '/viral/products' : null,
+    async (u: string) => (await fetch(u)).json(),
+    // đang có job chạy → tự làm mới mỗi 5s cho tới khi xong
+    { refreshInterval: (d) => ((d?.items || []).some((p: any) => p.status === 'processing') ? 5000 : 0) }
+  );
+};
+
+const FORMAT_META: Record<string, { icon: string; label: string }> = {
+  blog: { icon: '📝', label: 'Blog' },
+  infographic: { icon: '🖼', label: 'Infographic' },
+  podcast: { icon: '🎧', label: 'Podcast' },
+};
+
+// Modal chọn định dạng sản xuất cho các bài đã chọn.
+// defaults: gợi ý AI (content_type + podcast_score từ lúc chấm) — tick sẵn.
+const ProduceModal: FC<{ ids: string[]; source: 'post' | 'clone'; onDone: () => void; defaults?: string[] }> = ({ ids, source, onDone, defaults }) => {
+  const t = useT();
+  const fetch = useFetch();
+  const toast = useToaster();
+  const modal = useModals();
+  const [formats, setFormats] = useState<Set<string>>(new Set(defaults?.length ? defaults : ['blog']));
+  const [busy, setBusy] = useState(false);
+  const [bgm, setBgm] = useState(true); // trộn nhạc nền podcast (nếu đã upload nhạc)
+  const { data: cfg } = useSWR('viral-config', async () => (await fetch('/viral/config')).json());
+  const toggle = (f: string) =>
+    setFormats((prev) => {
+      const next = new Set(prev);
+      next.has(f) ? next.delete(f) : next.add(f);
+      return next;
+    });
+  const submit = useCallback(async () => {
+    if (!formats.size) return;
+    setBusy(true);
+    try {
+      const res = await fetch('/viral/produce', {
+        method: 'POST',
+        body: JSON.stringify({ ids, source, formats: [...formats], bgm: bgm && !!cfg?.hasBgm }),
+      });
+      const d = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(d?.message || '');
+      toast.show(
+        `${t('viral_produce_queued', 'Started producing')} ${d?.queued ?? ''} ${t('viral_produce_queued_suffix', 'items — see the "Products" tab, results appear in a few minutes.')}`,
+        'success'
+      );
+      onDone();
+      modal.closeCurrent();
+    } catch (e: any) {
+      toast.show(e?.message || t('viral_produce_failed', 'Could not start production.'), 'warning');
+    } finally {
+      setBusy(false);
+    }
+  }, [ids, source, formats, onDone]);
+  const OPTIONS = [
+    { key: 'blog', desc: t('viral_produce_blog_desc', 'SEO article for the website (EEAT structure) — download as .docx') },
+    { key: 'infographic', desc: t('viral_produce_info_desc', 'AI-designed image (Gemini) — saved to Media library') },
+    { key: 'podcast', desc: t('viral_produce_pod_desc', 'Script + Vietnamese TTS voice (MiniMax) — mp3 audio') },
+  ];
+  return (
+    <div className="flex flex-col gap-[12px]">
+      <div className="text-[12.5px] text-textItemBlur">
+        {t('viral_produce_hint', 'Pick output formats —')} {ids.length} {t('viral_produce_hint_suffix', 'post(s) will be produced in the background, one product per format.')}
+      </div>
+      {OPTIONS.map((o) => (
+        <label key={o.key} className={clsx('flex items-start gap-[10px] p-[12px] rounded-[10px] border cursor-pointer', formats.has(o.key) ? 'border-btnPrimary/60 bg-btnPrimary/10' : 'border-newBgLineColor hover:border-newTableBorder')}>
+          <input type="checkbox" checked={formats.has(o.key)} onChange={() => toggle(o.key)} className="mt-[2px]" />
+          <span className="flex flex-col gap-[2px]">
+            <b className="text-[13px]">{FORMAT_META[o.key].icon} {FORMAT_META[o.key].label}</b>
+            <span className="text-[11.5px] text-textItemBlur">{o.desc}</span>
+            {o.key === 'podcast' && cfg && !cfg.hasMinimax && (
+              <span className="text-[11px] text-[#FFC53D]">⚠ {t('viral_minimax_missing', 'MiniMax key not set — add it in Settings or this format will fail.')}</span>
+            )}
+            {o.key === 'podcast' && formats.has('podcast') && cfg?.hasBgm && (
+              <label className="flex items-center gap-[6px] text-[11.5px] text-textItemBlur cursor-pointer mt-[4px]" onClick={(e) => e.stopPropagation()}>
+                <input type="checkbox" checked={bgm} onChange={(e) => setBgm(e.target.checked)} />
+                🎵 {t('viral_bgm_mix', 'Mix background music (intro 6s · outro 8s · auto-duck under voice)')}
+              </label>
+            )}
+          </span>
+        </label>
+      ))}
+      <Button onClick={submit} loading={busy} disabled={!formats.size}>
+        🏭 {t('viral_produce_start', 'Start production')}
+      </Button>
+    </div>
+  );
+};
+
+// Xem chi tiết sản phẩm: blog đọc được, podcast nghe + kịch bản.
+const ProductDetailModal: FC<{ product: any }> = ({ product }) => {
+  const t = useT();
+  const meta = (() => {
+    try {
+      return product.meta ? JSON.parse(product.meta) : {};
+    } catch {
+      return {};
+    }
+  })();
+  return (
+    <div className="flex flex-col gap-[12px]">
+      <div className="text-[15px] font-[700] leading-[1.4]">{product.title || product.topic}</div>
+      {meta.meta_description && <div className="text-[12px] italic text-textItemBlur">{meta.meta_description}</div>}
+      {product.format === 'infographic' && product.mediaPath && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={product.mediaPath} alt={product.title || ''} className="w-full rounded-[10px]" />
+      )}
+      {product.format === 'podcast' && product.mediaPath && (
+        <audio controls src={product.mediaPath} className="w-full" />
+      )}
+      {product.format === 'blog' && product.textContent && (
+        <div
+          className="text-[13px] leading-[1.7] max-h-[400px] overflow-auto bg-newColColor rounded-[10px] p-[14px] [&_h2]:text-[15px] [&_h2]:font-[700] [&_h2]:mt-[12px] [&_h3]:text-[13.5px] [&_h3]:font-[700] [&_h3]:mt-[8px] [&_p]:mt-[6px] [&_li]:ml-[16px] [&_li]:list-disc [&_table]:w-full [&_td]:border [&_td]:border-newBgLineColor [&_td]:p-[6px] [&_th]:border [&_th]:border-newBgLineColor [&_th]:p-[6px]"
+          dangerouslySetInnerHTML={{ __html: product.textContent }}
+        />
+      )}
+      {product.format === 'podcast' && product.textContent && (
+        <div className="text-[12.5px] leading-[1.7] max-h-[220px] overflow-auto whitespace-pre-line bg-newColColor rounded-[10px] p-[12px]">
+          {product.textContent}
+        </div>
+      )}
+      {Array.isArray(meta.tags) && meta.tags.length > 0 && (
+        <div className="text-[11.5px] text-textItemBlur">🏷 {meta.tags.join(', ')}</div>
+      )}
+    </div>
+  );
+};
+
+// Thẻ sản phẩm trong tab "Sản phẩm".
+const ProductCard: FC<{ product: any; onDone: () => void }> = ({ product, onDone }) => {
+  const t = useT();
+  const fetch = useFetch();
+  const toast = useToaster();
+  const modal = useModals();
+  const [busy, setBusy] = useState(false);
+  const fm = FORMAT_META[product.format] || { icon: '📦', label: product.format };
+  const openDetail = () =>
+    modal.openModal({ title: `${fm.icon} ${fm.label}`, withCloseButton: true, classNames: { modal: 'w-[100%] max-w-[680px]' }, children: <ProductDetailModal product={product} /> });
+  const downloadDocx = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setBusy(true);
+    try {
+      const res = await fetch(`/viral/products/${product.id}/docx`);
+      if (!res.ok) throw new Error();
+      const d = await res.json();
+      const bin = atob(d.base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = d.fileName || 'blog.docx';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch {
+      toast.show(t('viral_docx_failed', 'Could not download .docx.'), 'warning');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const retry = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setBusy(true);
+    try {
+      await fetch(`/viral/products/${product.id}/retry`, { method: 'POST' });
+      onDone();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const del = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!(await deleteDialog(t('viral_delete_product_confirm', 'Delete this product?'), t('viral_delete', 'Delete')))) return;
+    await fetch(`/viral/products/${product.id}`, { method: 'DELETE' });
+    onDone();
+  };
+  return (
+    <div onClick={product.status === 'done' ? openDetail : undefined} className={clsx('bg-newColColor border border-newBgLineColor rounded-[13px] overflow-hidden flex flex-col', product.status === 'done' && 'cursor-pointer hover:border-newTableBorder')}>
+      {product.format === 'infographic' && product.mediaPath && product.status === 'done' && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={product.mediaPath} alt="" className="w-full max-h-[240px] object-cover" />
+      )}
+      <div className="p-[13px] flex flex-col gap-[9px] flex-1">
+        <div className="flex items-center gap-[7px] flex-wrap">
+          <span className="text-[11px] font-[800] px-[9px] py-[3px] rounded-full bg-btnPrimary/15 text-btnPrimary">{fm.icon} {fm.label}</span>
+          {product.status === 'processing' && (
+            <span className="text-[11px] font-[700] px-[9px] py-[3px] rounded-full bg-[#FFC53D]/15 text-[#FFC53D] animate-pulse">⏳ {t('viral_producing', 'Producing…')}</span>
+          )}
+          {product.status === 'error' && (
+            <span className="text-[11px] font-[700] px-[9px] py-[3px] rounded-full bg-[#FF5A52]/15 text-[#FF5A52]">✕ {t('viral_produce_error', 'Failed')}</span>
+          )}
+          {product.status === 'done' && (
+            <span className="text-[11px] font-[700] px-[9px] py-[3px] rounded-full bg-[#57D9A3]/15 text-[#57D9A3]">✓ {t('viral_produce_done', 'Done')}</span>
+          )}
+        </div>
+        <div className="text-[13.5px] font-[600] leading-[1.4] line-clamp-2">{product.title || product.topic || '—'}</div>
+        {product.status === 'error' && product.error && (
+          <div className="text-[11.5px] text-[#FF5A52]/90 leading-[1.5] line-clamp-3">{product.error}</div>
+        )}
+        {product.format === 'podcast' && product.mediaPath && product.status === 'done' && (
+          <audio controls src={product.mediaPath} className="w-full h-[36px]" onClick={(e) => e.stopPropagation()} />
+        )}
+        <div className="flex gap-[6px] mt-auto pt-[8px] border-t border-newBgLineColor/60">
+          {product.status === 'done' && product.format === 'blog' && (
+            <button onClick={downloadDocx} disabled={busy} className="flex-1 py-[6px] rounded-[7px] text-[11.5px] font-[700] bg-btnPrimary/15 text-btnPrimary hover:bg-btnPrimary/25 disabled:opacity-50">
+              ⬇ {t('viral_download_docx', 'Download .docx')}
+            </button>
+          )}
+          {product.status === 'done' && product.format !== 'blog' && product.mediaPath && (
+            <a href={product.mediaPath} download onClick={(e) => e.stopPropagation()} className="flex-1 py-[6px] rounded-[7px] text-[11.5px] font-[700] text-center bg-btnPrimary/15 text-btnPrimary hover:bg-btnPrimary/25">
+              ⬇ {t('viral_download', 'Download')}
+            </a>
+          )}
+          {product.status === 'error' && (
+            <button onClick={retry} disabled={busy} className="flex-1 py-[6px] rounded-[7px] text-[11.5px] font-[700] text-[#FFC53D] border border-[#FFC53D]/40 hover:bg-[#FFC53D]/10 disabled:opacity-50">
+              ↻ {t('viral_retry', 'Retry')}
+            </button>
+          )}
+          <button onClick={del} className="px-[10px] py-[6px] rounded-[7px] text-[11.5px] text-[#FF5A52] hover:bg-[#FF5A52]/10">✕</button>
+        </div>
       </div>
     </div>
   );
@@ -655,12 +959,15 @@ export const ViralComponent: FC = () => {
   const [crawling, setCrawling] = useState(false);
   const isMine = tab === 'mine';
   const isArchive = tab === 'archive';
+  const isProducts = tab === 'products';
   const { data, isLoading, mutate } = useViral(platform, level, sort, tab);
   const { data: mineData, mutate: mutateMine } = useMine();
+  const { data: productsData, mutate: mutateProducts } = useProducts(isProducts);
   const refreshAll = useCallback(() => {
     mutate();
     mutateMine();
-  }, [mutate, mutateMine]);
+    mutateProducts();
+  }, [mutate, mutateMine, mutateProducts]);
 
   // Thumbnail hỏng (URL CDN hết hạn → 403): ẩn ảnh, rơi về placeholder nhãn nền tảng.
   const [brokenThumbs, setBrokenThumbs] = useState<Set<string>>(new Set());
@@ -775,6 +1082,43 @@ export const ViralComponent: FC = () => {
     modal.openModal({ title: t('viral_modal_add_source', 'Add tracked source'), withCloseButton: true, classNames: { modal: 'w-[100%] max-w-[500px]' }, children: <SourceModal onDone={mutate} /> });
   const openConfig = () =>
     modal.openModal({ title: t('viral_modal_config', 'Auto-crawl configuration'), withCloseButton: true, classNames: { modal: 'w-[100%] max-w-[520px]' }, children: <ConfigModal /> });
+  // Sản xuất: từ các thẻ đã chọn → chọn định dạng → job chạy nền → tab Sản phẩm.
+  // Tick sẵn theo gợi ý AI: content_type đa số + podcast nếu có bài podcast_score>=75.
+  const openProduce = useCallback(() => {
+    const ids = [...selected];
+    if (!ids.length) return;
+    const chosen = (data?.items || []).filter((p: any) => selected.has(p.id));
+    const count: Record<string, number> = {};
+    let podcast = false;
+    for (const p of chosen) {
+      try {
+        const d = JSON.parse(p.scoreDetail || '{}');
+        if (d.content_type === 'blog' || d.content_type === 'infographic') count[d.content_type] = (count[d.content_type] || 0) + 1;
+        if ((d.podcast_score ?? 0) >= 75) podcast = true;
+      } catch {
+        /* thẻ chưa chấm — bỏ qua gợi ý */
+      }
+    }
+    const top = (count.infographic || 0) > (count.blog || 0) ? 'infographic' : 'blog';
+    const defaults = podcast ? [top, 'podcast'] : [top];
+    modal.openModal({
+      title: t('viral_modal_produce', 'Produce content'),
+      withCloseButton: true,
+      classNames: { modal: 'w-[100%] max-w-[520px]' },
+      children: (
+        <ProduceModal
+          ids={ids}
+          source="post"
+          defaults={defaults}
+          onDone={() => {
+            setSelected(new Set());
+            setTab('products');
+            refreshAll();
+          }}
+        />
+      ),
+    });
+  }, [selected, data, refreshAll, t]);
 
   const crawlNow = useCallback(async () => {
     setCrawling(true);
@@ -815,6 +1159,18 @@ export const ViralComponent: FC = () => {
     await fetch(`/viral/${id}`, { method: 'DELETE' });
     mutate();
   };
+  // Nhập bộ nguồn n8n (KOL/đối thủ/group + keyword Google News) — trùng thì bỏ qua.
+  const importDefaultSources = useCallback(async () => {
+    const res = await (await fetch('/viral/sources/import-defaults', { method: 'POST' })).json();
+    toast.show(
+      res?.added
+        ? `${t('viral_imported_sources', 'Imported')} ${res.added} ${t('viral_imported_sources_suffix', 'sources. FB/TikTok stay OFF until you add an Apify token; Google News keywords are AUTO right away.')}`
+        : t('viral_imported_none', 'All pack sources already exist.'),
+      res?.added ? 'success' : 'warning'
+    );
+    mutate();
+  }, [mutate, t]);
+
   const removeSource = (id: string) => async () => {
     if (!(await deleteDialog(t('viral_unfollow_source_confirm', 'Stop tracking this source?'), t('viral_unfollow', 'Remove')))) return;
     await fetch(`/viral/sources/${id}`, { method: 'DELETE' });
@@ -877,6 +1233,7 @@ export const ViralComponent: FC = () => {
           ['pending', t('viral_status_pending', 'To review'), data?.statusCounts?.pending, 'btnPrimary'],
           ['approved', t('viral_status_approved', 'Approved'), data?.statusCounts?.approved, 'green'],
           ['mine', t('viral_tab_mine', 'My posts'), data?.statusCounts?.mine, 'btnPrimary'],
+          ['products', `🏭 ${t('viral_tab_products', 'Products')}`, data?.statusCounts?.products, 'green'],
           ['archive', t('viral_tab_archive', 'Archive'), data?.statusCounts?.archive, 'muted'],
         ].map(([k, l, count, tone]) => (
           <button
@@ -913,6 +1270,7 @@ export const ViralComponent: FC = () => {
                   <button onClick={() => bulkAction('approve')} className="h-[32px] px-[12px] rounded-[8px] text-[12px] font-[700] bg-[#57D9A3]/15 text-[#57D9A3] hover:bg-[#57D9A3]/25">✓ {t('viral_approve', 'Approve')}</button>
                   <button onClick={() => bulkAction('skip')} className="h-[32px] px-[12px] rounded-[8px] text-[12px] font-[700] text-[#FF5A52] border border-[#FF5A52]/30 hover:bg-[#FF5A52]/10">✕ {t('viral_skip', 'Skip')}</button>
                   <button onClick={() => bulkAction('clone')} className="h-[32px] px-[12px] rounded-[8px] text-[12px] font-[700] bg-btnPrimary/15 text-btnPrimary hover:bg-btnPrimary/25">⧉ {t('viral_clone_bulk', 'Clone → My posts')}</button>
+                  <button onClick={openProduce} className="h-[32px] px-[12px] rounded-[8px] text-[12px] font-[700] bg-[#57D9A3]/15 text-[#57D9A3] hover:bg-[#57D9A3]/25">🏭 {t('viral_produce_bulk', 'Produce')}</button>
                   <button onClick={() => bulkAction('delete')} className="h-[32px] px-[12px] rounded-[8px] text-[12px] text-textItemBlur border border-newBgLineColor hover:text-textColor">🗑 {t('viral_move_archive', 'Archive')}</button>
                 </>
               ) : (
@@ -931,8 +1289,8 @@ export const ViralComponent: FC = () => {
         </div>
       )}
 
-      {/* filters (không áp dụng cho tab Bài của mình) */}
-      {!isMine && (
+      {/* filters (không áp dụng cho tab Bài của mình / Sản phẩm) */}
+      {!isMine && !isProducts && (
       <div className="flex flex-col gap-[8px]">
         <div className="flex gap-[6px] flex-wrap">
           {PLATFORMS.map((p) => (
@@ -969,8 +1327,24 @@ export const ViralComponent: FC = () => {
       </div>
       )}
 
-      {/* Bài của mình */}
-      {isMine ? (
+      {/* Sản phẩm sản xuất */}
+      {isProducts ? (
+        !(productsData?.items || []).length ? (
+          <div className="border border-dashed border-newBgLineColor rounded-[12px] p-[36px] text-center">
+            <div className="text-[15px] font-[600] mb-[6px]">{t('viral_products_empty_title', 'No products yet')}</div>
+            <div className="text-[12.5px] text-textItemBlur max-w-[480px] mx-auto">
+              {t('viral_products_empty_desc', 'Select approved posts (or use "My posts") and press "🏭 Produce" — AI turns each into a blog, infographic, or podcast that lands here.')}
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-[14px]">
+            {(productsData.items || []).map((p: any) => (
+              <ProductCard key={p.id} product={p} onDone={refreshAll} />
+            ))}
+          </div>
+        )
+      ) : /* Bài của mình */
+      isMine ? (
         !(mineData?.items || []).length ? (
           <div className="border border-dashed border-newBgLineColor rounded-[12px] p-[36px] text-center">
             <div className="text-[15px] font-[600] mb-[6px]">{t('viral_mine_empty_title', 'No posts of yours yet')}</div>
@@ -1107,6 +1481,21 @@ export const ViralComponent: FC = () => {
                     <span className="italic opacity-70" title={t('viral_no_share_data_hint', 'Share count not available yet')}>{t('viral_no_share_data', 'no share data')}</span>
                   )}
                   {p.clonedCount > 0 && <span title={t('viral_stat_cloned', 'cloned')}>↺ {p.clonedCount}</span>}
+                  {(() => {
+                    // gợi ý sản xuất AI (content_type + podcast) — gán lúc chấm điểm
+                    try {
+                      const d = JSON.parse(p.scoreDetail || '{}');
+                      if (!d.content_type) return null;
+                      const ic = d.content_type === 'infographic' ? '🖼' : d.content_type === 'video' ? '🎬' : '📝';
+                      return (
+                        <span className="ms-auto" title={t('viral_produce_suggest', 'AI production suggestion')}>
+                          {ic}{(d.podcast_score ?? 0) >= 75 ? ' 🎧' : ''}
+                        </span>
+                      );
+                    } catch {
+                      return null;
+                    }
+                  })()}
                 </div>
                 {/* hành động nhanh theo tab */}
                 <div className="flex gap-[6px] pt-[8px] border-t border-newBgLineColor/60">
@@ -1202,6 +1591,13 @@ export const ViralComponent: FC = () => {
           ))}
           <button onClick={openSource} className="border border-dashed border-newBgLineColor rounded-full px-[14px] py-[6px] text-[12px] text-textItemBlur hover:text-textColor">
             ＋ {t('viral_add_source', 'Add source')}
+          </button>
+          <button
+            onClick={importDefaultSources}
+            title={t('viral_import_sources_hint', 'KOLs, competitor schools, parent groups (needs Apify) + 10 Google News keywords (free)')}
+            className="border border-dashed border-btnPrimary/40 text-btnPrimary rounded-full px-[14px] py-[6px] text-[12px] hover:bg-btnPrimary/10"
+          >
+            📥 {t('viral_import_sources', 'Import n8n source pack')}
           </button>
         </div>
       </div>

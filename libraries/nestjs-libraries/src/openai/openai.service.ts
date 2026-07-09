@@ -523,19 +523,38 @@ export class OpenaiService {
         scores: Record<string, number>;
         verdict: string;
         rewritten: string;
+        variants?: { persona: string; text: string }[];
         reason: string;
+        content_type?: string;
+        podcast_score?: number;
       }[]
     | null
   > {
+    // Nguyên tắc chọn nhóm — port NGUYÊN VĂN khối "A. NGUYEN TAC CHON NHOM"
+    // của n8n (kèm A*: bản chính đúng 1 nhóm; variants chỉ là bản phụ tham khảo).
+    const ROUTING = `NGUYÊN TẮC CHỌN NHÓM (BẮT BUỘC):
+- Mã nhóm = CẤP HỌC x CƠ SỞ. Phần "CƠ SỞ" (HCM/CG/RG) CHỈ là mã định tuyến nội bộ (quyết định content đăng lên kênh nào) — KHÔNG phải căn cứ để viết nội dung.
+- Mã cấp: mầm non → MN-*; tiểu học → TH-*; THCS → THCS-HCM; THPT → THPT-HCM.
+- CHỌN ĐÚNG 1 CẤP theo DẤU HIỆU của bài (đọc kỹ độ tuổi/lớp để không nhầm cấp liền kề):
+  + MẦM NON (2-5 tuổi, nhà trẻ/mẫu giáo): ăn-ngủ, tập tự lập, lần đầu xa mẹ, đi học khóc, biếng ăn, Montessori/immersion mầm non, chuẩn bị vào lớp 1.
+  + TIỂU HỌC (lớp 1-5): vào lớp 1, tập đọc/tập viết/làm toán, nền tảng tiểu học, tiếng Anh tiểu học, bài tập về nhà tiểu học.
+  + THCS = CẤP 2 (lớp 6-9): tuyển sinh lớp 6, dậy thì, điện thoại/game, bạn bè tuổi teen, ôn thi vào lớp 10, tâm lý tuổi mới lớn.
+  + THPT (lớp 10-12): thi/tuyển sinh vào lớp 10, thi tốt nghiệp THPT, hướng nghiệp, chọn ngành, đại học/du học, luyện thi/IELTS, áp lực thi cử. Tin thuần về đại học → gắn THPT theo góc hướng nghiệp sau lớp 12 (trường chỉ có tới THPT).
+- Bài RÕ 1 CẤP (có dấu hiệu đặc trưng ở trên) → BẮT BUỘC chọn đúng cấp đó. TUYỆT ĐỐI KHÔNG nhảy cấp: nội dung lớp 10/THPT KHÔNG gắn mầm non hay tiểu học; nội dung dậy thì/cấp 2 KHÔNG gắn tiểu học; và ngược lại.
+- Bài PHỔ QUÁT (không gắn cấp nào cụ thể — vd nuôi dạy con nói chung, đồng hành cùng con, cảm xúc/tâm lý gia đình, dùng công nghệ/AI trong học tập, triết lý giáo dục): chọn cấp hợp nhất, KHÔNG bị coi là sai. Vẫn CHỈ 1 nhóm chính.
+- MẶC ĐỊNH chọn cơ sở chính là HCM. Chỉ thu hẹp về CG hoặc RG khi bài THẬT SỰ nói về Cần Giuộc/Long An hoặc Rạch Giá.`;
     const system =
       VIET_ANH_SYSTEM +
-      '\n\nNhiệm vụ: với TỪNG bài trong danh sách, làm 3 bước:\n' +
-      '(A) Chọn ĐÚNG 1 nhóm chân dung phù hợp nhất (mã nhóm). Mặc định chọn nhóm HCM; chỉ chọn nhóm CG/RG khi nội dung gắn rõ địa phương đó. Không nhảy cấp học.\n' +
-      '(B) VIẾT LẠI nội dung thành bài đăng cho nhóm đó: 2-4 câu, giọng "Vui Vẻ & Thực Dụng", kết bằng CTA tự nhiên + 4-6 hashtag. CẤM: định kiến vùng miền/giàu nghèo, tên trường đối thủ, sao chép nguyên văn bài gốc.\n' +
-      '(C) Chấm BẢN VIẾT LẠI theo rubric.\n\n' +
+      '\n\n' +
+      ROUTING +
+      '\n\nNhiệm vụ: với TỪNG bài trong danh sách, làm 4 bước:\n' +
+      '(A) Chọn ĐÚNG 1 nhóm chân dung phù hợp nhất theo NGUYÊN TẮC CHỌN NHÓM ở trên.\n' +
+      '(B) VIẾT LẠI nội dung thành bài đăng cho nhóm đó: 2-4 câu, giọng "Vui Vẻ & Thực Dụng", kết bằng CTA tự nhiên + 4-6 hashtag. CẤM: định kiến vùng miền/giàu nghèo, tên trường đối thủ, sao chép nguyên văn bài gốc. THÊM "variants": nếu nội dung cũng hợp với các nhóm KHÁC CÙNG CẤP HỌC (vd chọn TH-HCM mà bài hợp cả TH-CG, TH-RG), viết TỐI ĐA 2 biến thể — mỗi biến thể 2-4 câu VIẾT RIÊNG đúng chân dung tâm lý nhóm đó (không đổi cấp học, không copy bản chính); không hợp nhóm nào khác → mảng rỗng.\n' +
+      '(C) Chấm BẢN VIẾT LẠI theo rubric.\n' +
+      '(D) GÁN LOẠI SẢN XUẤT phù hợp nhất: "content_type" ∈ ["blog","infographic","video"] (blog = chủ đề sâu cần giải thích; infographic = liệt kê/số liệu/mẹo nhìn nhanh; video = câu chuyện/cảm xúc/trình diễn). Kèm "podcast_score" 0-100: nội dung này ĐỌC THÀNH AUDIO có hay không (câu chuyện/tâm sự/lời khuyên nghe được → cao; bảng số liệu/so sánh nhìn mắt → thấp).\n\n' +
       `CÁC NHÓM CHÂN DUNG:\n${personasText}\n\n${rubric}\n\n` +
       'verdict ∈ ["xuất sắc - đăng ngay","đăng ngay","sửa nhẹ","sửa nhiều","bỏ qua"].\n' +
-      'Trả JSON: mảng [{"i","persona","score","scores":{"hook","clarity","brand_voice","value","cta","seo"},"verdict","rewritten","reason"}] — đúng thứ tự "i" của đầu vào, đủ mọi phần tử.';
+      'Trả JSON: mảng [{"i","persona","score","scores":{"hook","clarity","brand_voice","value","cta","seo"},"verdict","rewritten","variants":[{"persona","text"}],"reason","content_type","podcast_score"}] — đúng thứ tự "i" của đầu vào, đủ mọi phần tử.';
     const user = items
       .map(
         (it) =>
@@ -543,6 +562,75 @@ export class OpenaiService {
       )
       .join('\n\n---\n\n');
     return claudeJson(system, user, 8000);
+  }
+
+  // Làm giàu hồ sơ persona từ tín hiệu cào — port nguyên văn prompt node n8n
+  // "[Prof] Aggregate" + "[Prof] Claude Update".
+  async viralUpdatePersonas(blocks: string): Promise<
+    | {
+        profile_id: string;
+        moi_quan_tam?: string;
+        tam_ly?: string;
+        hanh_vi?: string;
+        insights?: string;
+      }[]
+    | null
+  > {
+    const sys = `Ban lam giau HO SO PERSONA phu huynh cua Truong Viet Anh tu du lieu crawl. Ho so duoc to chuc theo 5 truc: (1) van hoa nuoi day, (2) hoc van & muc tiep can thong tin, (3) kinh te & moi ban tam chi phi, (4) hanh vi quyet dinh, (5) noi dau theo cap hoc.
+
+CACH DUNG 3 LOAI TIN HIEU:
+- VOICE (loi than/thac mac that cua phu huynh trong group) = quy nhat -> cap nhat "tam_ly" (noi dau, noi so moi) va "moi_quan_tam". Trich duoc ca cach ho dung tu (de copywriter dung lai giong noi cua ho).
+- TREND (bao chi) -> bo sung "moi_quan_tam" voi chu de dang nong ma nhom nay quan tam.
+- WINNING (content share cao) -> cap nhat "insights": cong thuc/goc tiep can nao dang hieu qua voi nhom nay.
+
+QUY TAC CHONG TROI (rat quan trong):
+- "tam_ly" va "hanh_vi" la phan LOI cua persona: CHI bo sung khi tin hieu xuat hien LAP LAI hoac rat manh (engagement cao); KHONG viet lai toan bo, KHONG xoa dac diem cu.
+- "moi_quan_tam": them chu de moi, gop chu de trung, loai chu de da nguoi (uu tien 6-10 chu de song dong nhat).
+- "insights" = truong DONG: chung cat hieu biet MOI NHAT + dat gia nhat, toi da ~450 ky tu, uu tien tin hieu tuan nay, manh dan bo insight cu da het nong.
+- TUYET DOI KHONG dua dia danh, dinh kien vung mien/giau ngheo vao bat ky truong nao. Persona phan biet bang tam ly - hoc van - kinh te - hanh vi.
+- Moi truong toi da ~500 ky tu (tru insights ~450). Viet tieng Viet co dau.
+- Nhom khong co tin hieu moi: giu nguyen ca 4 truong.
+
+CHI tra JSON array: [{"profile_id","moi_quan_tam","tam_ly","hanh_vi","insights"}]. Khong markdown.`;
+    return claudeJson(sys, `8 nhom persona va tin hieu hom nay:\n\n${blocks}`, 4000);
+  }
+
+  // Mở rộng TỪ KHOÁ thành 6-7 truy vấn tìm tin cùng chủ đề (nguồn Google News)
+  // — port node n8n "🔑 Mở rộng chủ đề".
+  async viralExpandQueries(keyword: string): Promise<string[]> {
+    const out = await claudeJson<string[]>(
+      'Bạn sinh các TRUY VẤN tìm kiếm tin tức tiếng Việt để tìm bài CÙNG CHỦ ĐỀ với từ khóa cho trước. ' +
+        'Trả JSON array string thuần, 6-7 truy vấn: gồm từ khóa gốc + các cách diễn đạt khác / đồng nghĩa / khía cạnh liên quan ' +
+        '(để bắt bài title khác nhưng nội dung trùng chủ đề). KHÔNG markdown, KHÔNG giải thích.',
+      'Từ khóa: ' + keyword,
+      500
+    );
+    return Array.isArray(out)
+      ? out.map((s) => String(s).trim()).filter(Boolean).slice(0, 7)
+      : [];
+  }
+
+  // SẢN XUẤT (WF-SanXuat): viết bài BLOG chuẩn EEAT từ nội dung đã duyệt.
+  // system/user dựng sẵn ở viral.produce.prompts.ts — service chỉ gọi model.
+  async viralProduceBlog(
+    system: string,
+    user: string
+  ): Promise<{
+    title: string;
+    slug: string;
+    meta_description: string;
+    tags: string[];
+    body_html: string;
+  } | null> {
+    return claudeJson(system, user, 8000);
+  }
+
+  // SẢN XUẤT: viết kịch bản podcast (monologue, TTS đọc).
+  async viralProducePodcast(
+    system: string,
+    user: string
+  ): Promise<{ title: string; full_script: string; est_minutes: number } | null> {
+    return claudeJson(system, user, 6000);
   }
 
   // "Bài của mình": viết lại BÀI TỐT HƠN bản trước (điểm cao hơn prevScore), cho

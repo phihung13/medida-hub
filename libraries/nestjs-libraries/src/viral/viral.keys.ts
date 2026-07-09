@@ -11,12 +11,17 @@ interface ViralConfig {
   apifyToken: string;
   youtubeKey: string;
   crawlEveryHours: number; // 0 = tắt auto
+  // Sản xuất podcast (MiniMax TTS) — key + GroupId lấy ở minimax.io
+  minimaxKey: string;
+  minimaxGroupId: string;
 }
 
 const config: ViralConfig = {
   apifyToken: '',
   youtubeKey: '',
   crawlEveryHours: 12,
+  minimaxKey: '',
+  minimaxGroupId: '',
 };
 
 try {
@@ -25,6 +30,9 @@ try {
   config.youtubeKey = typeof raw?.youtubeKey === 'string' ? raw.youtubeKey : '';
   config.crawlEveryHours =
     typeof raw?.crawlEveryHours === 'number' ? raw.crawlEveryHours : 12;
+  config.minimaxKey = typeof raw?.minimaxKey === 'string' ? raw.minimaxKey : '';
+  config.minimaxGroupId =
+    typeof raw?.minimaxGroupId === 'string' ? raw.minimaxGroupId : '';
 } catch {
   /* chưa có file — mặc định */
 }
@@ -33,10 +41,36 @@ if (!config.youtubeKey && (process.env.YOUTUBE_API_KEY || '').trim())
   config.youtubeKey = process.env.YOUTUBE_API_KEY!.trim();
 if (!config.apifyToken && (process.env.APIFY_TOKEN || '').trim())
   config.apifyToken = process.env.APIFY_TOKEN!.trim();
+if (!config.minimaxKey && (process.env.MINIMAX_API_KEY || '').trim())
+  config.minimaxKey = process.env.MINIMAX_API_KEY!.trim();
+if (!config.minimaxGroupId && (process.env.MINIMAX_GROUP_ID || '').trim())
+  config.minimaxGroupId = process.env.MINIMAX_GROUP_ID!.trim();
 
 export function getViralConfig() {
   return { ...config };
 }
+// Nhạc nền podcast — file mp3 user upload, sống trong CONFIG_DIR (bền Docker).
+export function bgmPath(): string {
+  return configPath('viral-bgm.mp3');
+}
+export function hasBgm(): boolean {
+  try {
+    return fs.existsSync(bgmPath()) && fs.statSync(bgmPath()).size > 1000;
+  } catch {
+    return false;
+  }
+}
+export function saveBgm(buf: Buffer): void {
+  fs.writeFileSync(bgmPath(), buf);
+}
+export function deleteBgm(): void {
+  try {
+    fs.unlinkSync(bgmPath());
+  } catch {
+    /* chưa có file — coi như đã xoá */
+  }
+}
+
 export function getViralStatus() {
   return {
     hasApify: !!config.apifyToken,
@@ -44,6 +78,10 @@ export function getViralStatus() {
     hasYoutube: !!config.youtubeKey,
     youtubeMasked: config.youtubeKey ? config.youtubeKey.slice(0, 8) + '…' : '',
     crawlEveryHours: config.crawlEveryHours,
+    hasMinimax: !!(config.minimaxKey && config.minimaxGroupId),
+    minimaxMasked: config.minimaxKey ? config.minimaxKey.slice(0, 8) + '…' : '',
+    minimaxGroupId: config.minimaxGroupId,
+    hasBgm: hasBgm(),
   };
 }
 export function setViralConfig(patch: Partial<ViralConfig>) {
@@ -51,6 +89,10 @@ export function setViralConfig(patch: Partial<ViralConfig>) {
     config.apifyToken = patch.apifyToken.trim();
   if (typeof patch.youtubeKey === 'string')
     config.youtubeKey = patch.youtubeKey.trim();
+  if (typeof patch.minimaxKey === 'string')
+    config.minimaxKey = patch.minimaxKey.trim();
+  if (typeof patch.minimaxGroupId === 'string')
+    config.minimaxGroupId = patch.minimaxGroupId.trim();
   if (typeof patch.crawlEveryHours === 'number')
     config.crawlEveryHours = Math.max(0, Math.min(168, patch.crawlEveryHours));
   try {
