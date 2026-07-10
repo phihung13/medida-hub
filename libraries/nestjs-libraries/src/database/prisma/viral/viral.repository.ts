@@ -9,7 +9,8 @@ export class ViralRepository {
     private _clones: PrismaRepository<'viralClone'>,
     private _products: PrismaRepository<'viralProduct'>,
     private _personas: PrismaRepository<'viralPersona'>,
-    private _seen: PrismaRepository<'viralSeen'>
+    private _seen: PrismaRepository<'viralSeen'>,
+    private _reports: PrismaRepository<'viralReport'>
   ) {}
 
   // URL chuẩn hoá để dedup — bỏ query + slash cuối + lowercase (như n8n).
@@ -391,6 +392,33 @@ export class ViralRepository {
     return this._posts.model.viralPost.findMany({
       distinct: ['organizationId'],
       select: { organizationId: true },
+    });
+  }
+
+  // ── Bản tin tuần đã tạo (ViralReport — tab 📰 Bản tin) ───────────────────
+  createReport(orgId: string, data: { kind: string; title: string; content: string; meta?: string }) {
+    return this._reports.model.viralReport.create({
+      data: {
+        organizationId: orgId,
+        kind: String(data.kind).slice(0, 20),
+        title: String(data.title).slice(0, 300),
+        content: String(data.content).slice(0, 20000),
+        meta: data.meta ? String(data.meta).slice(0, 20000) : null,
+      },
+    });
+  }
+
+  listReports(orgId: string) {
+    return this._reports.model.viralReport.findMany({
+      where: { organizationId: orgId },
+      orderBy: { createdAt: 'desc' },
+      take: 40,
+    });
+  }
+
+  deleteReport(orgId: string, id: string) {
+    return this._reports.model.viralReport.deleteMany({
+      where: { id, organizationId: orgId },
     });
   }
 

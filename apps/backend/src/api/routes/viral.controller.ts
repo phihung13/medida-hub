@@ -230,10 +230,25 @@ export class ViralController {
     return { ok: true, ...getViralStatus() };
   }
 
-  // Gửi thử bản tin tuần NGAY (không đợi lịch T2-4-6/CN) — test Zalo/email.
+  // Tạo bản tin tuần NGAY (không đợi lịch T2-4-6/CN) — lưu tab 📰 + gửi 3 kênh.
   @Post('/report/test')
   async testReport(@GetOrgFromRequest() org: Organization) {
-    return this._service.sendWeeklyReport(org.id, 'crawl');
+    return this._service.sendWeeklyReport(org.id, 'manual');
+  }
+
+  // Danh sách bản tin đã tạo (tab 📰 Bản tin).
+  @Get('/reports')
+  async reports(@GetOrgFromRequest() org: Organization) {
+    return { items: await this._service.listReports(org.id) };
+  }
+
+  @Delete('/reports/:id')
+  async deleteReport(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string
+  ) {
+    await this._service.deleteReport(org.id, id);
+    return { ok: true };
   }
 
   // Nhạc nền podcast: upload mp3 (base64) / xoá — lưu CONFIG_DIR, bền Docker.

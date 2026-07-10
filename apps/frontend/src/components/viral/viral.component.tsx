@@ -1230,6 +1230,107 @@ const SkillsPanel: FC = () => {
   );
 };
 
+// ── TAB 📰 BẢN TIN TUẦN — đọc lại mọi bản tin đã tạo (T2-4-6 / CN / tay) ────
+const useReports = (active: boolean) => {
+  const fetch = useFetch();
+  return useSWR(active ? '/viral/reports' : null, async (u: string) => (await fetch(u)).json());
+};
+
+const ReportCard: FC<{ report: any; onDone: () => void }> = ({ report, onDone }) => {
+  const t = useT();
+  const fetch = useFetch();
+  const [open, setOpen] = useState(false);
+  const meta = (() => {
+    try {
+      return JSON.parse(report.meta || '{}');
+    } catch {
+      return {};
+    }
+  })();
+  // tick todo lưu local theo bản tin — nhẹ nhàng, không cần backend
+  const lsKey = `viral-report-todos-${report.id}`;
+  const [done, setDone] = useState<Set<number>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem(lsKey) || '[]'));
+    } catch {
+      return new Set();
+    }
+  });
+  const toggleTodo = (i: number) => {
+    setDone((prev) => {
+      const next = new Set(prev);
+      next.has(i) ? next.delete(i) : next.add(i);
+      localStorage.setItem(lsKey, JSON.stringify([...next]));
+      return next;
+    });
+  };
+  const del = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!(await deleteDialog(t('viral_report_delete_confirm', 'Delete this brief?'), t('viral_delete', 'Delete')))) return;
+    await fetch(`/viral/reports/${report.id}`, { method: 'DELETE' });
+    onDone();
+  };
+  const KIND: Record<string, string> = {
+    crawl: t('viral_report_kind_crawl', 'After crawl'),
+    sunday: t('viral_report_kind_sunday', 'Sunday recap'),
+    manual: t('viral_report_kind_manual', 'Manual'),
+  };
+  const todos: any[] = meta.todos || [];
+  return (
+    <div className="bg-newColColor border border-newBgLineColor rounded-[13px] overflow-hidden">
+      <button onClick={() => setOpen(!open)} className="w-full text-left p-[14px] flex items-center gap-[10px] hover:bg-newBgColorInner/40">
+        <span className="text-[18px]">📰</span>
+        <span className="flex-1 min-w-0">
+          <span className="block text-[13.5px] font-[700] truncate">{report.title}</span>
+          <span className="block text-[11.5px] text-textItemBlur">
+            {String(report.createdAt).slice(0, 10)} · {KIND[report.kind] || report.kind}
+            {todos.length > 0 && ` · ✅ ${done.size}/${todos.length}`}
+          </span>
+        </span>
+        <span className="text-textItemBlur text-[12px]">{open ? '▲' : '▼'}</span>
+        <button onClick={del} className="px-[8px] py-[4px] rounded-[6px] text-[11.5px] text-[#FF5A52] hover:bg-[#FF5A52]/10">✕</button>
+      </button>
+      {open && (
+        <div className="px-[16px] pb-[16px] flex flex-col gap-[12px] border-t border-newBgLineColor/60 pt-[12px]">
+          {meta.summary && <div className="text-[13px] leading-[1.6]">{meta.summary}</div>}
+          {(meta.highlights || []).length > 0 && (
+            <div>
+              <div className="text-[11px] font-[800] uppercase tracking-[0.06em] text-[#FF7A00] mb-[6px]">🔥 {t('viral_report_hot', 'Hot this week')}</div>
+              <ol className="flex flex-col gap-[5px] list-decimal ml-[18px] text-[12.5px] leading-[1.55]">
+                {(meta.highlights || []).map((h: string, i: number) => <li key={i}>{h}</li>)}
+              </ol>
+            </div>
+          )}
+          {(meta.market || []).length > 0 && (
+            <div>
+              <div className="text-[11px] font-[800] uppercase tracking-[0.06em] text-btnPrimary mb-[6px]">📈 {t('viral_report_market', 'Market moves')}</div>
+              <ul className="flex flex-col gap-[5px] list-disc ml-[18px] text-[12.5px] leading-[1.55]">
+                {(meta.market || []).map((m: string, i: number) => <li key={i}>{m}</li>)}
+              </ul>
+            </div>
+          )}
+          {todos.length > 0 && (
+            <div>
+              <div className="text-[11px] font-[800] uppercase tracking-[0.06em] text-[#57D9A3] mb-[6px]">✅ {t('viral_report_todos', 'This week to-do')}</div>
+              <div className="flex flex-col gap-[6px]">
+                {todos.map((td: any, i: number) => (
+                  <label key={i} className="flex items-start gap-[8px] cursor-pointer text-[12.5px] leading-[1.5]">
+                    <input type="checkbox" checked={done.has(i)} onChange={() => toggleTodo(i)} className="mt-[3px]" />
+                    <span className={done.has(i) ? 'line-through text-textItemBlur' : ''}>
+                      <b>{td.title}</b>{td.action ? ` — ${td.action}` : ''}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+          {meta.stats && <div className="text-[11.5px] text-textItemBlur">📊 {meta.stats}</div>}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ── Trang chính ───────────────────────────────────────────────────────────
 export const ViralComponent: FC = () => {
   const t = useT();
@@ -1246,6 +1347,9 @@ export const ViralComponent: FC = () => {
   const isReady = tab === 'ready';
   const isArchive = tab === 'archive';
   const isSkills = tab === 'skills';
+  const isReports = tab === 'reports';
+  const { data: reportsData, mutate: mutateReports } = useReports(isReports);
+  const [makingReport, setMakingReport] = useState(false);
   const { data, isLoading, mutate } = useViral(platform, level, sort, tab);
   const { data: mineData, mutate: mutateMine } = useMine();
   const { data: productsData, mutate: mutateProducts } = useProducts(isReady);
@@ -1553,6 +1657,18 @@ export const ViralComponent: FC = () => {
         ))}
         <div className="flex-1" />
         <button
+          onClick={() => setTab('reports')}
+          title={t('viral_tab_reports_hint', 'Weekly briefs: hot news, market moves, to-do list — also sent to Zalo/email')}
+          className={clsx(
+            'px-[12px] py-[7px] rounded-[8px] text-[12.5px] font-[700] border',
+            tab === 'reports'
+              ? 'bg-newColColor border-newTableBorder text-textColor'
+              : 'border-newBgLineColor text-textItemBlur hover:text-textColor'
+          )}
+        >
+          📰 {t('viral_tab_reports', 'Briefs')}
+        </button>
+        <button
           onClick={() => setTab('skills')}
           title={t('viral_tab_skills_hint', 'Edit the AI recipes: blog/podcast/infographic formulas, scoring rubric, rewrite rules…')}
           className={clsx(
@@ -1589,6 +1705,7 @@ export const ViralComponent: FC = () => {
           {tab === 'ready' && t('viral_flow_ready', 'Step 3 · Everything finished, waiting to publish. ✍️ Social posts → 📤 push to the Calendar (Facebook…). 🏭 Blog/infographic/podcast → download & publish to the website / YouTube / fanpage.')}
           {tab === 'archive' && t('viral_flow_archive', 'Outside the flow · Skipped + deleted posts rest here. Everything is permanently deleted after 7 days. You can still ↩ Restore a post back to "To review".')}
           {tab === 'skills' && t('viral_flow_skills', 'Outside the flow · The AI recipes behind every step: writing formulas, scoring rubric, group routing, weekly brief… Edit as markdown, import a .md file, or reset to the built-in default — changes apply from the very next AI run.')}
+          {tab === 'reports' && t('viral_flow_reports', 'Outside the flow · Weekly briefs the AI compiles from 7 days of crawling: hot news, market moves and a to-do list. Auto-created on the Mon-Wed-Fri schedule + Sunday recap, also sent to Zalo/email — tick off to-dos right here.')}
         </span>
       </div>
 
@@ -1625,8 +1742,8 @@ export const ViralComponent: FC = () => {
         </div>
       )}
 
-      {/* filters (không áp dụng cho tab Chờ đăng / Công thức) */}
-      {!isReady && !isSkills && (
+      {/* filters (không áp dụng cho tab Chờ đăng / Công thức / Bản tin) */}
+      {!isReady && !isSkills && !isReports && (
       <div className="flex flex-col gap-[8px]">
         <div className="flex gap-[6px] flex-wrap">
           {PLATFORMS.map((p) => (
@@ -1663,8 +1780,49 @@ export const ViralComponent: FC = () => {
       </div>
       )}
 
-      {/* 🧪 Công thức AI — kho skill chỉnh được */}
-      {isSkills ? (
+      {/* 📰 Bản tin tuần — đọc lại + tick todo */}
+      {isReports ? (
+        <div className="flex flex-col gap-[12px]">
+          <div className="flex">
+            <button
+              onClick={async () => {
+                setMakingReport(true);
+                try {
+                  const res = await fetch('/viral/report/test', { method: 'POST' });
+                  toast.show(
+                    res.ok
+                      ? t('viral_report_made', 'Brief created — also sent to your channels.')
+                      : t('viral_report_test_fail', 'Could not send test brief.'),
+                    res.ok ? 'success' : 'warning'
+                  );
+                  mutateReports();
+                } finally {
+                  setMakingReport(false);
+                }
+              }}
+              disabled={makingReport}
+              className="h-[38px] px-[16px] rounded-[9px] text-[13px] font-[700] bg-btnPrimary/15 text-btnPrimary border border-btnPrimary/40 hover:bg-btnPrimary/25 disabled:opacity-50"
+            >
+              {makingReport ? t('viral_report_making', 'Compiling… (about a minute)') : `⚡ ${t('viral_report_make', 'Create brief now')}`}
+            </button>
+          </div>
+          {!(reportsData?.items || []).length ? (
+            <div className="border border-dashed border-newBgLineColor rounded-[12px] p-[36px] text-center">
+              <div className="text-[15px] font-[600] mb-[6px]">{t('viral_reports_empty_title', 'No briefs yet')}</div>
+              <div className="text-[12.5px] text-textItemBlur max-w-[460px] mx-auto">
+                {t('viral_reports_empty_desc', 'Briefs are auto-created on the Mon-Wed-Fri crawl schedule and Sunday recap — or press "⚡ Create brief now".')}
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-[10px] max-w-[860px]">
+              {(reportsData.items || []).map((r: any) => (
+                <ReportCard key={r.id} report={r} onDone={mutateReports} />
+              ))}
+            </div>
+          )}
+        </div>
+      ) : /* 🧪 Công thức AI — kho skill chỉnh được */
+      isSkills ? (
         <SkillsPanel />
       ) : /* BƯỚC 3 · "Chờ đăng" — gộp Sản phẩm (blog/ảnh/podcast, đăng web) +
           Bài của mình (caption social, đăng Lịch), chia 2 khu theo cách đăng. */

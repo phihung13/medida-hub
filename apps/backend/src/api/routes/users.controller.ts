@@ -10,6 +10,7 @@ import {
   Res,
 } from '@nestjs/common';
 import { GetUserFromRequest } from '@gitroom/nestjs-libraries/user/user.from.request';
+import { StreakService } from '@gitroom/nestjs-libraries/database/prisma/streak/streak.service';
 import { sign } from 'jsonwebtoken';
 import { Organization, User } from '@prisma/client';
 import { SubscriptionService } from '@gitroom/nestjs-libraries/database/prisma/subscriptions/subscription.service';
@@ -47,8 +48,21 @@ export class UsersController {
     private _authService: AuthService,
     private _orgService: OrganizationService,
     private _userService: UsersService,
-    private _trackService: TrackService
+    private _trackService: TrackService,
+    private _streakService: StreakService
   ) {}
+
+  // ── Streak lửa (chuỗi ngày vào app, kiểu Duolingo) ────────────────────────
+  @Get('/streak')
+  getStreak(@GetUserFromRequest() user: User) {
+    return this._streakService.get(user.id);
+  }
+
+  // Ping mỗi lần mở app — trả kèm increased/milestone để UI bắn hiệu ứng.
+  @Post('/streak/ping')
+  pingStreak(@GetUserFromRequest() user: User) {
+    return this._streakService.ping(user.id);
+  }
 
   @Get('/chatbase-token')
   async getChatbaseToken(

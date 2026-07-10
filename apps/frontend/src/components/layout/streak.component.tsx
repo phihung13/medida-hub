@@ -1,54 +1,189 @@
 'use client';
 
-import { FC, useMemo } from 'react';
-import { useUser } from '@gitroom/frontend/components/layout/user.context';
+import { FC, useEffect, useRef, useState } from 'react';
+import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
+import { useT } from '@gitroom/react/translation/get.transation.service.client';
+
+// ============================================================================
+//  STREAK LỬA kiểu Duolingo — chuỗi ngày VÀO APP (giờ VN, backend /user/streak).
+//  - Ping 1 lần mỗi lần mở app: nối chuỗi → lửa bùng (burst); chạm cột mốc
+//    (3/7/14/30/50/100/200/300/365/500/1000) → màn ăn mừng toàn màn hình.
+//  - Lửa luôn lắc lư nhẹ (flicker) như Duolingo; đứt chuỗi → lửa xám.
+// ============================================================================
+
+const MILESTONES = [3, 7, 14, 30, 50, 100, 200, 300, 365, 500, 1000];
+
+// Ngọn lửa Duolingo: thân giọt lệ cong + lõi vàng, gradient cam→đỏ.
+const Flame: FC<{ size?: number; dead?: boolean }> = ({ size = 26, dead }) => (
+  <svg width={size} height={size} viewBox="0 0 24 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="flameBody" x1="12" y1="0" x2="12" y2="28" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stopColor="#FF9600" />
+        <stop offset="0.55" stopColor="#FF6D00" />
+        <stop offset="1" stopColor="#FF4B00" />
+      </linearGradient>
+      <linearGradient id="flameCore" x1="12" y1="12" x2="12" y2="26" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stopColor="#FFE066" />
+        <stop offset="1" stopColor="#FFB020" />
+      </linearGradient>
+    </defs>
+    {/* thân lửa — nhọn lệch trái trên đỉnh, phình tròn dưới đáy (dáng Duolingo) */}
+    <path
+      d="M12.6 0.9C12.9 3.9 11.9 6.1 10.2 7.9C8.9 9.3 7.3 10.5 5.9 11.9C3 14.8 1.6 18 2.6 21.2C3.9 25.5 8 28 12.4 28C17.9 28 22.4 24.1 22.4 18.6C22.4 13.4 19 10.9 17.9 7.8C17.3 6.2 17.2 4.5 17.9 2.4C15.9 2.9 14.5 4 13.6 5.4C13.3 3.9 13 2.3 12.6 0.9Z"
+      fill={dead ? '#8a8a8a' : 'url(#flameBody)'}
+    />
+    {/* lõi vàng */}
+    <path
+      d="M12.4 26C15.5 26 18 23.7 18 20.7C18 18.2 16.4 16.7 14.9 14.9C14.2 14 13.5 13 13.1 11.9C11.7 13.4 10.9 14.5 10 15.5C8.6 17.1 7.2 18.5 7.2 20.8C7.2 23.7 9.4 26 12.4 26Z"
+      fill={dead ? '#b5b5b5' : 'url(#flameCore)'}
+    />
+  </svg>
+);
 
 export const StreakComponent: FC = () => {
-  const user = useUser();
+  const fetch = useFetch();
+  const t = useT();
+  const [streak, setStreak] = useState<{
+    current: number;
+    longest: number;
+    nextMilestone: number | null;
+  } | null>(null);
+  const [burst, setBurst] = useState(false);
+  const [milestone, setMilestone] = useState<number | null>(null);
+  const pinged = useRef(false);
 
-  const streakDays = useMemo(() => {
-    if (!user?.streakSince) return 0;
-    const streakStart = new Date(user.streakSince);
-    const now = new Date();
-    const diffTime = now.getTime() - streakStart.getTime();
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    if (diffDays + 1 <= 0) {
-      return 1;
-    }
+  // Ping đúng 1 lần mỗi lần mở app — nối chuỗi + nhận tín hiệu ăn mừng.
+  useEffect(() => {
+    if (pinged.current) return;
+    pinged.current = true;
+    (async () => {
+      try {
+        const res = await fetch('/user/streak/ping', { method: 'POST' });
+        if (!res.ok) throw new Error();
+        const d = await res.json();
+        setStreak({ current: d.current, longest: d.longest, nextMilestone: d.nextMilestone });
+        if (d.increased) {
+          setBurst(true);
+          setTimeout(() => setBurst(false), 1600);
+        }
+        if (d.milestone) setMilestone(d.milestone);
+      } catch {
+        // ping lỗi — thử đọc streak hiện có, không chặn UI
+        try {
+          const r = await fetch('/user/streak');
+          if (r.ok) setStreak(await r.json());
+        } catch {
+          /* thôi — ẩn streak lượt này */
+        }
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-    return diffDays + 1;
-  }, [user?.streakSince]);
-
-  const tooltipContent = useMemo(() => {
-    if (streakDays === 1) {
-      return 'You started your streak today! Keep posting daily to maintain it.';
-    }
-    return `You're on a ${streakDays} day posting streak! Keep it going!`;
-  }, [streakDays]);
-
-  if (!user?.streakSince || streakDays <= 0) {
-    return null;
-  }
+  if (!streak) return null;
+  const dead = streak.current <= 0;
+  const nextM = streak.nextMilestone;
 
   return (
-    <div
-      className="flex items-center gap-[6px] text-orange-500 hover:text-orange-400 cursor-default"
-      data-tooltip-id="tooltip"
-      data-tooltip-content={tooltipContent}
-    >
-      <svg
-        width="24"
-        height="24"
-        viewBox="0 0 22 27"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
+    <>
+      <div
+        className="relative flex items-center gap-[5px] cursor-default select-none"
+        data-tooltip-id="tooltip"
+        data-tooltip-content={
+          dead
+            ? t('streak_tip_dead', 'Your streak is out — come back today to relight it!')
+            : `${t('streak_tip_days', 'Day streak')}: ${streak.current} 🔥 · ${t('streak_tip_longest', 'Best')}: ${streak.longest}${nextM ? ` · ${t('streak_tip_next', 'Next milestone')}: ${nextM}` : ''}`
+        }
       >
-        <path
-          d="M17.9862 17.1673C17.7269 18.6157 17.0301 19.9498 15.9896 20.9902C14.949 22.0305 13.6147 22.7271 12.1663 22.986C12.1113 22.9949 12.0557 22.9995 12 22.9998C11.7492 22.9997 11.5075 22.9054 11.323 22.7355C11.1384 22.5656 11.0245 22.3326 11.0037 22.0826C10.9829 21.8326 11.0569 21.584 11.2108 21.3859C11.3648 21.1879 11.5876 21.055 11.835 21.0135C13.9062 20.6648 15.6637 18.9073 16.015 16.8323C16.0594 16.5707 16.2059 16.3375 16.4223 16.184C16.6387 16.0304 16.9072 15.9691 17.1688 16.0135C17.4303 16.058 17.6635 16.2045 17.8171 16.4209C17.9706 16.6372 18.0319 16.9057 17.9875 17.1673H17.9862ZM22 15.9998C22 18.9172 20.8411 21.7151 18.7782 23.778C16.7153 25.8409 13.9174 26.9998 11 26.9998C8.08262 26.9998 5.28473 25.8409 3.22183 23.778C1.15893 21.7151 0 18.9172 0 15.9998C0 12.5098 1.375 8.94105 4.0825 5.39355C4.1682 5.28122 4.27674 5.18833 4.40095 5.12099C4.52516 5.05365 4.66223 5.01341 4.80313 5.00289C4.94403 4.99238 5.08556 5.01185 5.21838 5.06001C5.35121 5.10817 5.47233 5.18393 5.57375 5.2823L8.58875 8.20855L11.3388 0.657298C11.3937 0.50669 11.484 0.371499 11.6022 0.263121C11.7203 0.154744 11.8628 0.0763568 12.0175 0.0345691C12.1723 -0.00721869 12.3349 -0.0111825 12.4915 0.023012C12.6481 0.0572064 12.7942 0.128557 12.9175 0.231048C15.6512 2.4998 22 8.56855 22 15.9998ZM20 15.9998C20 10.2385 15.5262 5.2598 12.7237 2.70855L9.94 10.3423C9.88287 10.4991 9.78741 10.6391 9.66232 10.7495C9.53723 10.86 9.38648 10.9374 9.22383 10.9747C9.06117 11.0119 8.89177 11.0079 8.73107 10.963C8.57036 10.918 8.42346 10.8336 8.30375 10.7173L5.0075 7.5198C3.01125 10.401 2 13.2498 2 15.9998C2 18.3867 2.94821 20.6759 4.63604 22.3638C6.32387 24.0516 8.61305 24.9998 11 24.9998C13.3869 24.9998 15.6761 24.0516 17.364 22.3638C19.0518 20.6759 20 18.3867 20 15.9998Z"
-          fill="currentColor"
-        />
-      </svg>
-      <span className="text-[14px] font-semibold">{streakDays}</span>
-    </div>
+        <div className={burst ? 'streak-burst' : 'streak-flicker'}>
+          <Flame dead={dead} />
+        </div>
+        {/* tia lửa bay lên khi nối chuỗi */}
+        {burst && (
+          <div className="absolute -top-[6px] start-[6px] pointer-events-none">
+            {[0, 1, 2, 3].map((i) => (
+              <span key={i} className="streak-spark" style={{ animationDelay: `${i * 0.12}s`, insetInlineStart: `${i * 5 - 6}px` }} />
+            ))}
+          </div>
+        )}
+        <span className={`text-[14.5px] font-[800] tabular-nums ${dead ? 'text-textItemBlur' : 'text-[#FF7A00]'}`}>
+          {streak.current}
+        </span>
+      </div>
+
+      {/* MÀN ĂN MỪNG CỘT MỐC — overlay riêng, không phụ thuộc modal hệ thống */}
+      {milestone && (
+        <div
+          className="fixed inset-0 z-[999] grid place-items-center bg-black/70 backdrop-blur-[3px]"
+          onClick={() => setMilestone(null)}
+        >
+          <div className="relative flex flex-col items-center gap-[14px] px-[40px] py-[36px] rounded-[20px] bg-newBgColorInner border border-[#FF7A00]/40 shadow-[0_0_60px_rgba(255,122,0,0.35)] streak-pop">
+            {/* pháo lửa */}
+            {[...Array(10)].map((_, i) => (
+              <span
+                key={i}
+                className="streak-confetti"
+                style={{
+                  animationDelay: `${(i % 5) * 0.15}s`,
+                  insetInlineStart: `${8 + i * 9}%`,
+                  background: ['#FF9600', '#FFC800', '#FF4B00', '#FFE066'][i % 4],
+                }}
+              />
+            ))}
+            <div className="streak-burst">
+              <Flame size={88} />
+            </div>
+            <div className="text-[34px] font-[900] text-[#FF7A00] tabular-nums leading-none">
+              {milestone} {t('streak_days', 'days')}
+            </div>
+            <div className="text-[15px] font-[700] text-center">
+              🎉 {t('streak_milestone_title', 'Amazing streak! You showed up')} {milestone} {t('streak_milestone_tail', 'days in a row!')}
+            </div>
+            {nextM && (
+              <div className="text-[12.5px] text-textItemBlur">
+                {t('streak_next_target', 'Next milestone')}: 🔥 {nextM} {t('streak_days', 'days')}
+              </div>
+            )}
+            <button
+              onClick={() => setMilestone(null)}
+              className="mt-[6px] px-[22px] py-[9px] rounded-[10px] bg-[#FF7A00] text-white text-[13.5px] font-[800] hover:bg-[#FF8E24]"
+            >
+              {t('streak_continue', 'Keep it burning!')} 🔥
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* hiệu ứng lửa — gói trong component, không đụng SCSS toàn cục */}
+      <style>{`
+        .streak-flicker { animation: streakFlicker 2.6s ease-in-out infinite; transform-origin: 50% 88%; }
+        @keyframes streakFlicker {
+          0%, 100% { transform: scale(1) rotate(0deg); }
+          20% { transform: scale(1.05, 0.97) rotate(-2.4deg); }
+          40% { transform: scale(0.97, 1.05) rotate(1.8deg); }
+          60% { transform: scale(1.04, 0.98) rotate(-1.2deg); }
+          80% { transform: scale(0.99, 1.03) rotate(2.2deg); }
+        }
+        .streak-burst { animation: streakBurst 1.5s cubic-bezier(.2,1.6,.4,1); transform-origin: 50% 88%; filter: drop-shadow(0 0 10px rgba(255,140,0,.75)); }
+        @keyframes streakBurst {
+          0% { transform: scale(1); }
+          35% { transform: scale(1.55) rotate(-4deg); }
+          60% { transform: scale(1.2) rotate(3deg); }
+          100% { transform: scale(1); }
+        }
+        .streak-spark { position: absolute; width: 5px; height: 5px; border-radius: 999px; background: #FFB020; opacity: 0; animation: streakSpark 1.1s ease-out forwards; }
+        @keyframes streakSpark {
+          0% { transform: translateY(2px) scale(1); opacity: 1; }
+          100% { transform: translateY(-26px) scale(.3); opacity: 0; }
+        }
+        .streak-pop { animation: streakPop .45s cubic-bezier(.2,1.6,.4,1); }
+        @keyframes streakPop { 0% { transform: scale(.6); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        .streak-confetti { position: absolute; top: -8px; width: 8px; height: 12px; border-radius: 2px; opacity: 0; animation: streakConfetti 1.6s ease-in infinite; }
+        @keyframes streakConfetti {
+          0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+          100% { transform: translateY(300px) rotate(340deg); opacity: 0; }
+        }
+      `}</style>
+    </>
   );
 };

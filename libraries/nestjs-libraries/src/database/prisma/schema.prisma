@@ -529,6 +529,32 @@ model ViralSeen {
   @@index([organizationId])
 }
 
+// Chuỗi ngày VÀO APP (streak lửa kiểu Duolingo, tính theo ngày giờ VN).
+// Ping mỗi lần mở app: hôm qua có → +1, đứt ngày → về 1. longest = kỷ lục.
+model UserStreak {
+  id        String    @id @default(cuid())
+  userId    String    @unique
+  current   Int       @default(0)
+  longest   Int       @default(0)
+  lastDay   String    @default("") // yyyy-mm-dd theo giờ VN
+  createdAt DateTime  @default(now())
+  updatedAt DateTime? @updatedAt
+}
+
+// Bản tin tuần đã tạo (trang Phát hiện → tab 📰 Bản tin) — lưu để đọc lại
+// trên web, ngoài việc gửi Zalo/email/chuông.
+model ViralReport {
+  id             String   @id @default(cuid())
+  organizationId String
+  kind           String // crawl | sunday | manual
+  title          String
+  content        String // text thuần đã format (bản gửi Zalo)
+  meta           String? // JSON {summary, highlights, market, todos, stats}
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+}
+
 // 8 chân dung phụ huynh (persona) — seed từ sheet Profiles của n8n; phần ĐỘNG
 // (moiQuanTam/tamLy/hanhVi/insights) được AI làm giàu sau mỗi lần cào từ 3 tín
 // hiệu: VOICE (group phụ huynh), TREND (báo chí), WINNING (bài share cao).

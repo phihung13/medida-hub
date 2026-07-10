@@ -32,6 +32,9 @@ export const CalendarContext = createContext({
   startDate: newDayjs().startOf('isoWeek').format('YYYY-MM-DD'),
   endDate: newDayjs().endOf('isoWeek').format('YYYY-MM-DD'),
   customer: null as string | null,
+  // Lọc lịch theo 1 PAGE/kênh cụ thể (integrationId) — null = mọi kênh.
+  channel: null as string | null,
+  setChannel: ((_v: string | null) => {}) as (v: string | null) => void,
   loading: true,
   sets: [] as { name: string; id: string; content: string[] }[],
   signature: undefined as any,
@@ -174,6 +177,10 @@ export const CalendarWeekProvider: FC<{
   const initStartDate = searchParams.get('startDate');
   const initEndDate = searchParams.get('endDate');
   const initCustomer = searchParams.get('customer');
+  // Lọc theo 1 page/kênh (client-side) — đọc từ URL nếu có, không ghi lại.
+  const [channel, setChannel] = useState<string | null>(
+    searchParams.get('channel') || null
+  );
 
   const initialRange =
     initStartDate && initEndDate
@@ -423,8 +430,18 @@ export const CalendarWeekProvider: FC<{
         trendings,
         reloadCalendarView,
         ...filters,
-        posts: calendarIsLoading ? [] : internalData,
-        externalPosts: externalPostsData || [],
+        // channel: lọc client-side theo 1 page — áp cho cả calendar, lớp phủ
+        // Meta lẫn list view; null = mọi kênh như cũ.
+        channel,
+        setChannel,
+        posts: calendarIsLoading
+          ? []
+          : channel
+          ? internalData.filter((p: any) => p?.integration?.id === channel)
+          : internalData,
+        externalPosts: (externalPostsData || []).filter(
+          (e: any) => !channel || e?.integrationId === channel
+        ),
         loading,
         integrations,
         setFilters: setFiltersWrapper,
@@ -433,7 +450,9 @@ export const CalendarWeekProvider: FC<{
         sets: sets || [],
         signature: sign,
         // List view specific
-        listPosts,
+        listPosts: channel
+          ? listPosts.filter((p: any) => p?.integration?.id === channel)
+          : listPosts,
         listPage,
         listTotalPages,
         setListPage,

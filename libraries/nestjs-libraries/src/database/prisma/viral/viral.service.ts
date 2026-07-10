@@ -1554,9 +1554,10 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
   }
 
   // Tổng hợp 7 ngày → AI viết bản tin (tin nóng + diễn biến thị trường + todo
-  // list) → gửi 3 kênh: chuông in-app, email cả org, nhóm Zalo (nếu cấu hình).
-  // kind: 'crawl' = sau mỗi lần cào theo lịch T2-4-6 · 'sunday' = tổng kết CN.
-  async sendWeeklyReport(orgId: string, kind: 'crawl' | 'sunday') {
+  // list) → LƯU vào tab 📰 Bản tin + gửi 3 kênh: chuông in-app, email cả org,
+  // nhóm Zalo (nếu cấu hình). kind: 'crawl' = sau cào theo lịch T2-4-6 ·
+  // 'sunday' = tổng kết CN · 'manual' = bấm nút tạo ngay.
+  async sendWeeklyReport(orgId: string, kind: 'crawl' | 'sunday' | 'manual') {
     const [d, counts, { trend, winning }] = await Promise.all([
       this._repo.weeklyDigest(orgId),
       this._repo.statusCounts(orgId),
@@ -1582,6 +1583,8 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
     const head =
       kind === 'sunday'
         ? `📊 TỔNG KẾT TUẦN — Phát hiện (CN ${dateVn})`
+        : kind === 'manual'
+        ? `📰 BẢN TIN TUẦN — Phát hiện (${dateVn})`
         : `📰 BẢN TIN SAU CÀO — Phát hiện (${dateVn})`;
     const lines: string[] = [head, ''];
     if (brief?.summary) lines.push(brief.summary, '');
@@ -1606,6 +1609,22 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
     lines.push('👉 Vào trang Phát hiện để duyệt & sản xuất.');
     const text = lines.join('\n');
 
+    // Lưu vào tab 📰 Bản tin TRƯỚC khi gửi — kênh gửi lỗi vẫn đọc được trên web.
+    const saved = await this._repo
+      .createReport(orgId, {
+        kind,
+        title: head,
+        content: text,
+        meta: JSON.stringify({
+          summary: brief?.summary || '',
+          highlights: brief?.highlights || [],
+          market: brief?.market || [],
+          todos: brief?.todos || [],
+          stats: statsText,
+        }),
+      })
+      .catch(() => null);
+
     // 3 kênh — kênh nào lỗi thì bỏ qua kênh đó, không chặn kênh khác.
     await this._notification
       .inAppNotification(orgId, head, text.slice(0, 3500), false)
@@ -1617,7 +1636,15 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
     }
     const threadId = getViralConfig().reportZaloThreadId;
     if (threadId) await this.sendZaloReport(threadId, text).catch(() => null);
-    return { ok: true, zalo: !!threadId };
+    return { ok: true, zalo: !!threadId, reportId: (saved as any)?.id || null };
+  }
+
+  listReports(orgId: string) {
+    return this._repo.listReports(orgId);
+  }
+
+  deleteReport(orgId: string, id: string) {
+    return this._repo.deleteReport(orgId, id);
   }
 
   // Nhập bộ nguồn mặc định (port sheet Sources của n8n) — bỏ qua nguồn đã có
