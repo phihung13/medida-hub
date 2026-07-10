@@ -242,7 +242,7 @@ export class PostsRepository {
           };
 
     const orderDirection: 'asc' | 'desc' =
-      stateFilter === 'published' ? 'desc' : 'asc';
+      stateFilter === 'published' || stateFilter === 'draft' ? 'desc' : 'asc';
 
     const where = {
       AND: [
@@ -256,8 +256,11 @@ export class PostsRepository {
       ],
       ...stateAndDate,
       // Published posts were already posted (publishDate in the past), so fetch
-      // all of them; everything else stays upcoming. Ordering handles the rest.
-      ...(stateFilter === 'published'
+      // all of them. DRAFT cũng KHÔNG lọc theo ngày: bài nháp chờ duyệt (vd bot
+      // Zalo đẩy vào với mốc giờ lúc nhận) không "hết hạn" — lọc future từng
+      // khiến tab Draft trống dù banner báo có bài chờ. Everything else stays
+      // upcoming; ordering handles the rest.
+      ...(stateFilter === 'published' || stateFilter === 'draft'
         ? {}
         : { publishDate: { gte: dayjs.utc().toDate() } }),
       deletedAt: null as Date | null,
