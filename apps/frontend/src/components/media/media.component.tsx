@@ -707,49 +707,87 @@ export const MediaBox: FC<{
   );
 };
 
-// ── Xem trước KHUNG bài đăng (kiểu Facebook collage / lưới IG) ──────────────
+// ── Xem trước KHUNG bài đăng — các BIẾN THỂ CHUẨN FACEBOOK theo số ảnh ──────
 // Kéo ảnh NGAY TRONG KHUNG để đổi thứ tự (cùng list với hàng thumbnail).
-// mode 'fb': 1 to / 2 cột / 1+2 / 1+3 / 2+3 (+N overlay) — như bài FB thật.
-// mode 'grid': lưới 3 cột đều (kiểu Instagram).
+// FB thật đổi khung theo tỉ lệ ảnh đầu (ngang → "to trên", dọc → "to trái");
+// ở đây cho CHỌN TAY từng kiểu + lưới đều kiểu IG.
+type FrameVariant =
+  | 'v2col' // 2 ảnh đứng cạnh nhau
+  | 'v2row' // 2 ảnh ngang chồng nhau
+  | 'topBig' // 1 TO trên + 2/3 nhỏ dưới (ảnh đầu ngang)
+  | 'leftBig' // 1 TO trái + 2/3 nhỏ phải (ảnh đầu dọc)
+  | 'cols3' // 3 cột đứng
+  | 'grid22' // lưới 2×2
+  | 'fiveTop2' // 2 TO trên + 3 nhỏ dưới (+N)
+  | 'fiveLeft2' // 2 TO trái (dọc) + 3 nhỏ phải (+N) — như bài mẫu của trường
+  | 'fiveTop1' // 1 TO trên + 4 nhỏ dưới (+N)
+  | 'grid'; // lưới 3 cột đều (kiểu IG)
+
+// Biến thể áp dụng được cho từng số ảnh — nút chọn hiện đúng nhóm này.
+const frameVariantsFor = (n: number): FrameVariant[] => {
+  if (n <= 1) return ['grid'];
+  if (n === 2) return ['v2col', 'v2row', 'grid'];
+  if (n === 3) return ['topBig', 'leftBig', 'cols3', 'grid'];
+  if (n === 4) return ['topBig', 'leftBig', 'grid22', 'grid'];
+  return ['fiveTop2', 'fiveLeft2', 'fiveTop1', 'grid'];
+};
+
 const FramePreview: FC<{
   media: Array<{ id: string; path: string }>;
-  mode: 'fb' | 'grid';
+  variant: FrameVariant;
   onSort: (value: any[]) => void;
-}> = ({ media, mode, onSort }) => {
+}> = ({ media, variant, onSort }) => {
   const mediaDirectory = useMediaDirectory();
   const n = media.length;
-  // fb: chỉ 5 ô đầu hiện trong khung (đúng kiểu FB), ô 5 phủ "+N"
-  const shown = mode === 'fb' ? media.slice(0, 5) : media;
-  const hidden = mode === 'fb' ? n - 5 : 0;
+  // các khung 5-ảnh chỉ hiện 5 ô đầu (đúng FB), ô 5 phủ "+N"
+  const isFive = variant.startsWith('five');
+  const shown = isFive ? media.slice(0, 5) : media;
+  const hidden = isFive ? n - 5 : 0;
 
-  const wrapCls =
-    mode === 'grid'
-      ? 'grid grid-cols-3 gap-[3px]'
-      : n === 1
-      ? 'grid grid-cols-1 gap-[3px]'
-      : n === 2
-      ? 'grid grid-cols-2 gap-[3px]'
-      : n === 3
-      ? 'grid grid-cols-2 grid-rows-2 gap-[3px] h-[300px]'
-      : n === 4
-      ? 'grid grid-cols-3 gap-[3px]'
-      : 'grid grid-cols-6 gap-[3px]';
+  const wrapCls = (() => {
+    switch (variant) {
+      case 'v2col': return 'grid grid-cols-2 gap-[3px]';
+      case 'v2row': return 'grid grid-cols-1 gap-[3px]';
+      case 'topBig': return n === 3 ? 'grid grid-cols-2 gap-[3px]' : 'grid grid-cols-3 gap-[3px]';
+      case 'leftBig':
+        return n === 3
+          ? 'grid grid-cols-3 grid-rows-2 gap-[3px] h-[320px]'
+          : 'grid grid-cols-3 grid-rows-3 gap-[3px] h-[390px]';
+      case 'cols3': return 'grid grid-cols-3 gap-[3px]';
+      case 'grid22': return 'grid grid-cols-2 gap-[3px]';
+      case 'fiveTop2': return 'grid grid-cols-6 gap-[3px]';
+      case 'fiveLeft2': return 'grid grid-cols-5 grid-rows-6 gap-[3px] h-[430px]';
+      case 'fiveTop1': return 'grid grid-cols-4 gap-[3px]';
+      default: return 'grid grid-cols-3 gap-[3px]'; // grid
+    }
+  })();
 
   const itemCls = (i: number) => {
-    if (mode === 'grid') return 'aspect-square';
-    if (n === 1) return 'aspect-video';
-    if (n === 2) return 'aspect-square';
-    if (n === 3) return i === 0 ? 'row-span-2 h-full' : 'h-full min-h-0';
-    if (n === 4) return i === 0 ? 'col-span-3 aspect-[16/8]' : 'aspect-square';
-    return i < 2 ? 'col-span-3 aspect-[4/3]' : 'col-span-2 aspect-square';
+    switch (variant) {
+      case 'v2col': return 'aspect-[3/4]';
+      case 'v2row': return 'aspect-[16/8]';
+      case 'topBig':
+        if (n === 3) return i === 0 ? 'col-span-2 aspect-[16/9]' : 'aspect-square';
+        return i === 0 ? 'col-span-3 aspect-[16/8]' : 'aspect-square';
+      case 'leftBig':
+        if (n === 3) return i === 0 ? 'col-span-2 row-span-2 h-full min-h-0' : 'col-span-1 h-full min-h-0';
+        return i === 0 ? 'col-span-2 row-span-3 h-full min-h-0' : 'col-span-1 row-span-1 h-full min-h-0';
+      case 'cols3': return 'aspect-[3/4]';
+      case 'grid22': return 'aspect-[4/3]';
+      case 'fiveTop2': return i < 2 ? 'col-span-3 aspect-[4/3]' : 'col-span-2 aspect-square';
+      case 'fiveLeft2':
+        return i < 2 ? 'col-span-3 row-span-3 h-full min-h-0' : 'col-span-2 row-span-2 h-full min-h-0';
+      case 'fiveTop1': return i === 0 ? 'col-span-4 aspect-[16/9]' : 'aspect-square';
+      default: return 'aspect-square'; // grid
+    }
   };
 
   return (
     <ReactSortable
       list={shown as any}
       setList={(value) =>
-        // fb chỉ hiện 5 đầu → ghép phần còn lại giữ nguyên thứ tự
-        onSort(mode === 'fb' ? [...value, ...media.slice(5)] : value)
+        // khung 5 chỉ hiện 5 đầu → ghép phần còn lại giữ nguyên thứ tự
+        onSort(isFive ? [...value, ...media.slice(5)] : value)
       }
       animation={200}
       className={clsx('w-full max-w-[430px] rounded-[10px] overflow-hidden', wrapCls)}
@@ -835,8 +873,9 @@ export const MultiMediaComponent: FC<{
   }, [value]);
 
   const [currentMedia, setCurrentMedia] = useState(value);
-  // Xem trước khung bài đăng: null = tắt · 'fb' = khung Facebook · 'grid' = lưới
-  const [frame, setFrame] = useState<null | 'fb' | 'grid'>(null);
+  // Xem trước khung bài đăng: bật/tắt + biến thể khung FB đang chọn
+  const [frame, setFrame] = useState(false);
+  const [variant, setVariant] = useState<FrameVariant>('topBig');
   const mediaDirectory = useMediaDirectory();
   const changeMedia = useCallback(
     (
@@ -981,36 +1020,52 @@ export const MultiMediaComponent: FC<{
             </ReactSortable>
           )}
         </div>
-        {/* Khung xem trước bài đăng — kéo ảnh trong khung để đổi thứ tự */}
-        {!!frame && !!currentMedia?.length && (
-          <div className="px-[12px] pb-[10px] w-full flex flex-col gap-[6px]">
-            <div className="flex items-center gap-[8px]">
-              <span className="text-[11px] text-textItemBlur">
-                {t('media_frame_hint', 'Post preview — drag tiles to reorder')}
-              </span>
-              {(['fb', 'grid'] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setFrame(m)}
-                  className={clsx(
-                    'px-[9px] py-[3px] rounded-[6px] text-[10.5px] font-[700] border',
-                    frame === m
-                      ? 'bg-forth text-white border-forth'
-                      : 'border-newColColor text-textItemBlur hover:text-textColor'
-                  )}
-                >
-                  {m === 'fb' ? t('media_frame_fb', 'FB frame') : t('media_frame_grid', 'Grid')}
-                </button>
-              ))}
+        {/* Khung xem trước bài đăng — chọn biến thể CHUẨN FB + kéo ô đổi thứ tự */}
+        {frame && !!currentMedia?.length && (() => {
+          const variants = frameVariantsFor(currentMedia.length);
+          const active = variants.includes(variant) ? variant : variants[0];
+          const LABELS: Record<FrameVariant, string> = {
+            v2col: t('media_frame_v2col', '2 side-by-side'),
+            v2row: t('media_frame_v2row', '2 stacked'),
+            topBig: t('media_frame_topbig', 'Big top'),
+            leftBig: t('media_frame_leftbig', 'Big left'),
+            cols3: t('media_frame_cols3', '3 columns'),
+            grid22: t('media_frame_grid22', '2×2 grid'),
+            fiveTop2: t('media_frame_fivetop2', '2 top + 3 below'),
+            fiveLeft2: t('media_frame_fiveleft2', '2 left + 3 right'),
+            fiveTop1: t('media_frame_fivetop1', '1 big + 4 below'),
+            grid: t('media_frame_grid', 'Even grid'),
+          };
+          return (
+            <div className="px-[12px] pb-[10px] w-full flex flex-col gap-[6px]">
+              <div className="flex items-center gap-[6px] flex-wrap">
+                <span className="text-[11px] text-textItemBlur">
+                  {t('media_frame_hint', 'Post preview — drag tiles to reorder')}
+                </span>
+                {variants.map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setVariant(v)}
+                    className={clsx(
+                      'px-[9px] py-[3px] rounded-[6px] text-[10.5px] font-[700] border',
+                      active === v
+                        ? 'bg-forth text-white border-forth'
+                        : 'border-newColColor text-textItemBlur hover:text-textColor'
+                    )}
+                  >
+                    {LABELS[v]}
+                  </button>
+                ))}
+              </div>
+              <FramePreview
+                media={currentMedia as any}
+                variant={active}
+                onSort={(value) => onChange({ target: { name: 'upload', value } })}
+              />
             </div>
-            <FramePreview
-              media={currentMedia as any}
-              mode={frame}
-              onSort={(value) => onChange({ target: { name: 'upload', value } })}
-            />
-          </div>
-        )}
+          );
+        })()}
         <div className="flex flex-wrap gap-[8px] px-[12px] border-t border-newColColor w-full b1 text-textColor">
           {!mediaNotAvailable && (
             <div className="flex py-[10px] b2 items-center gap-[4px]">
@@ -1059,7 +1114,7 @@ export const MultiMediaComponent: FC<{
               {/* Bật/tắt khung xem trước bài đăng (FB collage / lưới) */}
               {!!currentMedia?.length && currentMedia.length > 1 && (
                 <div
-                  onClick={() => setFrame(frame ? null : 'fb')}
+                  onClick={() => setFrame(!frame)}
                   title={t('media_frame_toggle', 'Preview post frame & reorder')}
                   className={clsx(
                     'cursor-pointer h-[30px] rounded-[6px] justify-center items-center flex px-[8px]',
