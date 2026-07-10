@@ -54,6 +54,7 @@ import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
 import { useShallow } from 'zustand/react/shallow';
 import { LoadingComponent } from '@gitroom/frontend/components/layout/loading';
 import { useDebounce } from 'use-debounce';
+import { MediaFromUrl } from '@gitroom/frontend/components/new-launch/media.from.url';
 // Editor ảnh: dùng Filerobot (MIT, miễn phí, không cần license key) thay Polotno.
 const FilerobotEditor = dynamic(
   () => import('@gitroom/frontend/components/launches/filerobot.editor')
@@ -201,7 +202,7 @@ export const showMediaBox = (
   showModalEmitter.emit('show-modal', callback);
 };
 const CHUNK_SIZE = 1024 * 1024;
-const MAX_UPLOAD_SIZE = 1024 * 1024 * 1024; // 1 GB
+const MAX_UPLOAD_SIZE = 2 * 1024 * 1024 * 1024; // 2 GB (video to hơn: dán link Drive — trần 5GB)
 export const MediaBox: FC<{
   setMedia: (params: { id: string; path: string }[]) => void;
   standalone?: boolean;
@@ -705,6 +706,76 @@ export const MediaBox: FC<{
     </DropFiles>
   );
 };
+
+// ── Xem trước KHUNG bài đăng (kiểu Facebook collage / lưới IG) ──────────────
+// Kéo ảnh NGAY TRONG KHUNG để đổi thứ tự (cùng list với hàng thumbnail).
+// mode 'fb': 1 to / 2 cột / 1+2 / 1+3 / 2+3 (+N overlay) — như bài FB thật.
+// mode 'grid': lưới 3 cột đều (kiểu Instagram).
+const FramePreview: FC<{
+  media: Array<{ id: string; path: string }>;
+  mode: 'fb' | 'grid';
+  onSort: (value: any[]) => void;
+}> = ({ media, mode, onSort }) => {
+  const mediaDirectory = useMediaDirectory();
+  const n = media.length;
+  // fb: chỉ 5 ô đầu hiện trong khung (đúng kiểu FB), ô 5 phủ "+N"
+  const shown = mode === 'fb' ? media.slice(0, 5) : media;
+  const hidden = mode === 'fb' ? n - 5 : 0;
+
+  const wrapCls =
+    mode === 'grid'
+      ? 'grid grid-cols-3 gap-[3px]'
+      : n === 1
+      ? 'grid grid-cols-1 gap-[3px]'
+      : n === 2
+      ? 'grid grid-cols-2 gap-[3px]'
+      : n === 3
+      ? 'grid grid-cols-2 grid-rows-2 gap-[3px] h-[300px]'
+      : n === 4
+      ? 'grid grid-cols-3 gap-[3px]'
+      : 'grid grid-cols-6 gap-[3px]';
+
+  const itemCls = (i: number) => {
+    if (mode === 'grid') return 'aspect-square';
+    if (n === 1) return 'aspect-video';
+    if (n === 2) return 'aspect-square';
+    if (n === 3) return i === 0 ? 'row-span-2 h-full' : 'h-full min-h-0';
+    if (n === 4) return i === 0 ? 'col-span-3 aspect-[16/8]' : 'aspect-square';
+    return i < 2 ? 'col-span-3 aspect-[4/3]' : 'col-span-2 aspect-square';
+  };
+
+  return (
+    <ReactSortable
+      list={shown as any}
+      setList={(value) =>
+        // fb chỉ hiện 5 đầu → ghép phần còn lại giữ nguyên thứ tự
+        onSort(mode === 'fb' ? [...value, ...media.slice(5)] : value)
+      }
+      animation={200}
+      className={clsx('w-full max-w-[430px] rounded-[10px] overflow-hidden', wrapCls)}
+    >
+      {shown.map((m, i) => (
+        <div key={m.id} className={clsx('relative cursor-move overflow-hidden bg-newBgColor', itemCls(i))}>
+          {hasExtension(m.path, 'mp4') ? (
+            <video src={mediaDirectory.set(m.path)} muted playsInline className="w-full h-full object-cover" />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={mediaDirectory.set(m.path)} alt="" className="w-full h-full object-cover" draggable={false} />
+          )}
+          <span className="absolute top-[4px] start-[4px] w-[18px] h-[18px] rounded-full bg-black/60 text-white text-[10px] font-[800] grid place-items-center">
+            {i + 1}
+          </span>
+          {i === 4 && hidden > 0 && (
+            <div className="absolute inset-0 bg-black/55 grid place-items-center text-white text-[26px] font-[800]">
+              +{hidden}
+            </div>
+          )}
+        </div>
+      ))}
+    </ReactSortable>
+  );
+};
+
 export const MultiMediaComponent: FC<{
   label: string;
   description: string;
@@ -764,6 +835,8 @@ export const MultiMediaComponent: FC<{
   }, [value]);
 
   const [currentMedia, setCurrentMedia] = useState(value);
+  // Xem trước khung bài đăng: null = tắt · 'fb' = khung Facebook · 'grid' = lưới
+  const [frame, setFrame] = useState<null | 'fb' | 'grid'>(null);
   const mediaDirectory = useMediaDirectory();
   const changeMedia = useCallback(
     (
@@ -908,6 +981,36 @@ export const MultiMediaComponent: FC<{
             </ReactSortable>
           )}
         </div>
+        {/* Khung xem trước bài đăng — kéo ảnh trong khung để đổi thứ tự */}
+        {!!frame && !!currentMedia?.length && (
+          <div className="px-[12px] pb-[10px] w-full flex flex-col gap-[6px]">
+            <div className="flex items-center gap-[8px]">
+              <span className="text-[11px] text-textItemBlur">
+                {t('media_frame_hint', 'Post preview — drag tiles to reorder')}
+              </span>
+              {(['fb', 'grid'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setFrame(m)}
+                  className={clsx(
+                    'px-[9px] py-[3px] rounded-[6px] text-[10.5px] font-[700] border',
+                    frame === m
+                      ? 'bg-forth text-white border-forth'
+                      : 'border-newColColor text-textItemBlur hover:text-textColor'
+                  )}
+                >
+                  {m === 'fb' ? t('media_frame_fb', 'FB frame') : t('media_frame_grid', 'Grid')}
+                </button>
+              ))}
+            </div>
+            <FramePreview
+              media={currentMedia as any}
+              mode={frame}
+              onSort={(value) => onChange({ target: { name: 'upload', value } })}
+            />
+          </div>
+        )}
         <div className="flex flex-wrap gap-[8px] px-[12px] border-t border-newColColor w-full b1 text-textColor">
           {!mediaNotAvailable && (
             <div className="flex py-[10px] b2 items-center gap-[4px]">
@@ -949,6 +1052,28 @@ export const MultiMediaComponent: FC<{
               )}
 
               <ThirdPartyMedia allData={allData} onChange={changeMedia} />
+
+              {/* Dán link Google Drive / URL — server tải về (file lớn tới 5GB) */}
+              <MediaFromUrl onMedia={changeMedia} />
+
+              {/* Bật/tắt khung xem trước bài đăng (FB collage / lưới) */}
+              {!!currentMedia?.length && currentMedia.length > 1 && (
+                <div
+                  onClick={() => setFrame(frame ? null : 'fb')}
+                  title={t('media_frame_toggle', 'Preview post frame & reorder')}
+                  className={clsx(
+                    'cursor-pointer h-[30px] rounded-[6px] justify-center items-center flex px-[8px]',
+                    frame ? 'bg-forth text-white' : 'bg-newColColor'
+                  )}
+                >
+                  <div className="flex gap-[5px] items-center">
+                    <span className="text-[13px] leading-none">🖼</span>
+                    <div className="text-[10px] font-[600] iconBreak:hidden block">
+                      {t('media_frame', 'Frame')}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {!!user?.tier?.ai && (
                 <>

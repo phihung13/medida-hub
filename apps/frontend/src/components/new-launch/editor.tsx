@@ -70,7 +70,7 @@ import { DelayComponent } from '@gitroom/frontend/components/new-launch/delay.co
 import { MagicCaption } from '@gitroom/frontend/components/new-launch/magic.caption';
 import { MediaFromUrl } from '@gitroom/frontend/components/new-launch/media.from.url';
 
-const MAX_UPLOAD_SIZE = 1024 * 1024 * 1024; // 1 GB
+const MAX_UPLOAD_SIZE = 2 * 1024 * 1024 * 1024; // 2 GB (video to hơn: dán link Drive — trần 5GB)
 
 const InterceptBoldShortcut = Extension.create({
   name: 'preventBoldWithUnderline',

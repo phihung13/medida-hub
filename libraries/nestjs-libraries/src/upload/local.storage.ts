@@ -1,5 +1,5 @@
 import { IUploadProvider } from './upload.interface';
-import { mkdirSync, unlink, writeFileSync } from 'fs';
+import { mkdirSync, unlink, writeFileSync, renameSync, copyFileSync, unlinkSync } from 'fs';
 import { isSafePublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/webhooks/webhook.url.validator';
 import { ssrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import { parseDataUrl } from '@gitroom/nestjs-libraries/upload/data.url';
@@ -111,6 +111,49 @@ export class LocalStorage implements IUploadProvider {
       console.error('Error uploading file to Local Storage:', err);
       throw err;
     }
+  }
+
+  // Nhận file ĐÃ NẰM TRÊN ĐĨA (temp) → chuyển vào kho uploads, KHÔNG đọc vào
+  // RAM — dùng cho tải file lớn từ Google Drive (2-5GB). Loại file phải được
+  // sniff TRƯỚC khi gọi (truyền ext/mime đã kiểm), vì đọc cả file to để sniff
+  // lại là vô nghĩa; caller (downloadFromUrl) sniff từ 4KB đầu.
+  uploadFromPath(
+    tmpPath: string,
+    detected: { ext: string; mime: string }
+  ): { filename: string; path: string; mimetype: string; originalname: string } {
+    if (!LOCAL_STORAGE_ALLOWED_MIME.has(detected.mime)) {
+      throw new Error('Unsupported file type.');
+    }
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const innerPath = `/${year}/${month}/${day}`;
+    const dir = `${this.uploadDirectory}${innerPath}`;
+    mkdirSync(dir, { recursive: true });
+    const randomName = Array(32)
+      .fill(null)
+      .map(() => Math.round(Math.random() * 16).toString(16))
+      .join('');
+    const filePath = `${dir}/${randomName}.${detected.ext}`;
+    const publicPath = `${innerPath}/${randomName}.${detected.ext}`;
+    try {
+      renameSync(tmpPath, filePath); // cùng ổ đĩa — tức thời
+    } catch {
+      // khác ổ đĩa (tmp ≠ uploads) → copy rồi xoá
+      copyFileSync(tmpPath, filePath);
+      try {
+        unlinkSync(tmpPath);
+      } catch {
+        /* tmp sẽ được OS dọn */
+      }
+    }
+    return {
+      filename: `${randomName}.${detected.ext}`,
+      path: process.env.FRONTEND_URL + '/uploads' + publicPath,
+      mimetype: detected.mime,
+      originalname: `${randomName}.${detected.ext}`,
+    };
   }
 
   async removeFile(filePath: string): Promise<void> {

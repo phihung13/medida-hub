@@ -59,7 +59,10 @@ export class CustomFileValidationPipe implements PipeTransform {
     if (mimeType.startsWith('image/')) {
       return 10 * 1024 * 1024; // 10 MB
     } else if (mimeType.startsWith('video/')) {
-      return 1024 * 1024 * 1024; // 1 GB
+      // 2GB — trần upload TRỰC TIẾP (multer giữ file trong RAM nên không dám
+      // cao hơn). Video 2-5GB: dán link Google Drive (composer / thư viện) —
+      // server stream xuống đĩa, trần 5GB, không ăn RAM.
+      return 2 * 1024 * 1024 * 1024; // 2 GB
     } else {
       throw new BadRequestException('Unsupported file type.');
     }

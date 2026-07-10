@@ -18,6 +18,7 @@ import sharp from 'sharp';
 import { VideoManager } from '@gitroom/nestjs-libraries/videos/video.manager';
 import { VideoDto } from '@gitroom/nestjs-libraries/dtos/videos/video.dto';
 import { UploadFactory } from '@gitroom/nestjs-libraries/upload/upload.factory';
+import { LocalStorage } from '@gitroom/nestjs-libraries/upload/local.storage';
 import {
   AuthorizationActions,
   Sections,
@@ -225,12 +226,15 @@ export class MediaService {
   }
 
   // Tải file từ URL công khai (hỗ trợ riêng link Google Drive) rồi lưu vào thư
-  // viện media của tổ chức. Dùng cho ô "dán link Drive" ở màn soạn bài — video
-  // tải về trở thành media chính của bài đăng. Trả về media record đã lưu.
+  // viện media của tổ chức — ô "dán link Drive" ở composer + media library.
+  // STREAM thẳng xuống đĩa (không nạp RAM) nên tải được file LỚN 2-5GB — đây
+  // là đường khuyên dùng cho video to thay vì upload trực tiếp qua trình duyệt.
+  // Trần 5GB. Trả về media record đã lưu.
   async downloadFromUrl(
     orgId: string,
     url: string
   ): Promise<{ id: string; path: string; name: string }> {
+    const MAX_BYTES = 5 * 1024 * 1024 * 1024; // 5GB
     const clean = (url || '').trim();
     if (!/^https?:\/\//i.test(clean)) {
       throw new HttpException('Link không hợp lệ (phải bắt đầu bằng http/https)', 400);
@@ -241,9 +245,9 @@ export class MediaService {
 
     const res = await fetch(target, {
       redirect: 'follow',
-      signal: AbortSignal.timeout(300000), // video lớn — cho 5 phút
+      signal: AbortSignal.timeout(30 * 60000), // file 5GB — cho 30 phút
     });
-    if (!res.ok) {
+    if (!res.ok || !res.body) {
       throw new HttpException(`Tải media thất bại (HTTP ${res.status})`, 400);
     }
     const contentType = res.headers.get('content-type') || '';
@@ -253,30 +257,86 @@ export class MediaService {
         400
       );
     }
-    const buffer = Buffer.from(await res.arrayBuffer());
-    const { fromBuffer } = await import('file-type');
-    const detected = await fromBuffer(buffer);
-    if (!detected) {
-      throw new HttpException('Không nhận dạng được loại file', 400);
+    const declared = Number(res.headers.get('content-length') || 0);
+    if (declared > MAX_BYTES) {
+      throw new HttpException('File vượt trần 5GB.', 400);
     }
-    const uploaded = await this.storage.uploadFile({
-      buffer,
-      mimetype: detected.mime,
-      size: buffer.length,
-      path: '',
-      fieldname: '',
-      destination: '',
-      stream: new Readable(),
-      filename: '',
-      originalname: `drive.${detected.ext}`,
-      encoding: '',
-    } as any);
-    const saved = await this.saveFile(
-      orgId,
-      uploaded.originalname,
-      uploaded.path
+
+    // stream → file tạm, đếm bytes để chặn trần kể cả khi thiếu content-length
+    const os = await import('os');
+    const pathMod = await import('path');
+    const fs = await import('fs');
+    const { Readable: NodeReadable } = await import('stream');
+    const { pipeline } = await import('stream/promises');
+    const tmpPath = pathMod.join(
+      os.tmpdir(),
+      `drive-dl-${Date.now()}-${Math.random().toString(16).slice(2)}`
     );
-    return { id: saved.id, path: saved.path, name: saved.name };
+    let total = 0;
+    try {
+      const nodeStream = NodeReadable.fromWeb(res.body as any);
+      const out = fs.createWriteStream(tmpPath);
+      nodeStream.on('data', (chunk: Buffer) => {
+        total += chunk.length;
+        if (total > MAX_BYTES) nodeStream.destroy(new Error('quá 5GB'));
+      });
+      await pipeline(nodeStream, out);
+
+      // sniff loại file từ 4KB đầu (không đọc cả file)
+      const head = Buffer.alloc(4100);
+      const fd = fs.openSync(tmpPath, 'r');
+      const read = fs.readSync(fd, head, 0, 4100, 0);
+      fs.closeSync(fd);
+      const { fromBuffer } = await import('file-type');
+      const detected = await fromBuffer(head.subarray(0, read));
+      if (!detected) {
+        throw new HttpException('Không nhận dạng được loại file', 400);
+      }
+
+      let uploaded: { path: string; originalname: string };
+      if (this.storage instanceof LocalStorage) {
+        // đường nhanh: chuyển file trên đĩa, không RAM — chịu được 5GB
+        uploaded = this.storage.uploadFromPath(tmpPath, detected);
+      } else {
+        // provider khác (Cloudflare R2...) chưa có đường stream — đọc buffer,
+        // giới hạn 1GB để không nổ RAM.
+        if (total > 1024 * 1024 * 1024) {
+          throw new HttpException(
+            'Kho lưu trữ hiện tại chỉ nhận tối đa 1GB qua link — dùng upload trực tiếp hoặc chuyển kho local.',
+            400
+          );
+        }
+        uploaded = await this.storage.uploadFile({
+          buffer: fs.readFileSync(tmpPath),
+          mimetype: detected.mime,
+          size: total,
+          path: '',
+          fieldname: '',
+          destination: '',
+          stream: new Readable(),
+          filename: '',
+          originalname: `drive.${detected.ext}`,
+          encoding: '',
+        } as any);
+      }
+      const saved = await this.saveFile(
+        orgId,
+        uploaded.originalname,
+        uploaded.path
+      );
+      return { id: saved.id, path: saved.path, name: saved.name };
+    } catch (e: any) {
+      if (String(e?.message || '').includes('quá 5GB')) {
+        throw new HttpException('File vượt trần 5GB.', 400);
+      }
+      throw e;
+    } finally {
+      try {
+        fs.unlinkSync(tmpPath);
+      } catch {
+        /* đã rename đi hoặc chưa tạo — bỏ qua */
+      }
+    }
   }
 
   // AI viết tiêu đề + mô tả cho video YouTube. Hai engine:

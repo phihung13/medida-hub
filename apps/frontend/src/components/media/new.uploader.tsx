@@ -57,7 +57,7 @@ export function useUppyUploader(props: {
       restrictions: {
         // maxNumberOfFiles: 5,
         // allowedFileTypes: allowedFileTypes.split(','),
-        maxFileSize: 1000000000, // Default 1GB, but we'll override with custom validation
+        maxFileSize: 2147483648, // 2GB — video to hơn đi đường link Drive (trần 5GB)
       },
     });
 
