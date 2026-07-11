@@ -10,7 +10,8 @@ export class ViralRepository {
     private _products: PrismaRepository<'viralProduct'>,
     private _personas: PrismaRepository<'viralPersona'>,
     private _seen: PrismaRepository<'viralSeen'>,
-    private _reports: PrismaRepository<'viralReport'>
+    private _reports: PrismaRepository<'viralReport'>,
+    private _topics: PrismaRepository<'viralTopic'>
   ) {}
 
   // URL chuẩn hoá để dedup — bỏ query + slash cuối + lowercase (như n8n).
@@ -163,6 +164,7 @@ export class ViralRepository {
       data: {
         organizationId: orgId,
         sourceId: data.sourceId || null,
+        topicId: data.topicId || null,
         title: String(data.title || 'Bài của mình').slice(0, 300),
         content: String(data.content || '').slice(0, 6000),
         persona: data.persona ? String(data.persona).slice(0, 30) : null,
@@ -276,10 +278,20 @@ export class ViralRepository {
         organizationId: orgId,
         postId: data.postId || null,
         cloneId: data.cloneId || null,
+        topicId: data.topicId || null,
         format: String(data.format),
         status: 'processing',
         topic: data.topic ? String(data.topic).slice(0, 300) : null,
       },
+    });
+  }
+
+  // Gắn persona + điểm xuống các bài của một chủ đề (để enrichPersonas giữ tín
+  // hiệu VOICE/TREND/WINNING dựa trên scoredSince).
+  tagMemberPersona(orgId: string, topicId: string, persona: string, score: number) {
+    return this._posts.model.viralPost.updateMany({
+      where: { organizationId: orgId, topicId, deletedAt: null },
+      data: { persona, score },
     });
   }
 
@@ -453,6 +465,65 @@ export class ViralRepository {
     return { trend, winning };
   }
 
+  // ĐỘNG TĨNH ĐỐI THỦ (bản tin tuần): với các nguồn ĐỐI THỦ (type ∈ kol/school)
+  // đã bật theo dõi → đếm bài cào được 7 ngày qua theo từng nguồn + bài tương tác
+  // cao nhất. Khớp bài với nguồn qua sourceName (Apify lưu đúng name của nguồn).
+  async weeklyCompetitorActivity(orgId: string) {
+    const since = new Date(Date.now() - 7 * 24 * 3600 * 1000);
+    const comps = await this._sources.model.viralSource.findMany({
+      where: {
+        organizationId: orgId,
+        deletedAt: null,
+        type: { in: ['kol', 'school'] },
+      },
+      select: { name: true, type: true, platform: true },
+    });
+    if (!comps.length) return [];
+    const names = comps.map((c) => c.name).filter(Boolean);
+    if (!names.length) return [];
+    const posts = await this._posts.model.viralPost.findMany({
+      where: {
+        organizationId: orgId,
+        deletedAt: null,
+        createdAt: { gte: since },
+        sourceName: { in: names },
+      },
+      select: {
+        sourceName: true,
+        title: true,
+        platform: true,
+        shares: true,
+        likes: true,
+        views: true,
+      },
+    });
+    // gom theo nguồn
+    const byName: Record<string, any> = {};
+    for (const c of comps) {
+      byName[c.name] = {
+        name: c.name,
+        type: c.type,
+        platform: c.platform,
+        count: 0,
+        totalShares: 0,
+        top: null as any,
+      };
+    }
+    const eng = (p: any) =>
+      (Number(p.shares) || 0) * 3 + (Number(p.views) || 0) / 1000 + (Number(p.likes) || 0);
+    for (const p of posts) {
+      const b = byName[p.sourceName || ''];
+      if (!b) continue;
+      b.count++;
+      b.totalShares += Number(p.shares) || 0;
+      if (!b.top || eng(p) > eng(b.top)) b.top = p;
+    }
+    // chỉ nguồn có hoạt động, xếp nhiều bài trước
+    return Object.values(byName)
+      .filter((b: any) => b.count > 0)
+      .sort((a: any, b: any) => b.count - a.count || b.totalShares - a.totalShares);
+  }
+
   // Số liệu 7 ngày cho digest tuần: cào mới / duyệt / sản phẩm.
   async weeklyDigest(orgId: string) {
     const since = new Date(Date.now() - 7 * 24 * 3600 * 1000);
@@ -560,6 +631,12 @@ export class ViralRepository {
     });
   }
 
+  private static SOURCE_TYPES = ['kol', 'school', 'group', 'news', 'other'];
+  private normType(t: any): string {
+    const v = String(t || '').toLowerCase();
+    return ViralRepository.SOURCE_TYPES.includes(v) ? v : 'other';
+  }
+
   createSource(orgId: string, body: any) {
     return this._sources.model.viralSource.create({
       data: {
@@ -567,8 +644,16 @@ export class ViralRepository {
         platform: String(body.platform || 'facebook'),
         name: String(body.name || 'Nguồn').slice(0, 120),
         url: body.url ? String(body.url).slice(0, 800) : null,
+        type: this.normType(body.type),
         auto: !!body.auto,
       },
+    });
+  }
+
+  setSourceType(orgId: string, id: string, type: string) {
+    return this._sources.model.viralSource.updateMany({
+      where: { id, organizationId: orgId },
+      data: { type: this.normType(type) },
     });
   }
 
@@ -583,6 +668,256 @@ export class ViralRepository {
     return this._sources.model.viralSource.updateMany({
       where: { id, organizationId: orgId },
       data: { auto },
+    });
+  }
+
+  // ── GOM CỤM THEO CHỦ ĐỀ (embeddings) ─────────────────────────────────────
+  // Bài chưa có vector nhúng — để tính embedding sau mỗi lần cào.
+  unembedded(orgId: string, limit = 200) {
+    return this._posts.model.viralPost.findMany({
+      where: { organizationId: orgId, deletedAt: null, embedding: null },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: { id: true, title: true, content: true },
+    });
+  }
+
+  setEmbedding(id: string, embedding: string) {
+    return this._posts.model.viralPost.update({
+      where: { id },
+      data: { embedding },
+    });
+  }
+
+  // Bài đã có vector, chưa gán chủ đề, trong N ngày — nguyên liệu gom cụm.
+  postsToCluster(orgId: string, days = 14, limit = 400) {
+    const since = new Date(Date.now() - days * 24 * 3600 * 1000);
+    return this._posts.model.viralPost.findMany({
+      where: {
+        organizationId: orgId,
+        deletedAt: null,
+        topicId: null,
+        embedding: { not: null },
+        createdAt: { gte: since },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        title: true,
+        sourceName: true,
+        platform: true,
+        shares: true,
+        views: true,
+        embedding: true,
+        createdAt: true,
+      },
+    });
+  }
+
+  // GOM CỤM BẰNG AI — bài chưa gán chủ đề, TỪ mốc bắt đầu mẻ cào (cửa sổ = mỗi
+  // lần cào). Không kèm điều kiện embedding (AI gom không cần vector).
+  unclusteredSince(orgId: string, since: Date, limit = 300) {
+    return this._posts.model.viralPost.findMany({
+      where: {
+        organizationId: orgId,
+        deletedAt: null,
+        topicId: null,
+        createdAt: { gte: since },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        title: true,
+        sourceName: true,
+        platform: true,
+      },
+    });
+  }
+
+  setPostsTopic(ids: string[], topicId: string) {
+    return this._posts.model.viralPost.updateMany({
+      where: { id: { in: ids } },
+      data: { topicId },
+    });
+  }
+
+  // Chủ đề còn sống trong N ngày (có centroid) — để gán bài mới vào cụm gần nhất.
+  activeTopics(orgId: string, days = 14) {
+    const since = new Date(Date.now() - days * 24 * 3600 * 1000);
+    return this._topics.model.viralTopic.findMany({
+      where: {
+        organizationId: orgId,
+        deletedAt: null,
+        centroid: { not: null },
+        OR: [{ lastSeenAt: { gte: since } }, { createdAt: { gte: since } }],
+      },
+      select: { id: true, centroid: true },
+    });
+  }
+
+  createTopic(orgId: string, data: any) {
+    return this._topics.model.viralTopic.create({
+      data: {
+        organizationId: orgId,
+        label: String(data.label || '').slice(0, 300),
+        centroid: data.centroid ? String(data.centroid) : null,
+        origin: data.origin === 'manual' ? 'manual' : 'auto',
+      },
+    });
+  }
+
+  getTopic(orgId: string, id: string) {
+    return this._topics.model.viralTopic.findFirst({
+      where: { id, organizationId: orgId, deletedAt: null },
+    });
+  }
+
+  updateTopic(id: string, data: any) {
+    return this._topics.model.viralTopic.update({ where: { id }, data });
+  }
+
+  // Bài thuộc một chủ đề (bằng chứng) — hiển thị bên trong + nguyên liệu tổng hợp.
+  topicPosts(orgId: string, topicId: string, limit = 60) {
+    return this._posts.model.viralPost.findMany({
+      where: { organizationId: orgId, topicId, deletedAt: null },
+      orderBy: [{ shares: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
+      take: limit,
+    });
+  }
+
+  // Tính lại số liệu tổng hợp của cụm từ các bài thành viên.
+  async topicMemberStats(orgId: string, topicId: string) {
+    const rows = await this._posts.model.viralPost.findMany({
+      where: { organizationId: orgId, topicId, deletedAt: null },
+      select: { sourceName: true, platform: true, shares: true, views: true },
+    });
+    const sources = new Set<string>();
+    const platforms = new Set<string>();
+    let totalShares = 0;
+    let totalViews = 0;
+    let topShare = 0;
+    for (const r of rows) {
+      if (r.sourceName) sources.add(r.sourceName.trim().toLowerCase());
+      if (r.platform) platforms.add(r.platform);
+      totalShares += r.shares || 0;
+      totalViews += r.views || 0;
+      if ((r.shares || 0) > topShare) topShare = r.shares || 0;
+    }
+    return {
+      postCount: rows.length,
+      // đếm theo NGUỒN khác nhau; nếu thiếu tên nguồn thì tính theo số bài
+      sourceCount: sources.size || rows.length,
+      platforms: Array.from(platforms),
+      totalShares,
+      totalViews,
+      topShare,
+    };
+  }
+
+  // Chủ đề đủ ngưỡng nhưng chưa tổng hợp — để AI viết content gốc + chấm. Ngưỡng
+  // tính theo SỐ BÀI chung 1 content (postCount ≥ convergenceMin, mặc định 2).
+  topicsToSynthesize(orgId: string, convergenceMin: number, limit = 12) {
+    return this._topics.model.viralTopic.findMany({
+      where: {
+        organizationId: orgId,
+        deletedAt: null,
+        synthesizedAt: null,
+        postCount: { gte: convergenceMin },
+      },
+      orderBy: [{ postCount: 'desc' }, { sourceCount: 'desc' }, { totalShares: 'desc' }],
+      take: limit,
+    });
+  }
+
+  // Danh sách chủ đề cho UI (tab Chờ duyệt / Đã duyệt / Lưu trữ).
+  listTopics(
+    orgId: string,
+    filter: { status?: string; sort?: string; convergenceMin?: number }
+  ) {
+    const min = filter.convergenceMin ?? 3;
+    const where: any = { organizationId: orgId };
+    if (filter.status === 'archive') {
+      where.OR = [
+        { status: 'skipped', deletedAt: null },
+        { deletedAt: { not: null } },
+      ];
+    } else if (
+      filter.status === 'pending' ||
+      filter.status === 'approved'
+    ) {
+      where.status = filter.status;
+      where.deletedAt = null;
+      // chỉ hiện chủ đề đã tổng hợp (đủ hội tụ) — cụm lẻ tẻ ẩn đi
+      where.synthesizedAt = { not: null };
+    } else {
+      where.deletedAt = null;
+      where.synthesizedAt = { not: null };
+    }
+    const orderBy =
+      filter.sort === 'new'
+        ? [{ lastSeenAt: { sort: 'desc' as const, nulls: 'last' as const } }, { createdAt: 'desc' as const }]
+        : filter.sort === 'score'
+        ? [{ score: { sort: 'desc' as const, nulls: 'last' as const } }, { sourceCount: 'desc' as const }]
+        : // mặc định: nhiều BÀI chung nhất lên đầu, rồi nhiều nguồn + share cao
+          [
+            { postCount: 'desc' as const },
+            { sourceCount: 'desc' as const },
+            { totalShares: 'desc' as const },
+          ];
+    return this._topics.model.viralTopic.findMany({
+      where,
+      orderBy,
+      take: 300,
+    });
+  }
+
+  async topicStatusCounts(orgId: string) {
+    const [rows, deletedCount] = await Promise.all([
+      this._topics.model.viralTopic.groupBy({
+        by: ['status'],
+        where: { organizationId: orgId, deletedAt: null, synthesizedAt: { not: null } },
+        _count: { _all: true },
+      }),
+      this._topics.model.viralTopic.count({
+        where: { organizationId: orgId, deletedAt: { not: null } },
+      }),
+    ]);
+    const by: Record<string, number> = { approved: 0, pending: 0, skipped: 0 };
+    for (const r of rows) by[r.status] = r._count._all;
+    return {
+      pending: by.pending,
+      approved: by.approved,
+      archive: by.skipped + deletedCount,
+    };
+  }
+
+  setTopicStatusMany(orgId: string, ids: string[], status: string) {
+    return this._topics.model.viralTopic.updateMany({
+      where: { id: { in: ids }, organizationId: orgId },
+      data: { status, deletedAt: null },
+    });
+  }
+
+  softDeleteTopics(orgId: string, ids: string[]) {
+    return this._topics.model.viralTopic.updateMany({
+      where: { id: { in: ids }, organizationId: orgId },
+      data: { deletedAt: new Date() },
+    });
+  }
+
+  // Reaper chủ đề: pending quá N ngày → bỏ qua (tránh ứ đọng như bài lẻ cũ).
+  expireTopicsOlderThan(days: number) {
+    const cutoff = new Date(Date.now() - days * 24 * 3600 * 1000);
+    return this._topics.model.viralTopic.updateMany({
+      where: {
+        status: 'pending',
+        deletedAt: null,
+        synthesizedAt: { not: null },
+        createdAt: { lt: cutoff },
+      },
+      data: { status: 'skipped' },
     });
   }
 }

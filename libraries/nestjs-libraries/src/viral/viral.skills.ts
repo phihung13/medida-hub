@@ -172,6 +172,24 @@ Chấm BẢN VIẾT LẠI (không chấm bài gốc). Chấm rộng rãi: bản 
 
 const SKILL_MO_CONG_THUC = `Bạn là chuyên gia phân tích nội dung viral giáo dục Việt Nam. Mổ xẻ VÌ SAO bài này được chia sẻ nhiều. Phân tích sắc, cụ thể, có thể áp dụng lại — không chung chung. Tiếng Việt.`;
 
+const SKILL_TONG_HOP_CHU_DE = `Bạn nhận NHIỀU bài từ NHIỀU NGUỒN KHÁC NHAU cùng nói về MỘT chủ đề/sự kiện. Nhiệm vụ: chưng cất tất cả thành MỘT "content gốc" duy nhất mà đội nội dung có thể hack lại — rồi chọn nhóm chân dung, viết bản đăng cho Trường Việt Anh, và chấm điểm.
+
+BƯỚC 1 — TỔNG HỢP (khách quan, không bịa; chỉ dùng dữ kiện có trong các bài):
+- "label": tên chủ đề ngắn gọn (6-12 từ), gọi đúng bản chất sự kiện/vấn đề.
+- "angle": 1-2 câu nói bản chất chủ đề này là gì và vì sao đang được nhiều nguồn nói tới.
+- "agreedFacts": 3-6 điều mà NHIỀU nguồn cùng khẳng định (điểm đồng thuận = đáng tin nhất).
+- "keyNumbers": các số liệu/mốc quan trọng xuất hiện (ghi kèm ngữ cảnh; KHÔNG bịa số không có trong bài).
+- "quotes": 0-3 câu trích đáng giá (lời chuyên gia/phụ huynh/người trong cuộc) nếu có trong bài.
+- "uniqueAngles": 2-4 góc nhìn LẠ mà chỉ một vài nguồn nêu (chỗ để làm nội dung khác biệt).
+- "hook": 1 câu mở có sức níu, chạm đúng nỗi quan tâm của phụ huynh.
+- "whyItMatters": 1-2 câu vì sao phụ huynh Trường Việt Anh nên quan tâm.
+
+BƯỚC 2 — CHỌN NHÓM: theo NGUYÊN TẮC CHỌN NHÓM ở trên, chọn ĐÚNG 1 nhóm chân dung phù hợp nhất.
+
+BƯỚC 3 — VIẾT BẢN ĐĂNG ("rewritten"): bài đăng mạng xã hội của Trường Việt Anh cho nhóm đã chọn — 2-4 câu, giọng "Vui Vẻ & Thực Dụng", dựa trên content tổng hợp (KHÔNG sao chép nguyên văn nguồn nào), kết bằng CTA tự nhiên + 4-6 hashtag. Không nhắc tên trường/đối thủ khác.
+
+BƯỚC 4 — CHẤM "rewritten" theo rubric + gán "content_type" (blog/infographic/video) và "podcast_score" (0-100).`;
+
 const SKILL_BAN_TIN_TUAN = `Bạn là trợ lý chiến lược nội dung của Trường Việt Anh (K-12, TP.HCM). Từ dữ liệu cào 7 ngày (tin giáo dục nóng + bài đối thủ/KOL thắng + số liệu vận hành), viết BẢN TIN TUẦN NGẮN GỌN cho đội marketing:
 - "summary": 2-3 câu nắm bắt tuần này có gì đáng chú ý nhất (nóng hổi, thiết thực, tiếng Việt tự nhiên).
 - "highlights": 3-5 tin NÓNG nhất tuần (mỗi dòng: tin gì + vì sao phụ huynh quan tâm — ngắn, 1 câu/dòng).
@@ -200,6 +218,7 @@ export const VIRAL_SKILL_DEFS: ViralSkillDef[] = [
   { key: 'skill-phan-loai-viet-lai', label: 'Phân loại + viết lại (4 bước)', group: 'Chấm & phân loại', description: 'Nhiệm vụ A/B/C/D: chọn nhóm, viết lại, chấm, gán loại SX + podcast_score', content: SKILL_PHAN_LOAI_VIET_LAI },
   { key: 'tieu-chi-cham-diem', label: 'Rubric chấm điểm (100đ)', group: 'Chấm & phân loại', description: 'Thang điểm hook/clarity/brand/value/CTA/SEO + ngưỡng nới tay', content: TIEU_CHI_CHAM_DIEM },
   { key: 'skill-mo-cong-thuc', label: 'Mổ công thức viral', group: 'Chấm & phân loại', description: 'Vai phân tích vì sao bài được share (nút Mổ công thức)', content: SKILL_MO_CONG_THUC },
+  { key: 'skill-tong-hop-chu-de', label: 'Tổng hợp chủ đề (nhiều nguồn → 1 content)', group: 'Chấm & phân loại', description: 'Gom nhiều nguồn cùng chủ đề thành 1 content gốc + chọn nhóm + viết + chấm', content: SKILL_TONG_HOP_CHU_DE },
   // Báo cáo
   { key: 'skill-ban-tin-tuan', label: 'Bản tin tuần + todo list', group: 'Báo cáo', description: 'Khung tổng hợp tuần gửi Zalo/email (T2-4-6 + CN)', content: SKILL_BAN_TIN_TUAN },
 ];

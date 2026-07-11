@@ -54,8 +54,39 @@ export const decodeEntities = (s?: string | null): string => {
     .replace(/&([A-Za-z]+);/g, (m, name) => RSS_ENTITIES[name] ?? m);
 };
 
-// "Phát hiện" (Discover): bắt bài viral → AI mổ công thức + chấm điểm theo
-// chân dung → duyệt → nhân bản. Thước đo chính: lượt share.
+// ── Toán vector cho gom cụm theo chủ đề (embeddings) ─────────────────────────
+function safeVec(s?: string | null): number[] | null {
+  try {
+    const v = JSON.parse(s || '');
+    return Array.isArray(v) && v.length ? (v as number[]) : null;
+  } catch {
+    return null;
+  }
+}
+function cosine(a: number[], b: number[]): number {
+  let dot = 0;
+  let na = 0;
+  let nb = 0;
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
+  if (!na || !nb) return 0;
+  return dot / (Math.sqrt(na) * Math.sqrt(nb));
+}
+function meanVec(vecs: number[][]): number[] {
+  const n = vecs[0].length;
+  const out = new Array(n).fill(0);
+  for (const v of vecs) for (let k = 0; k < n; k++) out[k] += v[k] || 0;
+  for (let k = 0; k < n; k++) out[k] /= vecs.length;
+  return out;
+}
+
+// "Phát hiện" (Discover): CÀO nhiều nguồn → GOM CỤM theo chủ đề (embeddings) →
+// chủ đề nhiều nguồn = "đáng hack" → TỔNG HỢP 1 content gốc → chấm điểm cấp chủ
+// đề → viết lại + sản xuất. Thước đo chính: số nguồn hội tụ + lượt share.
 @Injectable()
 export class ViralService implements OnModuleInit {
   // storage cho sản phẩm sản xuất (ảnh infographic, mp3 podcast) — cùng
@@ -430,8 +461,8 @@ export class ViralService implements OnModuleInit {
       origin: 'manual',
     });
 
-    // chấm điểm ngay để thẻ hiện điểm + trạng thái (lỗi chấm không chặn bắt bài)
-    await this.scoreUnscored(orgId, 3).catch(() => null);
+    // tạo chủ đề 1 nguồn + tổng hợp ngay (lỗi không chặn bắt bài)
+    await this.makeManualTopic(orgId, created.id).catch(() => null);
     return this._repo.getById(orgId, created.id);
   }
 
@@ -680,10 +711,250 @@ export class ViralService implements OnModuleInit {
   // Scheduler chỉ quét nguồn auto; nút "Cào ngay" (includeManual=true) quét
   // TẤT CẢ nguồn còn sống. Cào xong → AI chấm điểm các bài chưa chấm.
   // Việc NỀN sau cào: chấm điểm → làm giàu persona. Trả số bài đã chấm.
-  private async afterCrawl(orgId: string): Promise<number> {
-    const n = await this.scoreUnscored(orgId);
-    if (n > 0) await this.enrichPersonas(orgId).catch(() => null);
-    return n;
+  // Sau khi cào: NHÚNG vector → GOM CỤM theo chủ đề → TỔNG HỢP + chấm những
+  // chủ đề đủ ngưỡng hội tụ → làm giàu persona. (Thay cho chấm-từng-bài cũ.)
+  private async afterCrawl(orgId: string, startedAt: Date): Promise<number> {
+    // Hai cách gom (toggle ở Cài đặt): 'ai' = Claude gom cả mẻ vừa cào (cửa sổ =
+    // mỗi lần cào) · 'embeddings' = vector cosine, gom xuyên nhiều lần cào.
+    if (getViralConfig().clusterMode === 'embeddings') {
+      await this.embedUnembedded(orgId).catch(() => null);
+      await this.clusterRecent(orgId).catch(() => null);
+    } else {
+      await this.clusterByAI(orgId, startedAt).catch(() => null);
+    }
+    const synthed = await this.synthesizeTopics(orgId).catch(() => 0);
+    if (synthed > 0) await this.enrichPersonas(orgId).catch(() => null);
+    return synthed;
+  }
+
+  // ── GOM CỤM BẰNG AI (cửa sổ = mỗi lần cào) ────────────────────────────────
+  // Đẩy toàn bộ bài MỚI của mẻ cào (chưa gán chủ đề) cho Claude gom theo cùng sự
+  // việc → tạo 1 chủ đề cho mỗi cụm ≥ convergenceMin bài. KHÔNG gộp vào chủ đề
+  // của mẻ cào trước (mỗi mẻ độc lập — duyệt xong sản xuất là hết). Cụm dưới
+  // ngưỡng để nguyên (topicId null) → không nổi lên duyệt.
+  private async clusterByAI(orgId: string, since: Date): Promise<number> {
+    const min = Math.max(2, getViralConfig().convergenceMin);
+    const rows = await this._repo.unclusteredSince(orgId, since, 250);
+    if (rows.length < 2) return 0;
+    const idByIndex = rows.map((p: any) => p.id);
+    const clusters = await this._openai.viralClusterBatch(
+      rows.map((p: any, i: number) => ({
+        i,
+        title: decodeEntities(p.title),
+        sourceName: p.sourceName,
+        platform: p.platform,
+      }))
+    );
+    if (!clusters) return 0;
+    let made = 0;
+    for (const c of clusters) {
+      const ids = [...new Set(c.members)]
+        .filter((i) => i >= 0 && i < idByIndex.length)
+        .map((i) => idByIndex[i]);
+      if (ids.length < min) continue; // dưới ngưỡng → chưa "đáng hack"
+      const topic = await this._repo
+        .createTopic(orgId, { label: c.label || '', origin: 'auto' })
+        .catch(() => null);
+      if (!topic) continue;
+      await this._repo.setPostsTopic(ids, topic.id).catch(() => null);
+      await this.recomputeTopic(orgId, topic.id).catch(() => null);
+      made++;
+    }
+    return made;
+  }
+
+  // ── GOM CỤM THEO CHỦ ĐỀ (embeddings) ─────────────────────────────────────
+  // Tính vector nhúng cho bài chưa có (tiêu đề + nội dung).
+  private async embedUnembedded(orgId: string): Promise<number> {
+    const posts = await this._repo.unembedded(orgId, 300);
+    if (!posts.length) return 0;
+    const texts = posts.map(
+      (p: any) =>
+        `${decodeEntities(p.title)}\n${decodeEntities(p.content || '').slice(0, 1000)}`
+    );
+    const vecs = await this._openai.embed(texts).catch(() => null);
+    if (!vecs) return 0;
+    let done = 0;
+    for (let j = 0; j < posts.length; j++) {
+      const v = vecs[j];
+      if (v && Array.isArray(v)) {
+        await this._repo.setEmbedding((posts[j] as any).id, JSON.stringify(v)).catch(() => null);
+        done++;
+      }
+    }
+    return done;
+  }
+
+  // Gán bài (đã có vector, chưa gán chủ đề) vào chủ đề gần nhất; còn lại gom
+  // thành chủ đề mới. Ngưỡng độ giống lấy từ cấu hình (clusterThreshold).
+  private async clusterRecent(orgId: string): Promise<number> {
+    const T = getViralConfig().clusterThreshold;
+    const rows = await this._repo.postsToCluster(orgId, 14, 500);
+    const items = rows
+      .map((p: any) => ({ id: p.id, vec: safeVec(p.embedding) }))
+      .filter((x) => x.vec) as { id: string; vec: number[] }[];
+    if (!items.length) return 0;
+    const topics = (await this._repo.activeTopics(orgId, 14))
+      .map((t: any) => ({ id: t.id, vec: safeVec(t.centroid) }))
+      .filter((x) => x.vec) as { id: string; vec: number[] }[];
+
+    const assign: Record<string, string[]> = {}; // topicId -> postIds
+    const leftovers: { id: string; vec: number[] }[] = [];
+    for (const it of items) {
+      let best = -1;
+      let bestId = '';
+      for (const t of topics) {
+        const s = cosine(it.vec, t.vec);
+        if (s > best) {
+          best = s;
+          bestId = t.id;
+        }
+      }
+      if (best >= T && bestId) (assign[bestId] ||= []).push(it.id);
+      else leftovers.push(it);
+    }
+    // gom các bài lẻ với nhau (greedy) thành cụm mới
+    const fresh: { vec: number[]; ids: string[] }[] = [];
+    for (const it of leftovers) {
+      let best = -1;
+      let bi = -1;
+      for (let k = 0; k < fresh.length; k++) {
+        const s = cosine(it.vec, fresh[k].vec);
+        if (s > best) {
+          best = s;
+          bi = k;
+        }
+      }
+      if (best >= T && bi >= 0) {
+        fresh[bi].ids.push(it.id);
+        fresh[bi].vec = meanVec([fresh[bi].vec, it.vec]);
+      } else {
+        fresh.push({ vec: it.vec.slice(), ids: [it.id] });
+      }
+    }
+    const touched = new Set<string>();
+    for (const [tid, ids] of Object.entries(assign)) {
+      await this._repo.setPostsTopic(ids, tid).catch(() => null);
+      touched.add(tid);
+    }
+    for (const c of fresh) {
+      const topic = await this._repo
+        .createTopic(orgId, { label: '', centroid: JSON.stringify(c.vec), origin: 'auto' })
+        .catch(() => null);
+      if (!topic) continue;
+      await this._repo.setPostsTopic(c.ids, topic.id).catch(() => null);
+      touched.add(topic.id);
+    }
+    for (const tid of touched) await this.recomputeTopic(orgId, tid).catch(() => null);
+    return touched.size;
+  }
+
+  // Tính lại số liệu tổng hợp + centroid của một chủ đề từ các bài thành viên.
+  private async recomputeTopic(orgId: string, topicId: string): Promise<void> {
+    const stats = await this._repo.topicMemberStats(orgId, topicId);
+    if (!stats.postCount) return;
+    const members = await this._repo.topicPosts(orgId, topicId, 100);
+    const vecs = members
+      .map((m: any) => safeVec(m.embedding))
+      .filter(Boolean) as number[][];
+    await this._repo.updateTopic(topicId, {
+      postCount: stats.postCount,
+      sourceCount: stats.sourceCount,
+      totalShares: stats.totalShares,
+      totalViews: stats.totalViews,
+      topShare: stats.topShare || null,
+      platforms: JSON.stringify(stats.platforms),
+      lastSeenAt: new Date(),
+      ...(vecs.length ? { centroid: JSON.stringify(meanVec(vecs)) } : {}),
+    });
+  }
+
+  // ── TỔNG HỢP CHỦ ĐỀ (nhiều nguồn → 1 content gốc) + chấm điểm cấp chủ đề ───
+  private async synthesizeTopics(orgId: string): Promise<number> {
+    const min = getViralConfig().convergenceMin;
+    const topics = await this._repo.topicsToSynthesize(orgId, min, 12);
+    if (!topics.length) return 0;
+    const personasText = await this.personasTextFor(orgId);
+    const rubric = getSkill('tieu-chi-cham-diem') || VIRAL_RUBRIC;
+    let done = 0;
+    for (const t of topics as any[]) {
+      const ok = await this.synthesizeOne(orgId, t, personasText, rubric).catch(() => false);
+      if (ok) done++;
+    }
+    return done;
+  }
+
+  private async synthesizeOne(
+    orgId: string,
+    topic: any,
+    personasText: string,
+    rubric: string
+  ): Promise<boolean> {
+    const posts = await this._repo.topicPosts(orgId, topic.id, 40);
+    if (!posts.length) return false;
+    const res = await this._openai
+      .viralSynthesizeTopic({
+        posts: posts.map((p: any) => ({
+          title: decodeEntities(p.title),
+          sourceName: p.sourceName,
+          platform: p.platform,
+          shares: p.shares,
+          content: decodeEntities(p.content || ''),
+        })),
+        personasText,
+        rubric,
+      })
+      .catch(() => null);
+    if (!res) return false;
+    const score = Math.max(0, Math.min(100, Number(res.score) || 0));
+    await this._repo.updateTopic(topic.id, {
+      label:
+        String(res.label || '').slice(0, 300) ||
+        decodeEntities((posts[0] as any).title).slice(0, 120),
+      synthesis: JSON.stringify(res.synthesis || {}).slice(0, 8000),
+      persona: res.persona ? String(res.persona).slice(0, 30) : null,
+      aiContent: res.rewritten ? String(res.rewritten).slice(0, 4000) : null,
+      score,
+      scoreDetail: JSON.stringify({
+        scores: res.scores,
+        verdict: res.verdict,
+        reason: res.reason,
+        content_type: res.content_type,
+        podcast_score: res.podcast_score,
+      }).slice(0, 3000),
+      status: viralStatusForScore(score),
+      synthesizedAt: new Date(),
+    });
+    // Gắn persona + điểm xuống bài thành viên để enrichPersonas giữ tín hiệu
+    // VOICE/TREND/WINNING (đọc từ scoredSince — bài có persona, updatedAt mới).
+    if (res.persona) {
+      await this._repo
+        .tagMemberPersona(orgId, topic.id, String(res.persona).slice(0, 30), score)
+        .catch(() => null);
+    }
+    return true;
+  }
+
+  // Nhập tay ("Thêm bài viral"): tạo chủ đề 1 nguồn + tổng hợp NGAY (bất kể
+  // ngưỡng hội tụ) để thẻ hiện điểm + trạng thái như trước.
+  private async makeManualTopic(orgId: string, postId: string): Promise<void> {
+    const post = await this._repo.getById(orgId, postId);
+    if (!post) return;
+    const [vec] = await this._openai
+      .embed([`${decodeEntities(post.title)}\n${decodeEntities(post.content || '').slice(0, 1000)}`])
+      .catch(() => [null]);
+    if (vec && Array.isArray(vec))
+      await this._repo.setEmbedding(postId, JSON.stringify(vec)).catch(() => null);
+    const topic = await this._repo.createTopic(orgId, {
+      label: decodeEntities(post.title).slice(0, 120),
+      centroid: vec && Array.isArray(vec) ? JSON.stringify(vec) : null,
+      origin: 'manual',
+    });
+    await this._repo.setPostsTopic([postId], topic.id).catch(() => null);
+    await this.recomputeTopic(orgId, topic.id).catch(() => null);
+    const personasText = await this.personasTextFor(orgId);
+    const rubric = getSkill('tieu-chi-cham-diem') || VIRAL_RUBRIC;
+    await this.synthesizeOne(orgId, { id: topic.id }, personasText, rubric).catch(() => null);
   }
 
   async crawlAll(
@@ -691,6 +962,8 @@ export class ViralService implements OnModuleInit {
     includeManual = false,
     awaitScoring = false // lịch T2-4-6 cần đợi chấm xong mới gửi bản tin
   ): Promise<{ added: number; scanned: number; scored: number }> {
+    // Mốc bắt đầu mẻ cào — gom cụm AI chỉ xét bài tạo TỪ đây (cửa sổ = mỗi lần cào).
+    const startedAt = new Date();
     const sources = includeManual
       ? await this._repo.allSources(orgId)
       : await this._repo.autoSources(orgId);
@@ -709,9 +982,113 @@ export class ViralService implements OnModuleInit {
     }
     // Chấm điểm + enrich persona: mặc định chạy NỀN — không giữ request
     // (tunnel Cloudflare cắt ~100s); lịch T2-4-6 thì ĐỢI xong để gửi bản tin.
-    if (awaitScoring) await this.afterCrawl(orgId).catch(() => null);
-    else this.afterCrawl(orgId).catch(() => null);
+    if (awaitScoring) await this.afterCrawl(orgId, startedAt).catch(() => null);
+    else this.afterCrawl(orgId, startedAt).catch(() => null);
     return { added, scanned: sources.length, scored: 0 };
+  }
+
+  // ── CHỦ ĐỀ cho UI (đơn vị chính của trang Phát hiện) ─────────────────────
+  // Danh sách chủ đề đã tổng hợp — giải mã nhãn, parse synthesis + scoreDetail.
+  async listTopics(
+    orgId: string,
+    filter: { status?: string; sort?: string }
+  ) {
+    const min = getViralConfig().convergenceMin;
+    const rows = await this._repo.listTopics(orgId, { ...filter, convergenceMin: min });
+    return rows.map((t: any) => this.shapeTopic(t));
+  }
+
+  topicStatusCounts(orgId: string) {
+    return this._repo.topicStatusCounts(orgId);
+  }
+
+  // Chi tiết 1 chủ đề: content tổng hợp + các bài NGUỒN (bằng chứng).
+  async topicDetail(orgId: string, id: string) {
+    const t = await this._repo.getTopic(orgId, id);
+    if (!t) return null;
+    const posts = await this._repo.topicPosts(orgId, id, 60);
+    return {
+      topic: this.shapeTopic(t),
+      posts: posts.map((p: any) => ({
+        id: p.id,
+        platform: p.platform,
+        title: decodeEntities(p.title),
+        sourceName: p.sourceName,
+        url: p.url,
+        thumbnail: p.thumbnail,
+        shares: p.shares,
+        likes: p.likes,
+        views: p.views,
+        createdAt: p.createdAt,
+      })),
+    };
+  }
+
+  private shapeTopic(t: any) {
+    let synthesis: any = null;
+    let scoreDetail: any = null;
+    try {
+      synthesis = t.synthesis ? JSON.parse(t.synthesis) : null;
+    } catch {
+      /* synthesis hỏng */
+    }
+    try {
+      scoreDetail = t.scoreDetail ? JSON.parse(t.scoreDetail) : null;
+    } catch {
+      /* scoreDetail hỏng */
+    }
+    let platforms: string[] = [];
+    try {
+      platforms = t.platforms ? JSON.parse(t.platforms) : [];
+    } catch {
+      /* platforms hỏng */
+    }
+    return {
+      id: t.id,
+      label: decodeEntities(t.label),
+      synthesis,
+      scoreDetail,
+      platforms,
+      sourceCount: t.sourceCount,
+      postCount: t.postCount,
+      totalShares: t.totalShares,
+      totalViews: t.totalViews,
+      topShare: t.topShare,
+      score: t.score,
+      persona: t.persona,
+      aiContent: t.aiContent,
+      status: t.status,
+      origin: t.origin,
+      lastSeenAt: t.lastSeenAt,
+      createdAt: t.createdAt,
+    };
+  }
+
+  bulkTopicStatus(orgId: string, ids: string[], status: string) {
+    if (status === 'delete') return this._repo.softDeleteTopics(orgId, ids);
+    return this._repo.setTopicStatusMany(orgId, ids, status);
+  }
+
+  // "Viết lại thành bài của mình" từ 1 chủ đề: dùng luôn bản AI đã viết
+  // (aiContent) khi tổng hợp — tạo ViralClone để đưa vào hàng "Chờ đăng".
+  async cloneTopic(orgId: string, id: string) {
+    const t = await this._repo.getTopic(orgId, id);
+    if (!t) return null;
+    let scoreDetail: string | null = null;
+    try {
+      scoreDetail = t.scoreDetail || null;
+    } catch {
+      /* giữ null */
+    }
+    return this._repo.createClone(orgId, {
+      topicId: t.id,
+      title: decodeEntities(t.label),
+      content: t.aiContent || '',
+      persona: t.persona,
+      score: t.score,
+      sourceScore: t.score,
+      scoreDetail,
+    });
   }
 
   // ── CHÂN DUNG KHÁCH HÀNG (persona động) ───────────────────────────────────
@@ -906,6 +1283,10 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
 
   setSourceAuto(orgId: string, id: string, auto: boolean) {
     return this._repo.setSourceAuto(orgId, id, auto);
+  }
+
+  setSourceType(orgId: string, id: string, type: string) {
+    return this._repo.setSourceType(orgId, id, type);
   }
 
   // ── LỌC SPAM + TUỔI + NGƯỠNG VIRAL (port node "[Filter] Spam + Cũ + Viral")
@@ -1221,19 +1602,23 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
     const processing = await this._repo.countProcessingProducts(orgId);
     if (processing > 40) throw new Error('Đang sản xuất quá nhiều — đợi xong bớt rồi bấm tiếp.');
 
-    const fromClone = body.source === 'clone';
+    const from = body.source === 'clone' ? 'clone' : body.source === 'topic' ? 'topic' : 'post';
     const created: any[] = [];
     for (const id of ids) {
-      const src = fromClone
-        ? await this._repo.getClone(orgId, id)
-        : await this._repo.getById(orgId, id);
+      const src =
+        from === 'clone'
+          ? await this._repo.getClone(orgId, id)
+          : from === 'topic'
+          ? await this._repo.getTopic(orgId, id)
+          : await this._repo.getById(orgId, id);
       if (!src) continue;
       for (const format of formats) {
         const row = await this._repo.createProduct(orgId, {
-          postId: fromClone ? null : id,
-          cloneId: fromClone ? id : null,
+          postId: from === 'post' ? id : null,
+          cloneId: from === 'clone' ? id : null,
+          topicId: from === 'topic' ? id : null,
           format,
-          topic: decodeEntities((src as any).title),
+          topic: decodeEntities((src as any).label || (src as any).title),
         });
         // podcast: ghi lựa chọn trộn nhạc nền vào meta ngay khi tạo job
         if (format === 'podcast' && body.bgm) {
@@ -1271,6 +1656,38 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
 
   // Nội dung nguồn → input prompt (chủ đề, định hướng, góc tiếp cận, nhóm).
   private async produceInput(orgId: string, product: any): Promise<ProduceInput | null> {
+    if (product.topicId) {
+      const t = await this._repo.getTopic(orgId, product.topicId);
+      if (!t) return null;
+      let syn: any = {};
+      try {
+        syn = JSON.parse(t.synthesis || '{}');
+      } catch {
+        /* synthesis hỏng — dùng aiContent */
+      }
+      let detail = '';
+      try {
+        detail = JSON.parse(t.scoreDetail || '{}')?.reason || '';
+      } catch {
+        /* scoreDetail hỏng — bỏ qua */
+      }
+      const brief = [
+        syn.angle,
+        syn.agreedFacts?.length ? 'Điểm đồng thuận: ' + syn.agreedFacts.join('; ') : '',
+        syn.keyNumbers?.length ? 'Số liệu: ' + syn.keyNumbers.join('; ') : '',
+        syn.quotes?.length ? 'Trích dẫn: ' + syn.quotes.join(' | ') : '',
+        syn.uniqueAngles?.length ? 'Góc lạ: ' + syn.uniqueAngles.join('; ') : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
+      return {
+        id: product.id,
+        topic: decodeEntities(t.label),
+        idea: [t.aiContent, brief].filter(Boolean).join('\n\n') || t.label,
+        detail: detail || syn.whyItMatters || '',
+        category: t.persona || '',
+      };
+    }
     if (product.cloneId) {
       const c = await this._repo.getClone(orgId, product.cloneId);
       if (!c) return null;
@@ -1558,11 +1975,24 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
   // nhóm Zalo (nếu cấu hình). kind: 'crawl' = sau cào theo lịch T2-4-6 ·
   // 'sunday' = tổng kết CN · 'manual' = bấm nút tạo ngay.
   async sendWeeklyReport(orgId: string, kind: 'crawl' | 'sunday' | 'manual') {
-    const [d, counts, { trend, winning }] = await Promise.all([
+    const [d, counts, { trend, winning }, competitors] = await Promise.all([
       this._repo.weeklyDigest(orgId),
       this._repo.statusCounts(orgId),
       this._repo.weeklyBriefPosts(orgId),
+      this._repo.weeklyCompetitorActivity(orgId),
     ]);
+    // Động tĩnh từng đối thủ (KOL + trường) đang theo dõi — cho AI phân tích +
+    // hiện thành mục riêng trong bản tin.
+    const competitorText = (competitors as any[])
+      .map((c) => {
+        const tag = c.type === 'kol' ? 'KOL' : 'Trường';
+        const top = c.top
+          ? ` · bài nổi nhất: "${decodeEntities(c.top.title).slice(0, 90)}"${c.top.shares ? ` (${c.top.shares} share)` : c.top.views ? ` (${c.top.views} view)` : ''}`
+          : '';
+        return `- [${tag} · ${c.platform}] ${c.name}: ${c.count} bài${c.totalShares ? ` · ${c.totalShares} share` : ''}${top}`;
+      })
+      .join('\n')
+      .slice(0, 5000);
     const trendText = trend
       .map((t: any) => `- [${t.persona || '?'} · ${t.score ?? '-'}đ] ${decodeEntities(t.title)} (${t.sourceName || ''})`)
       .join('\n')
@@ -1576,7 +2006,7 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
       .slice(0, 4000);
     const statsText = `7 ngày qua: cào ${d.crawled} bài mới · duyệt ${d.approved} · sản xuất ${d.produced} sản phẩm · đang chờ duyệt ${counts.pending} bài.`;
     const brief = await this._openai
-      .viralWeeklyBrief({ trendText, winningText, statsText })
+      .viralWeeklyBrief({ trendText, winningText, statsText, competitorText })
       .catch(() => null);
 
     const dateVn = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
@@ -1596,6 +2026,16 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
     if (brief?.market?.length) {
       lines.push('📈 DIỄN BIẾN THỊ TRƯỜNG:');
       brief.market.slice(0, 5).forEach((m) => lines.push(`• ${m}`));
+      lines.push('');
+    }
+    if (competitorText) {
+      lines.push('🏫 ĐỘNG TĨNH ĐỐI THỦ (tuần qua):');
+      (competitors as any[]).slice(0, 12).forEach((c) => {
+        const tag = c.type === 'kol' ? 'KOL' : 'Trường';
+        lines.push(
+          `• ${c.name} [${tag}]: ${c.count} bài${c.totalShares ? ` · ${c.totalShares} share` : ''}`
+        );
+      });
       lines.push('');
     }
     if (brief?.todos?.length) {
@@ -1620,6 +2060,13 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
           highlights: brief?.highlights || [],
           market: brief?.market || [],
           todos: brief?.todos || [],
+          competitors: (competitors as any[]).slice(0, 12).map((c) => ({
+            name: c.name,
+            type: c.type,
+            platform: c.platform,
+            count: c.count,
+            totalShares: c.totalShares,
+          })),
           stats: statsText,
         }),
       })
@@ -1666,6 +2113,7 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
         platform: d.platform,
         name: d.name,
         url: d.url || null,
+        type: d.type,
         auto: d.platform === 'gnews',
       });
       added++;

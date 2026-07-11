@@ -49,6 +49,63 @@ export class ViralController {
     return { items, stats, sources, statusCounts };
   }
 
+  // ── CHỦ ĐỀ (đơn vị chính): cụm nhiều nguồn cùng nói → 1 content tổng hợp ───
+  @Get('/topics')
+  async topics(
+    @GetOrgFromRequest() org: Organization,
+    @Query('sort') sort: string,
+    @Query('status') status: string
+  ) {
+    const [topics, counts, stats, sources] = await Promise.all([
+      this._service.listTopics(org.id, { sort, status }),
+      this._service.topicStatusCounts(org.id),
+      this._service.stats(org.id),
+      this._service.listSources(org.id),
+    ]);
+    return { topics, counts, stats, sources };
+  }
+
+  @Get('/topics/:id')
+  async topicDetail(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string
+  ) {
+    const res = await this._service.topicDetail(org.id, id);
+    if (!res) throw new HttpException('Không tìm thấy chủ đề.', 404);
+    return res;
+  }
+
+  // Duyệt / bỏ qua / trả về chờ / xóa hàng loạt chủ đề.
+  @Post('/topics/bulk')
+  async topicsBulk(
+    @GetOrgFromRequest() org: Organization,
+    @Body() body: { ids?: string[]; action?: string }
+  ) {
+    const ids = (body.ids || []).filter(Boolean).slice(0, 300);
+    if (!ids.length) throw new HttpException('Chưa chọn chủ đề nào.', 400);
+    const map: Record<string, string> = {
+      approve: 'approved',
+      skip: 'skipped',
+      pending: 'pending',
+      delete: 'delete',
+    };
+    const target = map[body.action || ''];
+    if (!target) throw new HttpException('Hành động không hợp lệ.', 400);
+    await this._service.bulkTopicStatus(org.id, ids, target);
+    return { ok: true };
+  }
+
+  // Viết lại 1 chủ đề thành "Bài của mình" (đưa vào hàng Chờ đăng).
+  @Post('/topics/:id/clone')
+  async topicClone(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string
+  ) {
+    const res = await this._service.cloneTopic(org.id, id);
+    if (!res) throw new HttpException('Không viết lại được — thử lại.', 400);
+    return res;
+  }
+
   // "Bài của mình" — bản clone AI viết lại, chấm điểm lại.
   @Get('/mine')
   async mine(@GetOrgFromRequest() org: Organization) {
@@ -208,6 +265,9 @@ export class ViralController {
       minimaxKey?: string;
       minimaxGroupId?: string;
       reportZaloThreadId?: string;
+      clusterMode?: 'ai' | 'embeddings';
+      convergenceMin?: number;
+      clusterThreshold?: number;
     }
   ) {
     if (!user?.isSuperAdmin) {
@@ -225,6 +285,15 @@ export class ViralController {
         : {}),
       ...(typeof body.crawlEveryHours === 'number'
         ? { crawlEveryHours: body.crawlEveryHours }
+        : {}),
+      ...(body.clusterMode === 'ai' || body.clusterMode === 'embeddings'
+        ? { clusterMode: body.clusterMode }
+        : {}),
+      ...(typeof body.convergenceMin === 'number'
+        ? { convergenceMin: body.convergenceMin }
+        : {}),
+      ...(typeof body.clusterThreshold === 'number'
+        ? { clusterThreshold: body.clusterThreshold }
         : {}),
     });
     return { ok: true, ...getViralStatus() };
@@ -393,6 +462,18 @@ export class ViralController {
     @Param('id') id: string
   ) {
     await this._service.deleteSource(org.id, id);
+    return { ok: true };
+  }
+
+  // Đổi loại nguồn (kol | school | group | news | other) — school+kol = đối thủ
+  // (tính vào mục "động tĩnh đối thủ" của bản tin tuần).
+  @Post('/sources/:id/type')
+  async setSourceType(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string,
+    @Body('type') type: string
+  ) {
+    await this._service.setSourceType(org.id, id, type);
     return { ok: true };
   }
 

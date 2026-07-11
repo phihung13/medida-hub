@@ -556,6 +556,123 @@ export class OpenaiService {
     return claudeJson(system, user, 8000);
   }
 
+  // VECTOR NHÚNG (embeddings) — dùng gom cụm bài theo NGHĨA. OpenAI
+  // text-embedding-3-small (rẻ, đa ngôn ngữ tốt cho tiếng Việt). Nhận nhiều text,
+  // trả mảng vector cùng thứ tự. Lỗi/thiếu key → trả mảng null tương ứng.
+  async embed(texts: string[]): Promise<(number[] | null)[]> {
+    const clean = texts.map((t) => String(t || '').replace(/\s+/g, ' ').trim().slice(0, 6000));
+    if (!clean.length) return [];
+    if (!(process.env.OPENAI_API_KEY || '').trim()) {
+      throw new Error('OPENAI_API_KEY chưa cấu hình (cần cho gom cụm chủ đề bằng embeddings).');
+    }
+    const out: (number[] | null)[] = new Array(clean.length).fill(null);
+    // batch 96 để tránh quá payload
+    for (let i = 0; i < clean.length; i += 96) {
+      const slice = clean.slice(i, i + 96).map((t) => t || ' ');
+      const res = await openai.embeddings.create({
+        model: 'text-embedding-3-small',
+        input: slice,
+      });
+      res.data.forEach((d, j) => {
+        out[i + j] = d.embedding as number[];
+      });
+    }
+    return out;
+  }
+
+  // GOM CỤM BẰNG AI (clusterMode='ai'): đọc cả MẺ vừa cào → gom các bài NÓI VỀ
+  // CÙNG MỘT SỰ VIỆC/CÂU CHUYỆN cụ thể vào 1 cụm. Khác embeddings ở chỗ AI hiểu
+  // ngữ cảnh (cùng sự kiện dù tiêu đề khác hẳn) và bỏ ghép nhầm (cùng lĩnh vực
+  // nhưng khác chuyện). Trả các cụm kèm nhãn ngắn; cụm 1 phần tử vẫn trả về,
+  // service tự lọc theo ngưỡng.
+  async viralClusterBatch(
+    items: { i: number; title: string; sourceName?: string | null; platform: string }[]
+  ): Promise<{ label: string; members: number[] }[] | null> {
+    if (!items.length) return [];
+    const system =
+      'Bạn gom các bài báo / bài đăng mạng xã hội thành các CỤM CÙNG MỘT SỰ VIỆC. ' +
+      'Hai bài thuộc CÙNG cụm khi chúng nói về CÙNG một sự kiện / câu chuyện / chủ đề CỤ THỂ ' +
+      '(ví dụ: cùng một vụ việc, cùng một chính sách mới, cùng một tranh luận) — KHÔNG gom chỉ vì cùng lĩnh vực giáo dục. ' +
+      'Bài không trùng với bài nào thì cho thành cụm riêng 1 phần tử. ' +
+      'MỖI bài đầu vào phải xuất hiện ĐÚNG MỘT LẦN trong đúng một cụm. ' +
+      'Trả DUY NHẤT JSON array: [{"label","members":[i,...]}] — "label" = tên chủ đề ngắn gọn tiếng Việt (≤80 ký tự), ' +
+      '"members" = danh sách chỉ số i (số nguyên) của các bài trong cụm. KHÔNG markdown, KHÔNG giải thích.';
+    const user =
+      `${items.length} bài trong mẻ cào — hãy gom theo cùng sự việc:\n\n` +
+      items
+        .map(
+          (it) =>
+            `[${it.i}] (${it.platform}${it.sourceName ? ` · ${it.sourceName}` : ''}) ${String(it.title || '').slice(0, 200)}`
+        )
+        .join('\n');
+    const out = await claudeJson<{ label: string; members: number[] }[]>(system, user, 8000);
+    if (!Array.isArray(out)) return null;
+    return out
+      .map((c) => ({
+        label: String(c?.label || '').slice(0, 200),
+        members: Array.isArray(c?.members)
+          ? c.members.map((n) => Number(n)).filter((n) => Number.isInteger(n))
+          : [],
+      }))
+      .filter((c) => c.members.length);
+  }
+
+  // TỔNG HỢP CHỦ ĐỀ: đọc TẤT CẢ bài trong cụm (nhiều nguồn cùng nói) → viết 1
+  // "content gốc" chưng cất điều các nguồn đồng thuận + số liệu + trích dẫn + góc
+  // lạ, rồi chấm điểm theo rubric ở CẤP CHỦ ĐỀ (không chấm bài lẻ nữa).
+  async viralSynthesizeTopic(input: {
+    posts: {
+      title: string;
+      sourceName?: string | null;
+      platform: string;
+      shares?: number | null;
+      content?: string | null;
+    }[];
+    personasText: string;
+    rubric: string;
+  }): Promise<{
+    label: string;
+    synthesis: {
+      angle: string;
+      agreedFacts: string[];
+      keyNumbers: string[];
+      quotes: string[];
+      uniqueAngles: string[];
+      hook: string;
+      whyItMatters: string;
+    };
+    persona: string;
+    score: number;
+    scores: Record<string, number>;
+    verdict: string;
+    reason: string;
+    content_type: string;
+    podcast_score: number;
+    rewritten: string;
+  } | null> {
+    const system =
+      vietAnhSystem() +
+      '\n\n' +
+      getSkill('skill-tong-hop-chu-de') +
+      '\n\n' +
+      getSkill('nguyen-tac-chon-nhom') +
+      '\n\n' +
+      `CÁC NHÓM CHÂN DUNG:\n${input.personasText}\n\n${input.rubric}\n\n` +
+      'verdict ∈ ["xuất sắc - đăng ngay","đăng ngay","sửa nhẹ","sửa nhiều","bỏ qua"]. ' +
+      'content_type ∈ ["blog","infographic","video"]. podcast_score 0-100.\n' +
+      'Trả DUY NHẤT JSON: {"label","synthesis":{"angle","agreedFacts":[],"keyNumbers":[],"quotes":[],"uniqueAngles":[],"hook","whyItMatters"},"persona","rewritten","score","scores":{"hook","clarity","brand_voice","value","cta","seo"},"verdict","reason","content_type","podcast_score"}. ' +
+      '"rewritten" = bài đăng mạng xã hội của Trường Việt Anh (2-4 câu + CTA + hashtag) cho persona đã chọn, dựa trên content tổng hợp — score chấm chính bản rewritten này.';
+    const user =
+      `${input.posts.length} bài từ nhiều nguồn CÙNG NÓI về một chủ đề — hãy tổng hợp:\n\n` +
+      input.posts
+        .map(
+          (p, k) =>
+            `[${k + 1}] Nguồn: ${p.sourceName || p.platform}${p.shares ? ` · ${p.shares} share` : ''}\nTiêu đề: ${p.title}\nNội dung: ${(p.content || '(chỉ có tiêu đề)').slice(0, 1200)}`
+        )
+        .join('\n\n---\n\n');
+    return claudeJson(system, user, 4000);
+  }
+
   // Làm giàu hồ sơ persona từ tín hiệu cào — port nguyên văn prompt node n8n
   // "[Prof] Aggregate" + "[Prof] Claude Update".
   async viralUpdatePersonas(blocks: string): Promise<
@@ -594,6 +711,7 @@ CHI tra JSON array: [{"profile_id","moi_quan_tam","tam_ly","hanh_vi","insights"}
     trendText: string; // tin báo chí nổi bật (đã chấm điểm cao)
     winningText: string; // bài đối thủ/KOL share cao
     statsText: string; // số liệu 7 ngày (cào/duyệt/sản xuất/chờ duyệt)
+    competitorText?: string; // động tĩnh từng nguồn đối thủ (KOL + trường) đang theo dõi
   }): Promise<{
     summary: string;
     highlights: string[];
@@ -606,7 +724,9 @@ CHI tra JSON array: [{"profile_id","moi_quan_tam","tam_ly","hanh_vi","insights"}
     const user =
       `TIN GIÁO DỤC NÓNG (7 ngày):\n${input.trendText || '(không có)'}\n\n` +
       `BÀI THẮNG CỦA ĐỐI THỦ/KOL:\n${input.winningText || '(không có)'}\n\n` +
-      `SỐ LIỆU VẬN HÀNH:\n${input.statsText}`;
+      `ĐỘNG TĨNH ĐỐI THỦ ĐANG THEO DÕI (KOL + trường — số bài đăng tuần qua, chủ đề):\n${input.competitorText || '(chưa có dữ liệu — cần bật Apify cào FB/TikTok đối thủ)'}\n\n` +
+      `SỐ LIỆU VẬN HÀNH:\n${input.statsText}\n\n` +
+      `Trong "market", HÃY nêu rõ đối thủ nào đang đẩy mạnh chủ đề gì và chủ đề nào đối thủ đánh mà ta chưa làm; "todos" gợi ý cách ta phản ứng.`;
     return claudeJson(system, user, 3000);
   }
 

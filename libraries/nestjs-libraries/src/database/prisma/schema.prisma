@@ -439,7 +439,11 @@ model ViralPost {
   origin         String    @default("manual") // manual | auto
   formula        String? // JSON công thức AI đã mổ (cache)
   clonedCount    Int       @default(0)
+  // Gom cụm theo chủ đề (embeddings): bài lẻ giờ là TÍN HIỆU THÔ thuộc 1 chủ đề.
+  topicId        String? // ViralTopic mà bài này thuộc về (null = chưa gom)
+  embedding      String? // JSON vector nhúng (float[]) để gom cụm theo nghĩa
   // AI chấm điểm theo chân dung khách hàng (rubric từ n8n WF-Crawll-Duyet):
+  // (chế độ chủ đề: KHÔNG chấm bài lẻ nữa — chấm ở cấp ViralTopic)
   score          Int? // 0-100; null = chưa chấm
   scoreDetail    String? // JSON {scores:{hook,clarity,brand_voice,value,cta,seo}, verdict, reason}
   persona        String? // nhóm chân dung phù hợp nhất (MN-HCM, TH-HCM, ...)
@@ -454,6 +458,43 @@ model ViralPost {
   @@index([platform])
   @@index([shares])
   @@index([status])
+  @@index([topicId])
+}
+
+// CHỦ ĐỀ (cụm nhiều nguồn cùng nói về một chuyện) — đơn vị CHÍNH của trang Phát
+// hiện. Bài lẻ (ViralPost) gom vào đây bằng embeddings. Nhiều nguồn KHÁC NHAU
+// cùng hội tụ về 1 chủ đề = tín hiệu "đáng hack". AI tổng hợp các bài trong cụm
+// thành 1 content gốc (synthesis) rồi chấm điểm ở cấp chủ đề.
+model ViralTopic {
+  id             String    @id @default(cuid())
+  organizationId String
+  label          String    @default("") // tên chủ đề ngắn (AI đặt)
+  synthesis      String? // JSON {angle, agreedFacts[], keyNumbers[], quotes[], uniqueAngles[], hook, whyItMatters}
+  centroid       String? // JSON vector trung bình của cụm (gán bài mới vào chủ đề gần nhất)
+  platforms      String? // JSON danh sách nền tảng xuất hiện
+  sourceCount    Int       @default(0) // số NGUỒN khác nhau (ngưỡng hội tụ)
+  postCount      Int       @default(0) // số bài trong cụm
+  totalShares    Int       @default(0)
+  totalViews     Int       @default(0)
+  topShare       Int? // share cao nhất của 1 bài (xếp hạng)
+  origin         String    @default("auto") // auto | manual (nhập tay = chủ đề 1 nguồn)
+  // Chấm điểm ở cấp chủ đề (rubric dùng lại từ chế độ cũ):
+  score          Int? // 0-100; null = chưa chấm
+  scoreDetail    String? // JSON {scores, verdict, reason, content_type, podcast_score}
+  persona        String? // nhóm chân dung phù hợp nhất
+  aiContent      String? // bản AI viết lại cho persona đó (dùng để đăng)
+  aiVariants     String? // JSON [{persona, text}]
+  status         String    @default("pending") // approved | pending | skipped
+  synthesizedAt  DateTime? // null = chưa tổng hợp (chưa đủ ngưỡng hội tụ)
+  firstSeenAt    DateTime  @default(now())
+  lastSeenAt     DateTime?
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime? @updatedAt
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([sourceCount])
 }
 
 // Nguồn theo dõi của Lò Bài Thắng (trang/kênh tham khảo).
@@ -463,6 +504,9 @@ model ViralSource {
   platform       String
   name           String
   url            String?
+  // Phân loại nguồn (cho bản tin "động tĩnh đối thủ"): kol | school | group |
+  // news | other. school + kol = ĐỐI THỦ (tính vào mục đối thủ của bản tin tuần).
+  type           String    @default("other")
   auto           Boolean   @default(false)
   deletedAt      DateTime?
   createdAt      DateTime  @default(now())
@@ -476,6 +520,7 @@ model ViralClone {
   id             String    @id @default(cuid())
   organizationId String
   sourceId       String? // ViralPost gốc (nếu clone từ 1 thẻ)
+  topicId        String? // ViralTopic gốc (nếu viết lại từ 1 chủ đề đã tổng hợp)
   title          String
   content        String // nội dung AI viết cho mình
   persona        String? // nhóm chân dung nhắm tới
@@ -500,6 +545,7 @@ model ViralProduct {
   organizationId String
   postId         String? // ViralPost nguồn (sản xuất từ thẻ đã duyệt)
   cloneId        String? // ViralClone nguồn (sản xuất từ "Bài của mình")
+  topicId        String? // ViralTopic nguồn (sản xuất từ 1 chủ đề đã tổng hợp)
   format         String // blog | infographic | podcast
   status         String    @default("processing") // processing | done | error
   title          String?

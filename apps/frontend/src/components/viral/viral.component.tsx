@@ -516,6 +516,11 @@ const ConfigModal: FC = () => {
   const [mmKey, setMmKey] = useState('');
   const [mmGroup, setMmGroup] = useState('');
   const [hours, setHours] = useState<number>(data?.crawlEveryHours ?? 12);
+  // Cách gom cụm content: 'ai' (Claude gom cả mẻ cào) hoặc 'embeddings' (vector).
+  const [clusterMode, setClusterMode] = useState<string>(data?.clusterMode ?? 'ai');
+  useEffect(() => {
+    if (data?.clusterMode) setClusterMode(data.clusterMode);
+  }, [data?.clusterMode]);
   // Nhóm Zalo nhận bản tin tuần — danh sách lấy từ bot qua proxy /botapi
   // (same-origin, cookie đăng nhập Hub đi kèm; KHÔNG qua useFetch backend).
   const [zaloThread, setZaloThread] = useState<string>(data?.reportZaloThreadId ?? '');
@@ -541,7 +546,7 @@ const ConfigModal: FC = () => {
   }, []);
 
   const save = useCallback(async () => {
-    const body: any = { crawlEveryHours: Number(hours), reportZaloThreadId: zaloThread };
+    const body: any = { crawlEveryHours: Number(hours), reportZaloThreadId: zaloThread, clusterMode };
     if (apify.trim()) body.apifyToken = apify.trim();
     if (yt.trim()) body.youtubeKey = yt.trim();
     if (mmKey.trim()) body.minimaxKey = mmKey.trim();
@@ -553,7 +558,7 @@ const ConfigModal: FC = () => {
     }
     toast.show(t('viral_config_saved', 'Configuration saved.'), 'success');
     modal.closeCurrent();
-  }, [apify, yt, mmKey, mmGroup, hours, zaloThread]);
+  }, [apify, yt, mmKey, mmGroup, hours, zaloThread, clusterMode]);
 
   return (
     <div className="flex flex-col gap-[14px]">
@@ -616,6 +621,16 @@ const ConfigModal: FC = () => {
           <option value={72}>{t('viral_crawl_3d', 'Every 3 days')}</option>
           <option value={246}>{t('viral_crawl_mwf', 'Mon-Wed-Fri 7pm + weekly brief to Zalo/email')}</option>
         </select>
+      </Field>
+      {/* Cách gom nhiều bài cùng nội dung thành 1 "content" để duyệt */}
+      <Field label={t('viral_cluster_mode', 'Grouping posts into one content')}>
+        <select value={clusterMode} onChange={(e) => setClusterMode(e.target.value)} className={inputCls}>
+          <option value="ai">{t('viral_cluster_ai', 'AI reads each crawl batch (accurate, per crawl)')}</option>
+          <option value="embeddings">{t('viral_cluster_emb', 'Embeddings vector (cheaper, spans crawls)')}</option>
+        </select>
+        <span className="text-[11px] text-textItemBlur mt-[4px] block">
+          {t('viral_cluster_hint', 'When ≥2 posts share the same story, the system surfaces that content (not each post) for approval — most-shared first.')}
+        </span>
       </Field>
       {/* Báo cáo tuần: bản tin + todo list gửi về nhóm Zalo (bot trang Zalo) + email */}
       <Field label={t('viral_report_zalo', 'Zalo group receiving weekly brief (via the Zalo bot)')}>
@@ -1545,6 +1560,12 @@ export const ViralComponent: FC = () => {
     await fetch(`/viral/sources/${s.id}/auto`, { method: 'POST', body: JSON.stringify({ auto: !s.auto }) });
     mutate();
   };
+  // Đổi loại nguồn (đối thủ/KOL/group/tin/khác) — school+kol tính vào "động tĩnh
+  // đối thủ" của bản tin tuần.
+  const setSourceType = (s: any) => async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    await fetch(`/viral/sources/${s.id}/type`, { method: 'POST', body: JSON.stringify({ type: e.target.value }) });
+    mutate();
+  };
 
   const removePost = (id: string) => async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -2081,6 +2102,19 @@ export const ViralComponent: FC = () => {
             <div key={s.id} className="flex items-center gap-[7px] bg-newColColor border border-newBgLineColor rounded-full px-[13px] py-[6px] text-[12px]">
               <i className="w-[8px] h-[8px] rounded-full inline-block" style={{ background: platMeta(s.platform)?.dot || '#888' }} />
               <span className="font-[600]">{s.name}</span>
+              {/* Loại nguồn — đối thủ (trường) + KOL vào mục "động tĩnh đối thủ" của bản tin */}
+              <select
+                value={s.type || 'other'}
+                onChange={setSourceType(s)}
+                title={t('viral_source_type', 'Source type — schools & KOLs count as competitors in the weekly brief')}
+                className="text-[10px] bg-transparent border border-newBgLineColor rounded-[5px] px-[3px] py-[1px] text-textItemBlur"
+              >
+                <option value="school">{t('viral_type_school', 'Competitor')}</option>
+                <option value="kol">KOL</option>
+                <option value="group">Group</option>
+                <option value="news">{t('viral_type_news', 'News')}</option>
+                <option value="other">{t('viral_type_other', 'Other')}</option>
+              </select>
               <button
                 onClick={toggleSourceAuto(s)}
                 title={t('viral_toggle_auto', 'Toggle scheduled auto-crawl for this source')}

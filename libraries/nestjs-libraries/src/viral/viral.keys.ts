@@ -18,6 +18,15 @@ interface ViralConfig {
   minimaxGroupId: string;
   // Nhóm Zalo nhận bản tin tuần/tổng kết CN (threadId; rỗng = không gửi Zalo)
   reportZaloThreadId: string;
+  // GOM CỤM THEO CHỦ ĐỀ:
+  // Cách gom: 'ai' = Claude đọc cả mẻ cào rồi gom (mặc định, cửa sổ = mỗi lần
+  // cào) · 'embeddings' = vector cosine (gom xuyên nhiều lần cào, 14 ngày).
+  clusterMode: 'ai' | 'embeddings';
+  // Số bài/nguồn tối thiểu chung 1 content để nổi lên duyệt. Mặc định 2.
+  convergenceMin: number;
+  // Ngưỡng độ giống cosine để gộp bài vào cùng chủ đề (0..1) — chỉ dùng khi
+  // clusterMode='embeddings'. Cao = chặt hơn.
+  clusterThreshold: number;
 }
 
 const config: ViralConfig = {
@@ -27,6 +36,9 @@ const config: ViralConfig = {
   minimaxKey: '',
   minimaxGroupId: '',
   reportZaloThreadId: '',
+  clusterMode: 'ai',
+  convergenceMin: 2,
+  clusterThreshold: 0.5,
 };
 
 try {
@@ -40,6 +52,11 @@ try {
     typeof raw?.minimaxGroupId === 'string' ? raw.minimaxGroupId : '';
   config.reportZaloThreadId =
     typeof raw?.reportZaloThreadId === 'string' ? raw.reportZaloThreadId : '';
+  config.clusterMode = raw?.clusterMode === 'embeddings' ? 'embeddings' : 'ai';
+  config.convergenceMin =
+    typeof raw?.convergenceMin === 'number' ? raw.convergenceMin : 2;
+  config.clusterThreshold =
+    typeof raw?.clusterThreshold === 'number' ? raw.clusterThreshold : 0.5;
 } catch {
   /* chưa có file — mặc định */
 }
@@ -90,6 +107,9 @@ export function getViralStatus() {
     minimaxGroupId: config.minimaxGroupId,
     hasBgm: hasBgm(),
     reportZaloThreadId: config.reportZaloThreadId,
+    clusterMode: config.clusterMode,
+    convergenceMin: config.convergenceMin,
+    clusterThreshold: config.clusterThreshold,
   };
 }
 export function setViralConfig(patch: Partial<ViralConfig>) {
@@ -105,6 +125,12 @@ export function setViralConfig(patch: Partial<ViralConfig>) {
     config.reportZaloThreadId = patch.reportZaloThreadId.trim();
   if (typeof patch.crawlEveryHours === 'number')
     config.crawlEveryHours = Math.max(0, Math.min(168, patch.crawlEveryHours));
+  if (patch.clusterMode === 'ai' || patch.clusterMode === 'embeddings')
+    config.clusterMode = patch.clusterMode;
+  if (typeof patch.convergenceMin === 'number')
+    config.convergenceMin = Math.max(1, Math.min(20, Math.round(patch.convergenceMin)));
+  if (typeof patch.clusterThreshold === 'number')
+    config.clusterThreshold = Math.max(0.2, Math.min(0.95, patch.clusterThreshold));
   try {
     fs.writeFileSync(FILE, JSON.stringify(config));
   } catch {
