@@ -1030,6 +1030,35 @@ const TopicDetailModal: FC<{ topicId: string; onDone: () => void }> = ({ topicId
           {sd.reason && <div className="text-textItemBlur">📋 {sd.reason}</div>}
         </div>
       )}
+      {/* trạng thái SẢN XUẤT — lỗi thì hiện lý do + nút thử lại (thẻ content
+          không bao giờ bị xóa vì SX lỗi; thường do hết hạn mức AI) */}
+      {((topic.products || []).length > 0) && (
+        <div className="flex flex-col gap-[6px]">
+          <div className="text-[12px] font-[700] text-textItemBlur">🏭 {t('viral_topic_products', 'Production')}</div>
+          {(topic.products || []).map((pr: any) => (
+            <div key={pr.id} className="flex items-center gap-[8px] text-[12px] bg-newColColor border border-newBgLineColor rounded-[8px] px-[10px] py-[6px]">
+              <span className="shrink-0">{FORMAT_META[pr.format]?.icon} {FORMAT_META[pr.format]?.label || pr.format}</span>
+              {pr.status === 'done' && <span className="text-[#57D9A3] font-[700]">✓ {t('viral_prod_done', 'done — see "Ready to post"')}</span>}
+              {pr.status === 'processing' && <span className="text-textItemBlur">⏳ {t('viral_prod_running', 'producing…')}</span>}
+              {pr.status === 'error' && (
+                <>
+                  <span className="text-[#FF5A52] flex-1 truncate" title={pr.error || ''}>❌ {pr.error || t('viral_prod_failed', 'Production failed')}</span>
+                  <button
+                    onClick={async () => {
+                      await fetch(`/viral/products/${pr.id}/retry`, { method: 'POST' });
+                      toast.show(t('viral_prod_retrying', 'Retrying — check back in a few minutes.'), 'success');
+                      mutate();
+                    }}
+                    className="shrink-0 text-[11.5px] font-[700] text-btnPrimary hover:underline"
+                  >
+                    ↻ {t('viral_prod_retry', 'Retry')}
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       {/* bài nguồn — bằng chứng để đối chiếu, tránh đạo nhái */}
       <div className="flex flex-col gap-[6px]">
         <div className="text-[12px] font-[700] text-textItemBlur">🧾 {t('viral_topic_evidence', 'Source posts (evidence)')}</div>
@@ -2162,6 +2191,23 @@ export const ViralComponent: FC = () => {
                 {p.totalShares > 0 && (
                   <span className="text-[#FFC53D]">↗ <b className="text-[#FFC53D] font-[800]">{nice(p.totalShares)}</b></span>
                 )}
+                {/* trạng thái SẢN XUẤT: lỗi = badge đỏ (thẻ giữ nguyên, mở chi
+                    tiết để thử lại — thường do hết hạn mức AI) */}
+                {(() => {
+                  const prods = p.products || [];
+                  const err = prods.filter((x: any) => x.status === 'error');
+                  const run = prods.filter((x: any) => x.status === 'processing').length;
+                  const done = prods.filter((x: any) => x.status === 'done').length;
+                  if (err.length)
+                    return (
+                      <span className="text-[10.5px] font-[800] px-[7px] py-[2px] rounded-[6px] bg-[#FF5A52]/15 text-[#FF5A52]" title={err[0]?.error || ''}>
+                        ❌ {t('viral_prod_failed', 'Production failed')}
+                      </span>
+                    );
+                  if (run) return <span className="text-[10.5px] font-[700]">⏳ {t('viral_prod_running', 'producing…')}</span>;
+                  if (done) return <span className="text-[10.5px] font-[700] text-[#57D9A3]">🏭 {done} ✓</span>;
+                  return null;
+                })()}
                 <span className="ms-auto" title={t('viral_produce_suggest', 'AI production suggestion')}>
                   {topicDefaults(sd).map((f) => FORMAT_META[f]?.icon).join(' ')}
                 </span>

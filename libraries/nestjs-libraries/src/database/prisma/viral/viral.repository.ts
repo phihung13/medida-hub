@@ -354,6 +354,18 @@ export class ViralRepository {
     });
   }
 
+  // Sản phẩm của một nhóm chủ đề (đủ trạng thái + lý do lỗi) — cho badge SX
+  // trên thẻ content và khu "Sản xuất" trong modal chi tiết.
+  productsOfTopics(orgId: string, topicIds: string[]) {
+    if (!topicIds.length) return Promise.resolve([] as any[]);
+    return this._products.model.viralProduct.findMany({
+      where: { organizationId: orgId, topicId: { in: topicIds }, deletedAt: null },
+      select: { id: true, topicId: true, format: true, status: true, error: true },
+      orderBy: { createdAt: 'desc' },
+      take: 400,
+    });
+  }
+
   // Chủ đề nào (trong danh sách) đã có sản phẩm — duyệt lại không sản xuất trùng.
   async topicIdsWithProducts(orgId: string, topicIds: string[]): Promise<string[]> {
     if (!topicIds.length) return [];

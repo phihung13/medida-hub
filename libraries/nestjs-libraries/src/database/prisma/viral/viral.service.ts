@@ -1144,12 +1144,25 @@ export class ViralService implements OnModuleInit {
       groups.set(key, [...(groups.get(key) || []), id]);
     }
     for (const [key, ids] of groups) {
-      await this.produce(orgId, {
-        ids,
-        source: 'topic',
-        formats: key.split(','),
-        bgm: true,
-      }).catch(() => null);
+      try {
+        await this.produce(orgId, {
+          ids,
+          source: 'topic',
+          formats: key.split(','),
+          bgm: true,
+        });
+      } catch (e: any) {
+        // Không tạo được job (vd nghẽn hàng sản xuất): content VẪN nằm ở
+        // "Đã duyệt" — báo chuông để người bấm 🏭 Sản xuất chạy lại sau.
+        await this._notification
+          .inAppNotification(
+            orgId,
+            'Phát hiện: chưa sản xuất được content đã duyệt',
+            `⚠ ${ids.length} content đã duyệt nhưng chưa tạo được job sản xuất: ${String(e?.message || e).slice(0, 200)}. Thẻ vẫn ở tab "Đã duyệt" — chọn thẻ rồi bấm 🏭 Sản xuất để chạy lại.`,
+            false
+          )
+          .catch(() => null);
+      }
     }
   }
 
@@ -1213,7 +1226,19 @@ export class ViralService implements OnModuleInit {
   ) {
     const min = getViralConfig().convergenceMin;
     const rows = await this._repo.listTopics(orgId, { ...filter, convergenceMin: min });
-    return rows.map((t: any) => this.shapeTopic(t));
+    // đính trạng thái SẢN XUẤT vào từng content — thẻ hiện ❌ khi SX lỗi (thẻ
+    // không bị xóa, người vào xử lý rồi thử lại)
+    const prods = await this._repo
+      .productsOfTopics(orgId, rows.map((r: any) => r.id))
+      .catch(() => []);
+    const byTopic = new Map<string, any[]>();
+    for (const pr of prods as any[]) {
+      byTopic.set(pr.topicId, [...(byTopic.get(pr.topicId) || []), pr]);
+    }
+    return rows.map((t: any) => ({
+      ...this.shapeTopic(t),
+      products: byTopic.get(t.id) || [],
+    }));
   }
 
   topicStatusCounts(orgId: string) {
@@ -1225,8 +1250,9 @@ export class ViralService implements OnModuleInit {
     const t = await this._repo.getTopic(orgId, id);
     if (!t) return null;
     const posts = await this._repo.topicPosts(orgId, id, 60);
+    const products = await this._repo.productsOfTopics(orgId, [id]).catch(() => []);
     return {
-      topic: this.shapeTopic(t),
+      topic: { ...this.shapeTopic(t), products },
       posts: posts.map((p: any) => ({
         id: p.id,
         platform: p.platform,
@@ -1866,19 +1892,32 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
 
   // Chạy tuần tự từng sản phẩm (tránh dội rate-limit Claude/Gemini/MiniMax).
   private async runProducts(orgId: string, productIds: string[]) {
+    const failed: string[] = [];
     for (const pid of productIds) {
       const product = await this._repo.getProduct(orgId, pid).catch(() => null);
       if (!product || product.status !== 'processing') continue;
       try {
         await this.produceOne(orgId, product);
       } catch (e: any) {
+        const error = String(e?.message || e).slice(0, 500);
+        failed.push(error);
         await this._repo
-          .updateProduct(pid, {
-            status: 'error',
-            error: String(e?.message || e).slice(0, 500),
-          })
+          .updateProduct(pid, { status: 'error', error })
           .catch(() => null);
       }
+    }
+    // SX lỗi (thường hết hạn mức AI): thẻ content GIỮ NGUYÊN ở "Đã duyệt",
+    // sản phẩm lỗi nằm tab Chờ đăng + badge ❌ trên thẻ — báo chuông 1 lần/mẻ
+    // để người vào xử lý (nạp tiền/key) rồi bấm "Thử lại".
+    if (failed.length) {
+      await this._notification
+        .inAppNotification(
+          orgId,
+          'Phát hiện: sản xuất thất bại',
+          `❌ ${failed.length} sản phẩm lỗi — thẻ content vẫn giữ nguyên, KHÔNG bị xóa. Lý do: ${failed[0].slice(0, 200)}. Thường do hết hạn mức AI (Claude/Gemini/MiniMax) — xử lý xong bấm "↻ Thử lại" trên sản phẩm lỗi.`,
+          false
+        )
+        .catch(() => null);
     }
   }
 
