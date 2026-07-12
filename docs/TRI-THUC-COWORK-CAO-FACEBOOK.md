@@ -118,7 +118,10 @@ gom cụm/chấm điểm/viết brief trước là chúng ta xử lý 2 lần, l
   }
   ```
   `level`: `mn` mầm non · `th` tiểu học · `cs` THCS · `pt` THPT · `all` không rõ.
-  Bài chỉ có ảnh: thêm `"images": [{"base64": "...", "mediaType": "image/png"}]` (<2MB/ảnh).
+  Bài chỉ có ảnh: thêm `"images": [{"base64": "...", "mediaType": "image/png"}]`.
+  ĐÍNH CHÍNH 19.5: giới hạn CHẶN CỨNG ở cửa là **~3MB nhị phân/ảnh** (4,2 triệu
+  ký tự base64) — con số 2MB ghi ở bản cũ là sai. Bạn dùng mốc an toàn ≤2MB
+  cũng tốt (nhẹ đường truyền), nhưng tới 3MB vẫn qua cửa bình thường.
 - **Kết mẻ**: `POST {BACKEND_URL}/public/v1/viral/finish` — bắt buộc, gọi đúng 1 lần
   sau bài cuối. Không gọi = cả mẻ nằm chờ, không được gom cụm, coi như kỳ đó công cốc.
 - **Đối chiếu**: `GET {BACKEND_URL}/public/v1/viral` — so số nhận với số đã gửi.
