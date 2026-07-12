@@ -2145,7 +2145,8 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
     if (product.format === 'blog') {
       const { system, user } = buildBlogPrompt(input);
       const out = await this._openai.viralProduceBlog(system, user);
-      if (!out?.body_html) throw new Error('AI chưa viết được bài — thử lại.');
+      if (!out?.body_html)
+        throw new Error('AI trả JSON hợp lệ nhưng thiếu body_html — bấm Thử lại.');
       await this._repo.updateProduct(product.id, {
         status: 'done',
         title: String(out.title || input.topic).slice(0, 300),
@@ -2189,7 +2190,8 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
       }
       const { system, user } = buildPodcastPrompt(input);
       const script = await this._openai.viralProducePodcast(system, user);
-      if (!script?.full_script) throw new Error('AI chưa viết được kịch bản — thử lại.');
+      if (!script?.full_script)
+        throw new Error('AI trả JSON hợp lệ nhưng thiếu full_script — bấm Thử lại.');
       // MiniMax TTS t2a_v2 (giọng đọc sách tiếng Việt, như n8n)
       const ttsRes = await fetch(
         `https://api.minimax.io/v1/t2a_v2?GroupId=${encodeURIComponent(cfg.minimaxGroupId)}`,

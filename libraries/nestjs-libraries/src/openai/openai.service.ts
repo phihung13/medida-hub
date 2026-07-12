@@ -30,11 +30,11 @@ const vietAnhSystem = () =>
   getSkill('he-thong-viet-anh') || VIET_ANH_SYSTEM;
 
 // Gọi Claude, trả về text.
-async function claudeText(
+async function claudeRaw(
   system: string,
   user: string,
   maxTokens = 1024
-): Promise<string> {
+): Promise<{ text: string; stopReason: string }> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) {
     throw new Error(
@@ -60,10 +60,75 @@ async function claudeText(
     throw new Error(`Claude HTTP ${res.status}: ${detail.slice(0, 200)}`);
   }
   const data: any = await res.json();
-  return (data.content || [])
-    .map((c: any) => c.text || '')
-    .join('')
+  return {
+    text: (data.content || [])
+      .map((c: any) => c.text || '')
+      .join('')
+      .trim(),
+    // 'max_tokens' = bài bị CẮT giữa chừng vì chạm trần — JSON chắc chắn hỏng
+    stopReason: String(data.stop_reason || ''),
+  };
+}
+
+async function claudeText(
+  system: string,
+  user: string,
+  maxTokens = 1024
+): Promise<string> {
+  return (await claudeRaw(system, user, maxTokens)).text;
+}
+
+// Bóc + parse JSON từ text model trả (bỏ ```json fences, bóc block đầu tiên).
+function tryParseJson<T>(raw: string): T | null {
+  const cleaned = raw
+    .replace(/^```(?:json)?/i, '')
+    .replace(/```$/i, '')
     .trim();
+  try {
+    return JSON.parse(cleaned) as T;
+  } catch {
+    const s = cleaned.indexOf('{');
+    const a = cleaned.indexOf('[');
+    const start = a >= 0 && (a < s || s < 0) ? a : s;
+    const end = Math.max(cleaned.lastIndexOf('}'), cleaned.lastIndexOf(']'));
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(cleaned.slice(start, end + 1)) as T;
+      } catch {
+        /* ignore */
+      }
+    }
+    return null;
+  }
+}
+
+// Bản STRICT cho dây chuyền SẢN XUẤT: parse hỏng thì NÉM LỖI CHẨN ĐOÁN rõ
+// (bị cắt vì chạm trần token? model trả JSON lỗi?) thay vì nuốt thành null —
+// thẻ sản phẩm hiện đúng lý do thật, hết cảnh "AI chưa viết được bài" mù mờ.
+// JSON hỏng KHÔNG do cắt trần → tự thử lại 1 lần (lỗi nhất thời của model).
+async function claudeJsonStrict<T = any>(
+  system: string,
+  user: string,
+  maxTokens = 1500
+): Promise<T> {
+  const sys =
+    system +
+    '\n\nLUÔN trả về DUY NHẤT một JSON hợp lệ, KHÔNG kèm giải thích, KHÔNG kèm markdown.';
+  let lastSnippet = '';
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { text, stopReason } = await claudeRaw(sys, user, maxTokens);
+    const parsed = tryParseJson<T>(text);
+    if (parsed !== null) return parsed;
+    if (stopReason === 'max_tokens') {
+      throw new Error(
+        `AI viết vượt trần ${maxTokens} token nên bài bị cắt giữa chừng (JSON hỏng) — bấm Thử lại; nếu lặp lại cần tăng trần cho định dạng này.`
+      );
+    }
+    lastSnippet = text.slice(0, 120).replace(/\s+/g, ' ');
+  }
+  throw new Error(
+    `AI trả JSON không hợp lệ sau 2 lần thử ("${lastSnippet}…") — bấm Thử lại sau ít phút.`
+  );
 }
 
 // Gọi Claude yêu cầu JSON, tự bóc ```json fences nếu có, parse an toàn.
@@ -78,27 +143,7 @@ async function claudeJson<T = any>(
     user,
     maxTokens
   );
-  const cleaned = raw
-    .replace(/^```(?:json)?/i, '')
-    .replace(/```$/i, '')
-    .trim();
-  try {
-    return JSON.parse(cleaned) as T;
-  } catch {
-    // thử bóc đoạn JSON đầu tiên
-    const s = cleaned.indexOf('{');
-    const a = cleaned.indexOf('[');
-    const start = a >= 0 && (a < s || s < 0) ? a : s;
-    const end = Math.max(cleaned.lastIndexOf('}'), cleaned.lastIndexOf(']'));
-    if (start >= 0 && end > start) {
-      try {
-        return JSON.parse(cleaned.slice(start, end + 1)) as T;
-      } catch {
-        /* ignore */
-      }
-    }
-    return null;
-  }
+  return tryParseJson<T>(raw);
 }
 
 // Gọi Claude với content blocks (vision: ảnh + text). blocks theo định dạng
@@ -747,6 +792,8 @@ CHI tra JSON array: [{"profile_id","moi_quan_tam","tam_ly","hanh_vi","insights"}
 
   // SẢN XUẤT (WF-SanXuat): viết bài BLOG chuẩn EEAT từ nội dung đã duyệt.
   // system/user dựng sẵn ở viral.produce.prompts.ts — service chỉ gọi model.
+  // STRICT + trần 20k token (bài 1500-2500 chữ + HTML + JSON escaping từng bị
+  // cắt cụt ở trần 8k → parse hỏng → lỗi mù mờ "AI chưa viết được bài").
   async viralProduceBlog(
     system: string,
     user: string
@@ -756,16 +803,16 @@ CHI tra JSON array: [{"profile_id","moi_quan_tam","tam_ly","hanh_vi","insights"}
     meta_description: string;
     tags: string[];
     body_html: string;
-  } | null> {
-    return claudeJson(system, user, 8000);
+  }> {
+    return claudeJsonStrict(system, user, 20000);
   }
 
-  // SẢN XUẤT: viết kịch bản podcast (monologue, TTS đọc).
+  // SẢN XUẤT: viết kịch bản podcast (monologue, TTS đọc). STRICT + trần 12k.
   async viralProducePodcast(
     system: string,
     user: string
-  ): Promise<{ title: string; full_script: string; est_minutes: number } | null> {
-    return claudeJson(system, user, 6000);
+  ): Promise<{ title: string; full_script: string; est_minutes: number }> {
+    return claudeJsonStrict(system, user, 12000);
   }
 
   // "Bài của mình": viết lại BÀI TỐT HƠN bản trước (điểm cao hơn prevScore), cho
