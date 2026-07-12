@@ -26,11 +26,19 @@ export class PublicViralController {
       platform?: string;
       level?: string;
       purpose?: string;
+      sourceType?: string;
     }
   ) {
     if (!body?.url && !body?.text && !body?.images?.length) {
       throw new HttpException('Cần url, text hoặc images (base64).', 400);
     }
+    // Nhãn loại nguồn do đối tác gắn (K→kol, S→school, G→group) — bản tin
+    // "động tĩnh đối thủ" đọc nhãn này, không cần danh bạ nguồn FB nữa.
+    const sourceType = ['kol', 'school', 'group', 'news', 'other'].includes(
+      body.sourceType || ''
+    )
+      ? body.sourceType
+      : undefined;
     const purpose = body.purpose === 'profile' ? 'profile' : undefined;
     if (purpose && !String(body.text || '').trim()) {
       throw new HttpException('Tín hiệu profile bắt buộc có text (kèm dòng "Khu vực: ...").', 400);
@@ -49,6 +57,7 @@ export class PublicViralController {
       platform: body.platform,
       level,
       purpose,
+      sourceType,
     });
   }
 

@@ -429,6 +429,10 @@ model ViralPost {
   level          String    @default("all") // mn | th | cs | pt | all (cấp học)
   title          String
   sourceName     String? // tên trang/kênh gốc
+  // Nhãn loại nguồn do ĐỐI TÁC CÀO gắn ngay trên bài (kol|school|group|news|
+  // other) — thay cho danh bạ ViralSource: bản tin "động tĩnh đối thủ" đọc
+  // nhãn này, không cần giữ nguồn FB trong Nguồn theo dõi nữa.
+  sourceType     String?
   url            String?
   thumbnail      String? // path media hoặc URL ảnh
   content        String? // text bài gốc (nếu có)

@@ -481,6 +481,7 @@ export class ViralService implements OnModuleInit {
       platform?: string;
       level?: string;
       purpose?: string;
+      sourceType?: string;
     }
   ): Promise<{ id?: string; duplicated?: boolean; spam?: boolean; profile?: boolean }> {
     if (body.url && (await this._repo.existsByUrl(orgId, body.url))) {
@@ -504,6 +505,7 @@ export class ViralService implements OnModuleInit {
         level: 'all',
         kind: 'profile',
         status: 'skipped',
+        sourceType: body.sourceType || 'group',
         title: text.split('\n')[0].slice(0, 120) || 'Tín hiệu dân cư',
         sourceName: (text.match(/Nguồn:\s*(.+)/i) || [])[1]?.slice(0, 120) || null,
         url: body.url || null,
@@ -526,6 +528,7 @@ export class ViralService implements OnModuleInit {
     const created = await this._repo.create(orgId, {
       platform: body.platform || ai?.platform || 'facebook',
       level: body.level || ai?.level || 'all',
+      sourceType: body.sourceType || null,
       title:
         ai?.title || body.text?.slice(0, 120) || body.url || 'Bài đối tác cào',
       sourceName: ai?.sourceName || null,
@@ -1450,7 +1453,8 @@ export class ViralService implements OnModuleInit {
     // phải content giáo dục nhưng nuôi phần ĐỘNG của persona khu vực.
     const area = await this._repo.profileSignalsSince(orgId, 24).catch(() => [] as any[]);
     if (!posts.length && !(area as any[]).length) return;
-    const isGroup = (p: any) => /group/i.test(String(p.sourceName || ''));
+    const isGroup = (p: any) =>
+      p.sourceType === 'group' || /group|hội/i.test(String(p.sourceName || ''));
     const isNews = (p: any) => String(p.platform) === 'news';
     const eng = (p: any) =>
       (Number(p.shares) || 0) * 3 +
@@ -1628,10 +1632,10 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
     return this._repo.setSourceAuto(orgId, id, auto);
   }
 
-  // "🧹 Dọn nguồn" 1 nút: xoá nguồn TRÙNG (URL hoặc platform+tên), tự phân
-  // loại type theo tên (KOL/Đối thủ/Group/news — nuôi mục "động tĩnh đối thủ"
-  // của bản tin), bật AUTO cho báo + Google News (hệ thống cào), tắt AUTO
-  // nguồn FB/TikTok (đối tác cào, chỉ giữ làm danh bạ). Bấm lại vô hại.
+  // "🧹 Dọn nguồn" 1 nút: XÓA HẲN nguồn Facebook/IG/TikTok (đối tác Cowork cào
+  // và tự gắn nhãn sourceType trên từng bài — danh bạ hết vai trò), xoá nguồn
+  // TRÙNG, bật AUTO cho báo + Google News + YouTube (phần hệ thống tự cào).
+  // Bấm lại vô hại.
   async cleanupSources(orgId: string) {
     const sources: any[] = await this._repo.allSources(orgId);
     // bản đã phân loại/bật auto đứng trước — khi trùng thì bản "tốt hơn" sống
@@ -1646,8 +1650,13 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
     let removed = 0;
     let retyped = 0;
     let autoOn = 0;
-    let autoOff = 0;
     for (const s of sources) {
+      // nguồn mạng xã hội = việc của đối tác cào → xoá khỏi danh sách theo dõi
+      if (['facebook', 'instagram', 'tiktok'].includes(String(s.platform))) {
+        await this._repo.deleteSource(orgId, s.id).catch(() => null);
+        removed++;
+        continue;
+      }
       const key = s.url
         ? `u:${ViralRepository.normUrl(s.url)}`
         : `n:${s.platform}|${norm(s.name)}`;
@@ -1657,28 +1666,21 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
         continue;
       }
       seen.add(key);
-      const n = norm(s.name);
-      let type = s.type;
-      if (s.platform === 'news' || s.platform === 'gnews') type = 'news';
-      else if (/kol/.test(n)) type = 'kol';
-      else if (/đối thủ|doi thu|school|trường|truong/.test(n)) type = 'school';
-      else if (/group|hội |hoi |nhóm |nhom /.test(n)) type = 'group';
-      const auto = s.platform === 'news' || s.platform === 'gnews';
+      const type = s.platform === 'news' || s.platform === 'gnews' ? 'news' : s.type;
       const patch: { type?: string; auto?: boolean } = {};
       if (type !== s.type) {
         patch.type = type;
         retyped++;
       }
-      if (auto !== !!s.auto) {
-        patch.auto = auto;
-        if (auto) autoOn++;
-        else autoOff++;
+      if (!s.auto) {
+        patch.auto = true;
+        autoOn++;
       }
       if (Object.keys(patch).length) {
         await this._repo.updateSource(orgId, s.id, patch).catch(() => null);
       }
     }
-    return { removed, retyped, autoOn, autoOff };
+    return { removed, retyped, autoOn, autoOff: 0 };
   }
 
   setSourceType(orgId: string, id: string, type: string) {

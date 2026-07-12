@@ -584,6 +584,9 @@ export class ViralRepository {
   // cao nhất. Khớp bài với nguồn qua sourceName (Apify lưu đúng name của nguồn).
   async weeklyCompetitorActivity(orgId: string) {
     const since = new Date(Date.now() - 7 * 24 * 3600 * 1000);
+    // Nguồn chính: bài TỰ MANG nhãn sourceType (đối tác cào gắn kol/school) —
+    // không cần danh bạ ViralSource nữa. Danh bạ (nếu còn) chỉ là fallback cho
+    // bài cũ chưa có nhãn.
     const comps = await this._sources.model.viralSource.findMany({
       where: {
         organizationId: orgId,
@@ -592,18 +595,21 @@ export class ViralRepository {
       },
       select: { name: true, type: true, platform: true },
     });
-    if (!comps.length) return [];
+    const regType = new Map(comps.map((c) => [c.name, c.type]));
     const names = comps.map((c) => c.name).filter(Boolean);
-    if (!names.length) return [];
     const posts = await this._posts.model.viralPost.findMany({
       where: {
         organizationId: orgId,
         deletedAt: null,
         createdAt: { gte: since },
-        sourceName: { in: names },
+        OR: [
+          { sourceType: { in: ['kol', 'school'] } },
+          ...(names.length ? [{ sourceName: { in: names } }] : []),
+        ],
       },
       select: {
         sourceName: true,
+        sourceType: true,
         title: true,
         platform: true,
         shares: true,
@@ -611,23 +617,24 @@ export class ViralRepository {
         views: true,
       },
     });
-    // gom theo nguồn
+    if (!posts.length) return [];
+    // gom theo tên nguồn — loại lấy từ nhãn trên bài, thiếu thì tra danh bạ
     const byName: Record<string, any> = {};
-    for (const c of comps) {
-      byName[c.name] = {
-        name: c.name,
-        type: c.type,
-        platform: c.platform,
-        count: 0,
-        totalShares: 0,
-        top: null as any,
-      };
-    }
     const eng = (p: any) =>
       (Number(p.shares) || 0) * 3 + (Number(p.views) || 0) / 1000 + (Number(p.likes) || 0);
     for (const p of posts) {
-      const b = byName[p.sourceName || ''];
-      if (!b) continue;
+      const name = p.sourceName || '(không rõ nguồn)';
+      if (!byName[name]) {
+        byName[name] = {
+          name,
+          type: p.sourceType || regType.get(name) || 'school',
+          platform: p.platform,
+          count: 0,
+          totalShares: 0,
+          top: null as any,
+        };
+      }
+      const b = byName[name];
       b.count++;
       b.totalShares += Number(p.shares) || 0;
       if (!b.top || eng(p) > eng(b.top)) b.top = p;
@@ -701,6 +708,9 @@ export class ViralRepository {
         level: String(body.level || 'all'),
         title: String(body.title || 'Bài viral').slice(0, 300),
         sourceName: body.sourceName ? String(body.sourceName).slice(0, 120) : null,
+        sourceType: ['kol', 'school', 'group', 'news', 'other'].includes(body.sourceType)
+          ? body.sourceType
+          : null,
         url: body.url ? String(body.url).slice(0, 800) : null,
         thumbnail: body.thumbnail ? String(body.thumbnail).slice(0, 800) : null,
         content: body.content ? String(body.content).slice(0, 5000) : null,

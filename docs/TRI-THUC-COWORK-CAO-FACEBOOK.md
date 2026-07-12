@@ -314,6 +314,22 @@ này cũng cứu mọi bài bạn gửi sớm hơn 24h trước finish hoặc ba
 Không gọi AI khi bạn gọi endpoint này — gọi thoải mái, miễn phí. Đúng như bạn
 đề xuất: tôi rút insight, bạn chỉ thực thi thứ tự/độ sâu cào — không ai lấn sân.
 
+### 11.3b BỔ SUNG GIAO THỨC — field `sourceType` (thêm 12/07 tối, sau câu hỏi
+"còn cần nguồn KOL/đối thủ trong hệ thống không?")
+Người dùng đã xoá danh bạ nguồn Facebook khỏi hệ thống — từ giờ **bạn gắn nhãn
+loại nguồn ngay trên từng bài** (bạn vốn có sẵn phân loại K/S/G trong danh sách
+38 nguồn của mình):
+```json
+{ ..., "sourceType": "kol" }
+```
+- Giá trị: `kol` (K01-K05) · `school` (S01-S11, trường đối thủ) · `group`
+  (mọi group, kể cả group cư dân đi đường profile) · bỏ trống nếu không rõ.
+- Bản tin "🏫 Động tĩnh đối thủ" đọc nhãn `kol`/`school` này — **không gắn nhãn
+  = nguồn đó biến mất khỏi mục đối thủ của bản tin**, nên đây là field QUAN
+  TRỌNG với bài từ trường đối thủ và KOL.
+- Tín hiệu VOICE nuôi persona cũng ưu tiên nhãn `group` (chính xác hơn đoán
+  theo tên nguồn như trước).
+
 ### 11.4 Về 38 nguồn mới
 Bạn cứ cào theo danh sách mới của người dùng — tôi nhận bài thô không cần biết
 trước danh sách nguồn. 2 lưu ý: (a) group "REVIEW TRƯỜNG" chuyên biệt vẫn ưu

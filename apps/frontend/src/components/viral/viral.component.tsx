@@ -2338,7 +2338,7 @@ export const ViralComponent: FC = () => {
           </button>
           <button
             onClick={cleanupSources}
-            title={t('viral_cleanup_sources_hint', 'One click: remove duplicates, auto-classify KOL/competitor/group/news (feeds the competitor section of the weekly brief), turn AUTO on for news & keywords, off for Facebook (the partner crawls those)')}
+            title={t('viral_cleanup_sources_hint', 'One click: DELETE all Facebook/IG/TikTok sources (the crawl partner handles those and labels each post itself), remove duplicates, turn AUTO on for news & Google News keywords')}
             className="border border-dashed border-[#57D9A3]/50 text-[#57D9A3] rounded-full px-[14px] py-[6px] text-[12px] hover:bg-[#57D9A3]/10"
           >
             🧹 {t('viral_cleanup_sources', 'Clean up sources')}
