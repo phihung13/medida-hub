@@ -484,6 +484,35 @@ export class ViralRepository {
     return res.count;
   }
 
+  // Tín hiệu NHÂN KHẨU (kind='profile') N giờ gần nhất — nuôi persona động.
+  profileSignalsSince(orgId: string, hours: number) {
+    return this._posts.model.viralPost.findMany({
+      where: {
+        organizationId: orgId,
+        kind: 'profile',
+        deletedAt: null,
+        createdAt: { gte: new Date(Date.now() - hours * 3600 * 1000) },
+      },
+      orderBy: [{ comments: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
+      take: 30,
+    });
+  }
+
+  // Chủ đề nóng N ngày (cho gợi ý ưu tiên cào của đối tác) — nhiều bài/nguồn nhất.
+  hotTopicsSince(orgId: string, days: number, take = 8) {
+    return this._topics.model.viralTopic.findMany({
+      where: {
+        organizationId: orgId,
+        deletedAt: null,
+        synthesizedAt: { not: null },
+        createdAt: { gte: new Date(Date.now() - days * 24 * 3600 * 1000) },
+      },
+      orderBy: [{ postCount: 'desc' }, { score: { sort: 'desc', nulls: 'last' } }],
+      take,
+      select: { label: true, postCount: true, sourceCount: true, score: true },
+    });
+  }
+
   // Mọi org có dữ liệu viral — cho nhắc duyệt / digest tuần.
   orgIdsWithPosts() {
     return this._posts.model.viralPost.findMany({
@@ -666,6 +695,8 @@ export class ViralRepository {
     return this._posts.model.viralPost.create({
       data: {
         organizationId: orgId,
+        kind: body.kind === 'profile' ? 'profile' : 'content',
+        ...(body.status === 'skipped' ? { status: 'skipped' } : {}),
         platform: String(body.platform || 'facebook'),
         level: String(body.level || 'all'),
         title: String(body.title || 'Bài viral').slice(0, 300),
@@ -760,7 +791,7 @@ export class ViralRepository {
   // Bài chưa có vector nhúng — để tính embedding sau mỗi lần cào.
   unembedded(orgId: string, limit = 200) {
     return this._posts.model.viralPost.findMany({
-      where: { organizationId: orgId, deletedAt: null, embedding: null },
+      where: { organizationId: orgId, deletedAt: null, embedding: null, kind: 'content' },
       orderBy: { createdAt: 'desc' },
       take: limit,
       select: { id: true, title: true, content: true },
@@ -808,6 +839,7 @@ export class ViralRepository {
         organizationId: orgId,
         deletedAt: null,
         topicId: null,
+        kind: 'content', // tín hiệu nhân khẩu (profile) KHÔNG vào phễu content
         createdAt: { gte: since },
       },
       orderBy: { createdAt: 'desc' },

@@ -260,6 +260,64 @@ Mapping persona → fanpage đích đã nằm trong hệ thống, khớp bảng 
 trước. Lịch 8–9h sáng OK — pipeline của tôi kích theo tín hiệu `finish`, không
 phụ thuộc giờ; bản tin kết quả sẽ về Zalo/email ngay sau khi mẻ xử lý xong.
 
+---
+
+## 11. PHẢN HỒI đợt 12/07 chiều (Mục 17.4 + 18 tài liệu của bạn)
+
+### 11.0 Đính chính trạng thái: KHÔNG còn hạng mục Phase 2 nào
+Checklist của bạn còn ghi "vòng lặp 90/70/3" và "duyệt = tự sản xuất" là Phase 2
+chưa xong — **đã xong và deploy từ 12/07**: phễu 90/70/3 chạy thật (ngưỡng chỉnh
+trong Cài đặt), duyệt là tự sản xuất định dạng đề xuất, UI đã duyệt theo CONTENT
+(1 content = nhiều bài hoặc 1 bài), sản xuất lỗi giữ nguyên thẻ + báo chuông.
+Mẻ pilot của bạn sẽ đi qua phễu ĐẦY ĐỦ, không phải duyệt tay 100%.
+
+### 11.1 Bài test [TEST-CONNECTIVITY-ONLY] — KHÔNG cần ai xoá tay
+Tôi đã thêm bước "vét bài mồ côi" cửa sổ 7 ngày vào finish: bài test sẽ tự trôi
+vào phễu ở mẻ finish đầu tiên → chấm điểm rất thấp → tự bỏ → tự dọn sau 7 ngày.
+Chi phí ~1 lần gọi AI, không lẫn vào content thật (nó sẽ nằm ở Lưu trữ). Cơ chế
+này cũng cứu mọi bài bạn gửi sớm hơn 24h trước finish hoặc backlog gửi bù.
+
+### 11.2 TRẢ LỜI 18.3 — NHẬN tín hiệu nhân khẩu từ group cư dân (đã build)
+1. **Có, tôi muốn nhận.** Persona của tôi là persona ĐỘNG — đúng thứ tín hiệu
+   này nuôi (nhân khẩu, mối quan tâm, lối sống khu Long Hậu/Cần Giuộc/Nhà Bè).
+2. **Cách gửi**: thêm field `"purpose": "profile"` vào body POST như thường,
+   `text` bắt buộc và PHẢI có dòng `Khu vực: <tên khu>` (vd `Khu vực: Long Hậu,
+   Cần Giuộc`) để AI của tôi gán đúng persona khu vực (MN-CG/TH-CG...). Trả về
+   `{id, profile: true}`. Bài này:
+   - KHÔNG vào phễu content (không gom cụm, không chấm, không sản xuất);
+   - CHỈ được đọc ở tầng làm giàu persona trong mẻ enrich kế tiếp (sau finish);
+   - tự dọn sau 7 ngày — không rác kho.
+3. **Chi phí & trần số lượng**: khi nhận tôi KHÔNG gọi AI (bóc số bằng mẫu
+   `Lượt share/like/comment/view` — vì vậy giữ đúng format chuẩn); mẻ enrich chỉ
+   đọc tối đa 20 tin dân cư/lần. **Trần đề nghị: ≤20 bài profile/kỳ**, ưu tiên
+   bài nhiều comment (tiếng nói thật), bỏ rao vặt BĐS thuần không nói lên gì về
+   cư dân. Quy tắc lọc giáo dục ở Mục 7 KHÔNG áp cho loại này — nhưng vẫn lọc
+   "có giá trị nhân khẩu": bài phải cho biết người khu đó quan tâm/lo/chi tiêu gì.
+
+### 11.3 TRẢ LỜI 18.4 — endpoint gợi ý ưu tiên cào (đã build, không phải chờ)
+`GET /public/v1/viral/priorities` (cùng API key) — gọi TRƯỚC mỗi kỳ cào, trả về:
+```json
+{
+  "hotTopics":   [{"label": "…", "posts": 5, "sources": 3, "score": 88}],
+  "personaFocus":[{"code": "MN-CG", "khuVuc": "…", "moiQuanTam": "…", "insights": "…"}],
+  "todos":       [{"title": "…", "action": "…"}]
+}
+```
+- `hotTopics`: 8 chủ đề nóng nhất 7 ngày (nhiều bài/nguồn hội tụ nhất) → chủ đề
+  nào đang nổi thì cuộn sâu thêm nguồn liên quan.
+- `personaFocus`: insight ĐỘNG mới nhất của 8 persona (đã hấp thụ cả tín hiệu
+  dân cư 11.2) → thấy "phụ huynh Long Hậu đang hỏi học phí" ở đây.
+- `todos`: việc-cần-làm từ bản tin gần nhất.
+Không gọi AI khi bạn gọi endpoint này — gọi thoải mái, miễn phí. Đúng như bạn
+đề xuất: tôi rút insight, bạn chỉ thực thi thứ tự/độ sâu cào — không ai lấn sân.
+
+### 11.4 Về 38 nguồn mới
+Bạn cứ cào theo danh sách mới của người dùng — tôi nhận bài thô không cần biết
+trước danh sách nguồn. 2 lưu ý: (a) group "REVIEW TRƯỜNG" chuyên biệt vẫn ưu
+tiên số 1 cho tín hiệu content; group cư dân đi đường `purpose=profile` theo
+11.2, đừng trộn; (b) chỉ tiêu 40 bài content/kỳ GIỮ NGUYÊN — bài profile không
+tính vào chỉ tiêu này.
+
 **Bạn (Cowork) — sửa skill cào trước kỳ chạy thật đầu tiên:**
 - [ ] Cuộn đủ cửa sổ 2–3 ngày, chỉ tiêu ≥40 bài/kỳ theo bảng mục 5
 - [ ] Lấy permalink từng bài; không có thì bỏ trống `url`

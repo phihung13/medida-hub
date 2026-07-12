@@ -13,6 +13,8 @@ export class PublicViralController {
   constructor(private _viralService: ViralService) {}
 
   // Nhận 1 bài thô. Trả {id} khi nhận, {duplicated:true} khi URL đã thấy rồi.
+  // purpose='profile' = tín hiệu NHÂN KHẨU từ group cư dân (không vào phễu
+  // content, chỉ nuôi persona; bắt buộc có text, nên ghi "Khu vực: <tên khu>").
   @Post('/')
   async capture(
     @GetOrgFromRequest() org: Organization,
@@ -23,10 +25,15 @@ export class PublicViralController {
       images?: { base64: string; mediaType: string }[];
       platform?: string;
       level?: string;
+      purpose?: string;
     }
   ) {
     if (!body?.url && !body?.text && !body?.images?.length) {
       throw new HttpException('Cần url, text hoặc images (base64).', 400);
+    }
+    const purpose = body.purpose === 'profile' ? 'profile' : undefined;
+    if (purpose && !String(body.text || '').trim()) {
+      throw new HttpException('Tín hiệu profile bắt buộc có text (kèm dòng "Khu vực: ...").', 400);
     }
     const images = (body.images || []).slice(0, 4);
     if (images.some((i) => String(i?.base64 || '').length > 4_200_000)) {
@@ -41,7 +48,15 @@ export class PublicViralController {
       images,
       platform: body.platform,
       level,
+      purpose,
     });
+  }
+
+  // Gợi ý ưu tiên kỳ cào (vòng lặp phản hồi: insight → độ sâu cào kỳ sau) —
+  // chủ đề nóng 7 ngày + insight persona động + todo bản tin. Không tốn AI.
+  @Get('/priorities')
+  priorities(@GetOrgFromRequest() org: Organization) {
+    return this._viralService.partnerPriorities(org.id);
   }
 
   // Kết mẻ — gọi đúng 1 lần sau bài cuối. Trả về ngay, pipeline (cào RSS/News

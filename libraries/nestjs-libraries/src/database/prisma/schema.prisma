@@ -437,6 +437,10 @@ model ViralPost {
   comments       Int?
   views          Int?
   origin         String    @default("manual") // manual | auto
+  // content = vào phễu (gom cụm/chấm/sản xuất) · profile = tín hiệu NHÂN KHẨU
+  // từ group cư dân quanh trường (đối tác gửi purpose='profile') — chỉ nuôi
+  // persona động ở mẻ enrich, KHÔNG thành content, tự dọn sau 7 ngày.
+  kind           String    @default("content")
   formula        String? // JSON công thức AI đã mổ (cache)
   clonedCount    Int       @default(0)
   // Gom cụm theo chủ đề (embeddings): bài lẻ giờ là TÍN HIỆU THÔ thuộc 1 chủ đề.

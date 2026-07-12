@@ -480,10 +480,41 @@ export class ViralService implements OnModuleInit {
       images?: { base64: string; mediaType: string }[];
       platform?: string;
       level?: string;
+      purpose?: string;
     }
-  ): Promise<{ id?: string; duplicated?: boolean; spam?: boolean }> {
+  ): Promise<{ id?: string; duplicated?: boolean; spam?: boolean; profile?: boolean }> {
     if (body.url && (await this._repo.existsByUrl(orgId, body.url))) {
       return { duplicated: true };
+    }
+    // TÍN HIỆU NHÂN KHẨU (purpose='profile') — bài group cư dân quanh trường,
+    // không liên quan giáo dục trực tiếp: KHÔNG vào phễu content (không gom/
+    // chấm/sản xuất), chỉ nuôi persona động ở mẻ enrich kế tiếp rồi tự dọn sau
+    // 7 ngày. Không gọi AI khi nhận (regex bóc số theo mẫu chuẩn) — chi phí ~0.
+    // Đối tác nên ghi "Khu vực: <tên khu>" trong text để AI enrich gán đúng
+    // persona khu vực.
+    if (body.purpose === 'profile') {
+      const text = String(body.text || '').trim();
+      if (!text) return { spam: true };
+      const num = (re: RegExp) => {
+        const m = text.match(re);
+        return m ? parseInt(m[1].replace(/[.,]/g, ''), 10) : null;
+      };
+      const created = await this._repo.create(orgId, {
+        platform: body.platform || 'facebook',
+        level: 'all',
+        kind: 'profile',
+        status: 'skipped',
+        title: text.split('\n')[0].slice(0, 120) || 'Tín hiệu dân cư',
+        sourceName: (text.match(/Nguồn:\s*(.+)/i) || [])[1]?.slice(0, 120) || null,
+        url: body.url || null,
+        content: text,
+        shares: num(/share:?\s*([\d.,]+)/i),
+        likes: num(/like:?\s*([\d.,]+)/i),
+        comments: num(/comment:?\s*([\d.,]+)/i),
+        views: num(/view:?\s*([\d.,]+)/i),
+        origin: 'auto',
+      });
+      return { id: created.id, profile: true };
     }
     // Lọc rác lớp 2 (đối tác đã lọc lớp 1): minigame/câu share/khuyến mãi.
     if (this.isSpam(body.text?.slice(0, 300))) {
@@ -540,6 +571,12 @@ export class ViralService implements OnModuleInit {
       }
     }
     await this.afterCrawl(orgId, since).catch(() => null);
+    // Vét bài MỒ CÔI cửa sổ rộng 7 ngày (bài gửi sớm hơn 24h trước finish,
+    // backlog gửi bù, bài test lẻ) — không bài nào kẹt vô hình mãi.
+    await this.topicizeLeftovers(
+      orgId,
+      new Date(Date.now() - 7 * 24 * 3600 * 1000)
+    ).catch(() => null);
     // Mẻ lớn: mỗi lượt tổng hợp tối đa 12 chủ đề — vét tiếp tới khi hết
     // (trần 8 lượt ≈ 108 content/mẻ, phòng lặp vô hạn).
     for (let i = 0; i < 8; i++) {
@@ -547,6 +584,39 @@ export class ViralService implements OnModuleInit {
       if (!more) break;
     }
     await this.sendWeeklyReport(orgId, 'crawl').catch(() => null);
+  }
+
+  // Gợi ý ưu tiên cào cho đối tác (vòng lặp phản hồi: insight → kỳ cào sau):
+  // chủ đề nóng 7 ngày + insight persona động + todo bản tin gần nhất. KHÔNG
+  // gọi AI — đọc từ dữ liệu đã chưng cất sẵn, gọi bao nhiêu lần cũng miễn phí.
+  async partnerPriorities(orgId: string) {
+    const [topics, personas, reports] = await Promise.all([
+      this._repo.hotTopicsSince(orgId, 7, 8).catch(() => [] as any[]),
+      this._repo.listPersonas(orgId).catch(() => [] as any[]),
+      this._repo.listReports(orgId).catch(() => [] as any[]),
+    ]);
+    let todos: any[] = [];
+    try {
+      const meta = JSON.parse((reports as any[])[0]?.meta || '{}');
+      todos = Array.isArray(meta.todos) ? meta.todos.slice(0, 8) : [];
+    } catch {
+      /* meta hỏng — bỏ qua todo */
+    }
+    return {
+      hotTopics: (topics as any[]).map((t) => ({
+        label: decodeEntities(t.label),
+        posts: t.postCount,
+        sources: t.sourceCount,
+        score: t.score,
+      })),
+      personaFocus: (personas as any[]).map((p) => ({
+        code: p.code,
+        khuVuc: p.khuVuc,
+        moiQuanTam: p.moiQuanTam,
+        insights: p.insights,
+      })),
+      todos,
+    };
   }
 
   // Mổ công thức (cache vào formula để không tốn token gọi lại).
@@ -1376,7 +1446,10 @@ export class ViralService implements OnModuleInit {
     const personas = await this._repo.listPersonas(orgId);
     if (!personas.length) return;
     const posts = await this._repo.scoredSince(orgId, 24);
-    if (!posts.length) return;
+    // Tín hiệu NHÂN KHẨU từ group cư dân (kind='profile', đối tác gửi) — không
+    // phải content giáo dục nhưng nuôi phần ĐỘNG của persona khu vực.
+    const area = await this._repo.profileSignalsSince(orgId, 24).catch(() => [] as any[]);
+    if (!posts.length && !(area as any[]).length) return;
     const isGroup = (p: any) => /group/i.test(String(p.sourceName || ''));
     const isNews = (p: any) => String(p.platform) === 'news';
     const eng = (p: any) =>
@@ -1429,7 +1502,23 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
     ${top(s.win, 6) || '(khong co)'}`;
       })
       .join('\n\n');
-    const out = await this._openai.viralUpdatePersonas(blocks).catch(() => null);
+    // Khối chung TIN HIỆU DÂN CƯ — AI tự gán cho persona khu vực tương ứng
+    // (mỗi tin có dòng "Khu vực:" do đối tác ghi trong text).
+    const areaBlock = (area as any[]).length
+      ? `\n\n### TIN HIEU DAN CU / KHU VUC (tu group cu dan-cong nhan quanh truong — KHONG phai content giao duc; dung de lam giau nhan khau hoc/moi quan tam/loi song cho persona KHU VUC tuong ung, doc dong "Khu vực:" trong tung tin; vd Long Hau/Can Giuoc/Nha Be -> MN-CG/TH-CG):\n` +
+        (area as any[])
+          .slice(0, 20)
+          .map(
+            (r) =>
+              `- "${String(r.content || r.title || '')
+                .replace(/\s+/g, ' ')
+                .slice(0, 240)}" (cmt=${r.comments || 0}, like=${r.likes || 0})`
+          )
+          .join('\n')
+      : '';
+    const out = await this._openai
+      .viralUpdatePersonas(blocks + areaBlock)
+      .catch(() => null);
     if (!Array.isArray(out)) return;
     for (const u of out) {
       if (!u?.profile_id) continue;
