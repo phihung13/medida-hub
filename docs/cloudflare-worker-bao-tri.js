@@ -24,9 +24,24 @@ const MAINTENANCE_HTML = `<!doctype html>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
   body{min-height:100vh;display:flex;align-items:center;justify-content:center;
-    background:radial-gradient(1200px 600px at 50% -10%,#1c2a5e 0%,#0e1531 55%,#0a0f24 100%);
+    background:#0B0B0C;
     font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#fff;overflow:hidden}
-  .wrap{text-align:center;padding:24px;max-width:560px}
+  /* nền giống trang đăng nhập: lưới ô mờ chạy chéo + 2 quầng sáng xanh trôi */
+  .bg-grid{position:fixed;inset:0;opacity:.05;pointer-events:none;
+    background-image:linear-gradient(rgba(255,255,255,.7) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.7) 1px,transparent 1px);
+    background-size:72px 72px;animation:grid 5s linear infinite}
+  @keyframes grid{from{background-position:0 0}to{background-position:72px 72px}}
+  .orb{position:fixed;border-radius:50%;pointer-events:none}
+  .orb1{top:-220px;right:-180px;width:640px;height:640px;filter:blur(40px);
+    background:radial-gradient(circle,rgba(30,111,217,.42) 0%,rgba(30,111,217,.10) 45%,transparent 70%);
+    animation:drift 16s ease-in-out infinite}
+  .orb2{bottom:-260px;left:-200px;width:560px;height:560px;filter:blur(48px);
+    background:radial-gradient(circle,rgba(0,104,255,.28) 0%,rgba(0,104,255,.07) 45%,transparent 70%);
+    animation:drift2 22s ease-in-out infinite}
+  @keyframes drift{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(9%,14%) scale(1.18)}}
+  @keyframes drift2{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-12%,-8%) scale(1.12)}}
+  @media (prefers-reduced-motion:reduce){.bg-grid,.orb{animation:none!important}}
+  .wrap{position:relative;z-index:1;text-align:center;padding:24px;max-width:560px}
   .stage{animation:runIn 1.5s cubic-bezier(.22,1,.36,1) both}
   .lion{width:min(46vw,230px);margin:0 auto;display:block;animation:bob 2.6s ease-in-out infinite 1.6s}
   @keyframes runIn{0%{transform:translateX(-70vw) rotate(-4deg)}55%{transform:translateX(4vw) rotate(2deg)}78%{transform:translateX(-10px)}100%{transform:translateX(0) rotate(0)}}
@@ -45,7 +60,9 @@ const MAINTENANCE_HTML = `<!doctype html>
   @keyframes hop{0%,60%,100%{transform:translateY(0);opacity:.55}30%{transform:translateY(-9px);opacity:1}}
   .note{margin-top:22px;font-size:12px;color:#7f8bb5}
 </style></head>
-<body><div class="wrap"><div class="stage">
+<body>
+<div class="bg-grid"></div><div class="orb orb1"></div><div class="orb orb2"></div>
+<div class="wrap"><div class="stage">
 <svg class="lion" viewBox="0 0 220 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Sư tử Việt Anh vẫy chào">
   <g class="tail">
     <path d="M62 180 Q28 170 34 138" stroke="#F4A24C" stroke-width="9" fill="none" stroke-linecap="round"/>
