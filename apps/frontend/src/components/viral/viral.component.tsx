@@ -937,9 +937,140 @@ const FORMAT_META: Record<string, { icon: string; label: string }> = {
   podcast: { icon: '🎧', label: 'Podcast' },
 };
 
+// ── CONTENT (chủ đề) — đơn vị duyệt CHÍNH của trang: 1 content = nhiều bài từ
+// nhiều nguồn (hoặc 1 bài). Bài lẻ chỉ còn là bằng chứng bên trong content.
+const useTopics = (sort: string, status: string) => {
+  const fetch = useFetch();
+  return useSWR(
+    `/viral/topics?sort=${sort}&status=${status}`,
+    async (u: string) => (await fetch(u)).json()
+  );
+};
+
+// Định dạng AI đề xuất cho 1 content (đọc từ scoreDetail đã parse sẵn).
+const topicDefaults = (sd: any): string[] => {
+  const primary =
+    sd?.content_type === 'blog' ? 'blog' : sd?.content_type === 'video' ? 'podcast' : 'infographic';
+  return (sd?.podcast_score ?? 0) >= 75 && primary !== 'podcast' ? [primary, 'podcast'] : [primary];
+};
+
+// Chi tiết 1 content: bản tổng hợp + điểm + bài nguồn (bằng chứng) + hành động.
+const TopicDetailModal: FC<{ topicId: string; onDone: () => void }> = ({ topicId, onDone }) => {
+  const t = useT();
+  const fetch = useFetch();
+  const toast = useToaster();
+  const modal = useModals();
+  const [busy, setBusy] = useState(false);
+  const { data, mutate } = useSWR(`/viral/topics/${topicId}`, async (u: string) => (await fetch(u)).json());
+  const topic = data?.topic;
+  const posts = data?.posts || [];
+  const syn = topic?.synthesis || {};
+  const sd = topic?.scoreDetail || {};
+  const act = async (action: string) => {
+    await fetch('/viral/topics/bulk', { method: 'POST', body: JSON.stringify({ ids: [topicId], action }) });
+    mutate();
+    onDone();
+    if (action === 'approve') {
+      toast.show(t('viral_topic_approved_toast', 'Approved — AI is producing the suggested format, see "Ready to post" in a few minutes.'), 'success');
+    }
+  };
+  const clone = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch(`/viral/topics/${topicId}/clone`, { method: 'POST' });
+      toast.show(
+        res.ok
+          ? t('viral_topic_cloned', 'Rewritten as your social post — check "Ready to post".')
+          : t('viral_topic_clone_fail', 'Could not rewrite — try again.'),
+        res.ok ? 'success' : 'warning'
+      );
+      onDone();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const produce = () =>
+    modal.openModal({
+      title: t('viral_modal_produce', 'Produce content'),
+      withCloseButton: true,
+      classNames: { modal: 'w-[100%] max-w-[520px]' },
+      children: <ProduceModal ids={[topicId]} source="topic" defaults={topicDefaults(sd)} onDone={onDone} />,
+    });
+  if (!topic) return <div className="text-[13px] text-textItemBlur p-[20px]">{t('viral_loading', 'Loading…')}</div>;
+  return (
+    <div className="flex flex-col gap-[12px]">
+      {/* điểm + persona + số vòng viết lại + verdict */}
+      <div className="flex items-center gap-[8px] flex-wrap text-[12px]">
+        {topic.score != null && (
+          <span className={clsx('text-[12px] font-[800] px-[9px] py-[3px] rounded-[7px] tabular-nums', scoreStyle(topic.score))}>⭐ {topic.score}</span>
+        )}
+        {topic.persona && <span className="px-[8px] py-[3px] rounded-full bg-btnPrimary/12 text-btnPrimary font-[700]">🧬 {topic.persona}</span>}
+        <span className="text-textItemBlur">📄 {topic.postCount} {t('viral_topic_posts', 'post(s)')} · 📡 {topic.sourceCount} {t('viral_topic_sources', 'source(s)')}</span>
+        {(sd.rounds ?? 0) > 0 && <span className="text-textItemBlur" title={t('viral_topic_rounds_hint', 'AI rewrite rounds used')}>♻ {sd.rounds} {t('viral_topic_rounds', 'rewrite(s)')}</span>}
+        {sd.verdict && <span className="text-[#FFC53D]">{sd.verdict}</span>}
+      </div>
+      {/* bản AI viết sẵn để đăng */}
+      {topic.aiContent && (
+        <div className="text-[13px] leading-[1.65] whitespace-pre-line bg-newColColor border border-newBgLineColor rounded-[10px] p-[13px] max-h-[220px] overflow-auto">
+          {topic.aiContent}
+        </div>
+      )}
+      {/* tổng hợp: góc nhìn + điểm đồng thuận + số liệu + hook */}
+      {(syn.angle || syn.hook || (syn.agreedFacts || []).length > 0) && (
+        <div className="flex flex-col gap-[6px] text-[12.5px] leading-[1.6] bg-newBgColor rounded-[10px] p-[12px]">
+          {syn.angle && <div><b>🎯 {t('viral_syn_angle', 'Angle')}:</b> {syn.angle}</div>}
+          {syn.hook && <div><b>🪝 Hook:</b> {syn.hook}</div>}
+          {(syn.agreedFacts || []).length > 0 && (
+            <div><b>🤝 {t('viral_syn_facts', 'Agreed facts')}:</b> {(syn.agreedFacts || []).join(' · ')}</div>
+          )}
+          {(syn.keyNumbers || []).length > 0 && (
+            <div><b>🔢 {t('viral_syn_numbers', 'Key numbers')}:</b> {(syn.keyNumbers || []).join(' · ')}</div>
+          )}
+          {syn.whyItMatters && <div><b>💡 {t('viral_syn_why', 'Why it matters')}:</b> {syn.whyItMatters}</div>}
+          {sd.reason && <div className="text-textItemBlur">📋 {sd.reason}</div>}
+        </div>
+      )}
+      {/* bài nguồn — bằng chứng để đối chiếu, tránh đạo nhái */}
+      <div className="flex flex-col gap-[6px]">
+        <div className="text-[12px] font-[700] text-textItemBlur">🧾 {t('viral_topic_evidence', 'Source posts (evidence)')}</div>
+        <div className="flex flex-col gap-[4px] max-h-[180px] overflow-auto">
+          {posts.map((p: any) => (
+            <div key={p.id} className="flex items-center gap-[8px] text-[12px] bg-newColColor border border-newBgLineColor rounded-[8px] px-[10px] py-[6px]">
+              <i className="w-[7px] h-[7px] rounded-full shrink-0" style={{ background: platMeta(p.platform)?.dot || '#888' }} />
+              <span className="text-textItemBlur shrink-0 max-w-[120px] truncate">{p.sourceName || '—'}</span>
+              <span className="truncate flex-1">{p.title}</span>
+              {p.shares != null && <span className="text-[#FFC53D] tabular-nums shrink-0">↗ {nice(p.shares)}</span>}
+              {p.url && (
+                <a href={p.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-btnPrimary shrink-0" title={t('viral_open_source', 'Open source post')}>
+                  ↗
+                </a>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* hành động */}
+      <div className="flex gap-[8px] flex-wrap">
+        {topic.status === 'pending' ? (
+          <>
+            <button onClick={() => act('approve')} className="flex-1 h-[38px] rounded-[9px] text-[13px] font-[700] bg-[#57D9A3]/15 text-[#57D9A3] hover:bg-[#57D9A3]/25">✓ {t('viral_approve', 'Approve')}</button>
+            <button onClick={() => act('skip')} className="h-[38px] px-[14px] rounded-[9px] text-[13px] font-[700] text-[#FF5A52] border border-[#FF5A52]/30 hover:bg-[#FF5A52]/10">✕ {t('viral_skip', 'Skip')}</button>
+          </>
+        ) : (
+          <button onClick={() => act('pending')} className="h-[38px] px-[14px] rounded-[9px] text-[13px] font-[700] text-textItemBlur border border-newBgLineColor hover:text-textColor">↩ {t('viral_back_to_review', 'Back to review')}</button>
+        )}
+        <button onClick={clone} disabled={busy} className="h-[38px] px-[14px] rounded-[9px] text-[13px] font-[700] bg-btnPrimary/15 text-btnPrimary hover:bg-btnPrimary/25 disabled:opacity-50">
+          {busy ? t('viral_cloning', 'Rewriting…') : `✍️ ${t('viral_topic_clone', 'Rewrite as my post')}`}
+        </button>
+        <button onClick={produce} className="h-[38px] px-[14px] rounded-[9px] text-[13px] font-[700] bg-[#57D9A3]/15 text-[#57D9A3] hover:bg-[#57D9A3]/25">🏭 {t('viral_produce_bulk', 'Produce')}</button>
+      </div>
+    </div>
+  );
+};
+
 // Modal chọn định dạng sản xuất cho các bài đã chọn.
 // defaults: gợi ý AI (content_type + podcast_score từ lúc chấm) — tick sẵn.
-const ProduceModal: FC<{ ids: string[]; source: 'post' | 'clone'; onDone: () => void; defaults?: string[] }> = ({ ids, source, onDone, defaults }) => {
+const ProduceModal: FC<{ ids: string[]; source: 'post' | 'clone' | 'topic'; onDone: () => void; defaults?: string[] }> = ({ ids, source, onDone, defaults }) => {
   const t = useT();
   const fetch = useFetch();
   const toast = useToaster();
@@ -1412,13 +1543,20 @@ export const ViralComponent: FC = () => {
   const { data: reportsData, mutate: mutateReports } = useReports(isReports);
   const [makingReport, setMakingReport] = useState(false);
   const { data, isLoading, mutate } = useViral(platform, level, sort, tab);
+  // CONTENT là đơn vị duyệt CHÍNH: tab Chờ duyệt/Đã duyệt/Lưu trữ hiển thị chủ
+  // đề (1 content = nhiều bài, nhiều nguồn — hoặc 1 bài); bài lẻ chỉ còn là
+  // bằng chứng bên trong từng content.
+  const isTopicTab = tab === 'pending' || tab === 'approved' || isArchive;
+  const topicStatus = isArchive ? 'archive' : tab === 'approved' ? 'approved' : 'pending';
+  const { data: topicsData, isLoading: topicsLoading, mutate: mutateTopics } = useTopics(sort, topicStatus);
   const { data: mineData, mutate: mutateMine } = useMine();
   const { data: productsData, mutate: mutateProducts } = useProducts(isReady);
   const refreshAll = useCallback(() => {
     mutate();
+    mutateTopics();
     mutateMine();
     mutateProducts();
-  }, [mutate, mutateMine, mutateProducts]);
+  }, [mutate, mutateTopics, mutateMine, mutateProducts]);
 
   // Thumbnail hỏng (URL CDN hết hạn → 403): ẩn ảnh, rơi về placeholder nhãn nền tảng.
   const [brokenThumbs, setBrokenThumbs] = useState<Set<string>>(new Set());
@@ -1503,21 +1641,38 @@ export const ViralComponent: FC = () => {
       if (action === 'hard-delete') {
         if (!(await deleteDialog(`${t('viral_hard_delete_confirm', 'Permanently delete from the database')} (${ids.length})?`, t('viral_delete', 'Delete')))) return;
       }
-      const res = await (await fetch('/viral/bulk', { method: 'POST', body: JSON.stringify({ ids, action }) })).json();
-      if (action === 'clone') {
-        toast.show(`${t('viral_cloning_n', 'Creating')} ${res?.queued ?? ids.length} ${t('viral_cloning_n_suffix', 'social posts — check the "Ready to post" tab in a few minutes.')}`, 'success');
-        setTab('ready');
+      if (isTopicTab) {
+        // Tab content: hàng loạt qua /viral/topics/bulk; clone = viết lại từng
+        // content thành "Bài của mình" (tuần tự — mỗi cái 1 lần gọi AI).
+        if (action === 'clone') {
+          for (const id of ids) {
+            await fetch(`/viral/topics/${id}/clone`, { method: 'POST' }).catch(() => null);
+          }
+          toast.show(`${t('viral_cloning_n', 'Creating')} ${ids.length} ${t('viral_cloning_n_suffix', 'social posts — check the "Ready to post" tab in a few minutes.')}`, 'success');
+          setTab('ready');
+        } else {
+          await fetch('/viral/topics/bulk', { method: 'POST', body: JSON.stringify({ ids, action }) });
+          if (action === 'approve') {
+            toast.show(t('viral_topic_approved_toast', 'Approved — AI is producing the suggested format, see "Ready to post" in a few minutes.'), 'success');
+          }
+        }
+      } else {
+        const res = await (await fetch('/viral/bulk', { method: 'POST', body: JSON.stringify({ ids, action }) })).json();
+        if (action === 'clone') {
+          toast.show(`${t('viral_cloning_n', 'Creating')} ${res?.queued ?? ids.length} ${t('viral_cloning_n_suffix', 'social posts — check the "Ready to post" tab in a few minutes.')}`, 'success');
+          setTab('ready');
+        }
       }
       setSelected(new Set());
       refreshAll();
     },
-    [selected, refreshAll, t]
+    [selected, refreshAll, t, isTopicTab]
   );
 
   const selectAllOnPage = useCallback(() => {
-    const items = data?.items || [];
-    setSelected((prev) => (prev.size >= items.length && items.length > 0 ? new Set() : new Set(items.map((p: any) => p.id))));
-  }, [data]);
+    const list = isTopicTab ? topicsData?.topics || [] : data?.items || [];
+    setSelected((prev) => (prev.size >= list.length && list.length > 0 ? new Set() : new Set(list.map((p: any) => p.id))));
+  }, [data, topicsData, isTopicTab]);
 
   const purgeArchive = useCallback(async () => {
     if (!(await deleteDialog(t('viral_purge_all_confirm', 'Permanently delete the ENTIRE archive from the database?'), t('viral_delete_all', 'Delete all')))) return;
@@ -1530,6 +1685,18 @@ export const ViralComponent: FC = () => {
     modal.openModal({ title: t('viral_modal_add_post', 'Add viral post'), withCloseButton: true, classNames: { modal: 'w-[100%] max-w-[540px]' }, children: <CaptureModal onDone={refreshAll} /> });
   const openDetail = (post: any) => () =>
     modal.openModal({ title: t('viral_modal_post', 'Viral post'), withCloseButton: true, classNames: { modal: 'w-[100%] max-w-[600px]' }, children: <DetailModal post={post} onDone={refreshAll} /> });
+  const openTopic = (id: string) => () =>
+    modal.openModal({ title: t('viral_modal_topic', 'Content'), withCloseButton: true, classNames: { modal: 'w-[100%] max-w-[640px]' }, children: <TopicDetailModal topicId={id} onDone={refreshAll} /> });
+  // Thao tác nhanh trên thẻ content (duyệt/bỏ/khôi phục/xóa cứng — 1 thẻ).
+  const topicQuick = (id: string, action: string) => async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (action === 'hard-delete' && !(await deleteDialog(t('viral_hard_delete_one_confirm', 'Permanently delete this post from the database?'), t('viral_delete', 'Delete')))) return;
+    await fetch('/viral/topics/bulk', { method: 'POST', body: JSON.stringify({ ids: [id], action }) });
+    if (action === 'approve') {
+      toast.show(t('viral_topic_approved_toast', 'Approved — AI is producing the suggested format, see "Ready to post" in a few minutes.'), 'success');
+    }
+    refreshAll();
+  };
   const openSource = () =>
     modal.openModal({ title: t('viral_modal_add_source', 'Add tracked source'), withCloseButton: true, classNames: { modal: 'w-[100%] max-w-[500px]' }, children: <SourceModal onDone={mutate} /> });
   const openConfig = () =>
@@ -1541,17 +1708,24 @@ export const ViralComponent: FC = () => {
   const openProduce = useCallback(() => {
     const ids = [...selected];
     if (!ids.length) return;
-    const chosen = (data?.items || []).filter((p: any) => selected.has(p.id));
+    // gợi ý AI: content trả scoreDetail đã parse sẵn; bài lẻ là chuỗi JSON
+    const chosen = isTopicTab
+      ? (topicsData?.topics || []).filter((p: any) => selected.has(p.id))
+      : (data?.items || []).filter((p: any) => selected.has(p.id));
     const count: Record<string, number> = {};
     let podcast = false;
     for (const p of chosen) {
-      try {
-        const d = JSON.parse(p.scoreDetail || '{}');
-        if (d.content_type === 'blog' || d.content_type === 'infographic') count[d.content_type] = (count[d.content_type] || 0) + 1;
-        if ((d.podcast_score ?? 0) >= 75) podcast = true;
-      } catch {
-        /* thẻ chưa chấm — bỏ qua gợi ý */
+      let d: any = {};
+      if (isTopicTab) d = p.scoreDetail || {};
+      else {
+        try {
+          d = JSON.parse(p.scoreDetail || '{}');
+        } catch {
+          d = {};
+        }
       }
+      if (d.content_type === 'blog' || d.content_type === 'infographic') count[d.content_type] = (count[d.content_type] || 0) + 1;
+      if (d.content_type === 'video' || (d.podcast_score ?? 0) >= 75) podcast = true;
     }
     const top = (count.infographic || 0) > (count.blog || 0) ? 'infographic' : 'blog';
     const defaults = podcast ? [top, 'podcast'] : [top];
@@ -1562,7 +1736,7 @@ export const ViralComponent: FC = () => {
       children: (
         <ProduceModal
           ids={ids}
-          source="post"
+          source={isTopicTab ? 'topic' : 'post'}
           defaults={defaults}
           onDone={() => {
             setSelected(new Set());
@@ -1572,7 +1746,7 @@ export const ViralComponent: FC = () => {
         />
       ),
     });
-  }, [selected, data, refreshAll, t]);
+  }, [selected, data, topicsData, isTopicTab, refreshAll, t]);
 
   const crawlNow = useCallback(async () => {
     setCrawling(true);
@@ -1651,6 +1825,7 @@ export const ViralComponent: FC = () => {
 
   const stats = data?.stats;
   const items = data?.items || [];
+  const topics = topicsData?.topics || [];
   const sources = data?.sources || [];
 
   const QUICK = [
@@ -1694,8 +1869,8 @@ export const ViralComponent: FC = () => {
           Lưu trữ nằm NGOÀI luồng (bên phải). Dưới tabs có dòng hướng dẫn bước. */}
       <div className="flex items-center gap-[6px] flex-wrap">
         {[
-          ['pending', t('viral_status_pending', 'To review'), data?.statusCounts?.pending],
-          ['approved', t('viral_status_approved', 'Approved'), data?.statusCounts?.approved],
+          ['pending', t('viral_status_pending', 'To review'), topicsData?.counts?.pending ?? data?.statusCounts?.pending],
+          ['approved', t('viral_status_approved', 'Approved'), topicsData?.counts?.approved ?? data?.statusCounts?.approved],
           ['ready', t('viral_tab_ready', 'Ready to post'), (data?.statusCounts?.mine || 0) + (data?.statusCounts?.products || 0)],
         ].map(([k, l, count], i) => (
           <Fragment key={k as string}>
@@ -1757,8 +1932,8 @@ export const ViralComponent: FC = () => {
           )}
         >
           🗄 {t('viral_tab_archive', 'Archive')}
-          {data?.statusCounts?.archive != null && (
-            <span className="ms-[6px] tabular-nums opacity-80">{data.statusCounts.archive}</span>
+          {(topicsData?.counts?.archive ?? data?.statusCounts?.archive) != null && (
+            <span className="ms-[6px] tabular-nums opacity-80">{topicsData?.counts?.archive ?? data?.statusCounts?.archive}</span>
           )}
         </button>
       </div>
@@ -1767,10 +1942,10 @@ export const ViralComponent: FC = () => {
       <div className="flex items-start gap-[8px] text-[12px] leading-[1.55] text-textItemBlur bg-newColColor border border-newBgLineColor rounded-[9px] px-[13px] py-[8px]">
         <span className="shrink-0">💡</span>
         <span>
-          {tab === 'pending' && t('viral_flow_pending', 'Step 1 · AI crawled & scored these posts. ✓ Approve → moves to "Approved" · ✕ Skip → goes to Archive (auto-deleted after 7 days). Posts scoring ≥90 are auto-approved.')}
-          {tab === 'approved' && t('viral_flow_approved', 'Step 2 · Posts you approved. Select cards → "⧉ Clone" (AI rewrites them into social posts) or "🏭 Produce" (into blog/infographic/podcast) — both land in "Ready to post".')}
+          {tab === 'pending' && t('viral_flow_pending_topics', 'Step 1 · Each card is one CONTENT — many posts from many sources merged (a 1-post content is fine too). The AI already scored & rewrote it up to 3 rounds: ≥ threshold auto-approved, low ones auto-skipped, the rest wait for you here. ✓ Approve = auto-produce the suggested format.')}
+          {tab === 'approved' && t('viral_flow_approved_topics', 'Step 2 · Approved content. The suggested format was auto-produced (see "Ready to post"). Select cards → "🏭 Produce" for MORE formats or "⧉ Clone" for a social post.')}
           {tab === 'ready' && t('viral_flow_ready', 'Step 3 · Everything finished, waiting to publish. ✍️ Social posts → 📤 push to the Calendar (Facebook…). 🏭 Blog/infographic/podcast → download & publish to the website / YouTube / fanpage.')}
-          {tab === 'archive' && t('viral_flow_archive', 'Outside the flow · Skipped + deleted posts rest here. Everything is permanently deleted after 7 days. You can still ↩ Restore a post back to "To review".')}
+          {tab === 'archive' && t('viral_flow_archive_topics', 'Outside the flow · Skipped + deleted content rests here. Everything is permanently deleted after 7 days. You can still ↩ Restore a content back to "To review".')}
           {tab === 'skills' && t('viral_flow_skills', 'Outside the flow · The AI recipes behind every step: writing formulas, scoring rubric, group routing, weekly brief… Edit as markdown, import a .md file, or reset to the built-in default — changes apply from the very next AI run.')}
           {tab === 'reports' && t('viral_flow_reports', 'Outside the flow · Weekly briefs the AI compiles from 7 days of crawling: hot news, market moves and a to-do list. Auto-created on the Mon-Wed-Fri schedule + Sunday recap, also sent to Zalo/email — tick off to-dos right here.')}
         </span>
@@ -1809,42 +1984,16 @@ export const ViralComponent: FC = () => {
         </div>
       )}
 
-      {/* filters (không áp dụng cho tab Chờ đăng / Công thức / Bản tin) */}
-      {!isReady && !isSkills && !isReports && (
-      <div className="flex flex-col gap-[8px]">
-        <div className="flex gap-[6px] flex-wrap">
-          {PLATFORMS.map((p) => (
-            <button
-              key={p.key}
-              onClick={() => setPlatform(p.key)}
-              className={clsx(
-                'px-[13px] py-[7px] rounded-[8px] text-[12.5px] font-[600] border',
-                platform === p.key ? 'bg-newColColor border-newBgLineColor text-textColor' : 'border-transparent text-textItemBlur hover:text-textColor'
-              )}
-            >
-              {p.dot && <i className="inline-block w-[7px] h-[7px] rounded-full mr-[6px] align-[1px]" style={{ background: p.dot }} />}
-              {p.label}
-            </button>
-          ))}
-        </div>
+      {/* điều khiển tab content: chỉ còn SẮP XẾP (1 content trộn nhiều nền tảng
+          + nhiều cấp học nên bỏ 2 hàng lọc cũ của chế độ theo-bài) */}
+      {isTopicTab && (
         <div className="flex gap-[6px] items-center flex-wrap">
-          <span className="text-[10.5px] uppercase tracking-[0.06em] text-textItemBlur mr-[2px]">{t('viral_school_level', 'School level')}</span>
-          {LEVELS.map((l) => (
-            <button
-              key={l.key}
-              onClick={() => setLevel(l.key)}
-              className={clsx('px-[11px] py-[5px] rounded-full text-[11.5px] font-[600] border', level === l.key ? 'bg-btnPrimary/15 border-btnPrimary/50 text-btnPrimary' : 'border-newBgLineColor text-textItemBlur')}
-            >
-              {l.label}
-            </button>
-          ))}
           <select value={sort} onChange={(e) => setSort(e.target.value)} className="ms-auto bg-newColColor border border-newBgLineColor rounded-[8px] px-[10px] py-[7px] text-[12.5px] outline-none">
-            <option value="shares">{t('viral_sort_top_shares', 'Most shares')}</option>
+            <option value="shares">{t('viral_sort_convergence', 'Hottest (most posts & sources)')}</option>
             <option value="score">{t('viral_sort_score', 'Highest AI score')}</option>
             <option value="new">{t('viral_sort_recent', 'Recently captured')}</option>
           </select>
         </div>
-      </div>
       )}
 
       {/* 📰 Bản tin tuần — đọc lại + tick todo */}
@@ -1933,45 +2082,29 @@ export const ViralComponent: FC = () => {
             )}
           </div>
         )
-      ) : /* các tab bài viral: chờ duyệt / đã duyệt / lưu trữ */
-      isLoading ? (
+      ) : /* các tab CONTENT: chờ duyệt / đã duyệt / lưu trữ — 1 thẻ = 1 content
+          (nhiều bài, nhiều nguồn gộp lại; content 1 bài cũng hợp lệ) */
+      topicsLoading ? (
         <div className="text-[13px] text-textItemBlur p-[30px] text-center">{t('viral_loading', 'Loading…')}</div>
-      ) : !items.length ? (
-        // Lọc/tab đang lọc ra rỗng nhưng tài khoản CÓ dữ liệu → báo "không khớp bộ lọc" + nút xóa lọc,
-        // thay vì màn hình onboarding lần đầu.
-        (platform !== 'all' || level !== 'all') && (stats?.total ?? 0) > 0 ? (
-          <div className="border border-dashed border-newBgLineColor rounded-[12px] p-[36px] text-center">
-            <div className="text-[15px] font-[600] mb-[6px]">{t('viral_no_match_title', 'No posts match these filters')}</div>
-            <div className="text-[12.5px] text-textItemBlur mb-[14px] max-w-[440px] mx-auto">
-              {t('viral_no_match_desc', 'Nothing in this tab matches the current platform / school-level filters. Clear the filters to see everything again.')}
-            </div>
-            <Button
-              onClick={() => {
-                setPlatform('all');
-                setLevel('all');
-              }}
-            >
-              {t('viral_clear_filters', 'Clear filters')}
-            </Button>
-          </div>
-        ) : (
+      ) : !topics.length ? (
         <div className="border border-dashed border-newBgLineColor rounded-[12px] p-[36px] text-center">
           <div className="text-[15px] font-[600] mb-[6px]">
-            {isArchive ? t('viral_archive_empty', 'Archive is empty') : t('viral_empty_title', 'No data yet')}
+            {isArchive ? t('viral_archive_empty', 'Archive is empty') : t('viral_topics_empty_title', 'No content yet')}
           </div>
-          <div className="text-[12.5px] text-textItemBlur mb-[14px] max-w-[440px] mx-auto">
-            {t('viral_empty_desc', 'Paste a link/image/text of a post being heavily shared, or add an RSS source and click "Crawl now". AI will classify it and dissect the formula.')}
+          <div className="text-[12.5px] text-textItemBlur mb-[14px] max-w-[480px] mx-auto">
+            {t('viral_topics_empty_desc', 'Content is distilled from every crawl batch (partner Facebook posts + RSS news merged by story). Wait for the next batch, press "Crawl now", or add a post by hand.')}
           </div>
           {!isArchive && <Button onClick={openCapture}>{t('viral_add_first_post', 'Add the first post')}</Button>}
         </div>
-        )
       ) : (
         <div
-          className="grid grid-cols-[repeat(auto-fill,minmax(248px,1fr))] gap-[14px] select-none"
+          className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-[14px] select-none"
           onMouseDown={onGridMouseDown}
         >
-          {items.map((p: any) => {
+          {topics.map((p: any) => {
             const sel = selected.has(p.id);
+            const sd = p.scoreDetail || {};
+            const syn = p.synthesis || {};
             return (
             <div
               key={p.id}
@@ -1980,10 +2113,10 @@ export const ViralComponent: FC = () => {
               }}
               onClick={() => {
                 if (didDrag.current) return;
-                openDetail(p)();
+                openTopic(p.id)();
               }}
               className={clsx(
-                'group/card relative cursor-pointer bg-newColColor border rounded-[13px] overflow-hidden flex flex-col transition-colors',
+                'group/card relative cursor-pointer bg-newColColor border rounded-[13px] p-[13px] flex flex-col gap-[8px] transition-colors',
                 sel ? 'border-btnPrimary ring-2 ring-btnPrimary/40' : 'border-newBgLineColor hover:border-newTableBorder'
               )}
             >
@@ -1994,125 +2127,86 @@ export const ViralComponent: FC = () => {
                   toggleSelect(p.id);
                 }}
                 className={clsx(
-                  'absolute z-[10] top-[8px] left-[8px] w-[22px] h-[22px] rounded-[6px] border-2 flex items-center justify-center text-[13px] font-[900] transition-all',
-                  sel ? 'bg-btnPrimary border-btnPrimary text-white' : 'bg-black/50 border-white/60 text-transparent opacity-0 group-hover/card:opacity-100'
+                  'absolute z-[10] top-[12px] left-[12px] w-[22px] h-[22px] rounded-[6px] border-2 flex items-center justify-center text-[13px] font-[900] transition-all',
+                  sel ? 'bg-btnPrimary border-btnPrimary text-white' : 'bg-newBgColor border-newBgLineColor text-transparent opacity-0 group-hover/card:opacity-100'
                 )}
                 title={t('viral_select', 'Select')}
                 aria-label={t('viral_select', 'Select')}
               >
                 ✓
               </button>
-              <div className="relative aspect-video bg-newBgColor grid place-items-center">
-                {p.thumbnail && !brokenThumbs.has(p.id) ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={p.thumbnail}
-                    alt=""
-                    className="absolute inset-0 w-full h-full object-cover"
-                    onError={() => markThumbBroken(p.id)}
-                  />
-                ) : (
-                  <span className="text-[13px] text-textItemBlur">{platMeta(p.platform)?.label}</span>
-                )}
-                <span className="absolute bottom-[8px] left-[8px] text-[10.5px] font-[700] px-[9px] py-[3px] rounded-full bg-black/70 text-white flex items-center gap-[5px]">
-                  <i className="w-[7px] h-[7px] rounded-full inline-block" style={{ background: platMeta(p.platform)?.dot || '#888' }} />
-                  {platMeta(p.platform)?.label || p.platform}
-                </span>
+              {/* hàng đầu: điểm + persona + vòng viết lại + độ hội tụ (bài·nguồn) */}
+              <div className="flex items-center gap-[6px] flex-wrap pl-[30px] min-h-[22px]">
                 {p.score != null && (
-                  <span className={clsx('absolute top-[8px] right-[8px] text-[11px] font-[800] px-[8px] py-[3px] rounded-[7px] tabular-nums', scoreStyle(p.score))}>
-                    ⭐ {p.score}
-                  </span>
+                  <span className={clsx('text-[11px] font-[800] px-[8px] py-[2px] rounded-[7px] tabular-nums', scoreStyle(p.score))}>⭐ {p.score}</span>
                 )}
-                {p.origin === 'auto' && (
-                  <span className={clsx('absolute right-[8px] text-[9px] font-[700] tracking-[0.05em] px-[7px] py-[3px] rounded-[6px] bg-black/60 text-[#57D9A3]', p.score != null ? 'top-[34px]' : 'top-[8px]')}>
-                    AUTO
-                  </span>
+                {p.persona && <span className="text-[10.5px] font-[700] px-[7px] py-[2px] rounded-full bg-btnPrimary/12 text-btnPrimary">{p.persona}</span>}
+                {(sd.rounds ?? 0) > 0 && (
+                  <span className="text-[10.5px] text-textItemBlur tabular-nums" title={t('viral_topic_rounds_hint', 'AI rewrite rounds used')}>♻{sd.rounds}</span>
                 )}
-                {!isArchive && (
-                  <button
-                    onClick={removePost(p.id)}
-                    title={t('viral_delete', 'Delete')}
-                    aria-label={t('viral_delete', 'Delete')}
-                    className="absolute bottom-[8px] right-[8px] w-[22px] h-[22px] rounded-[6px] bg-black/60 text-white/70 text-[11px] opacity-0 group-hover/card:opacity-100 transition-opacity hover:text-red-400"
-                  >
-                    ✕
-                  </button>
-                )}
+                <span
+                  className={clsx('ms-auto text-[11px] tabular-nums font-[700]', p.postCount > 1 ? 'text-[#FFC53D]' : 'text-textItemBlur')}
+                  title={t('viral_topic_convergence_hint', 'posts · sources merged into this content')}
+                >
+                  📄{p.postCount} · 📡{p.sourceCount}
+                </span>
               </div>
-              <div className="p-[12px] flex flex-col gap-[8px] flex-1">
-                <div className="flex items-center gap-[6px] text-[11px] text-textItemBlur">
-                  <span className={clsx('text-[10px] font-[700] px-[8px] py-[2px] rounded-full', LEVEL_STYLE[p.level] || LEVEL_STYLE.all)}>{levelLabel(p.level)}</span>
-                  <span className="truncate">{p.sourceName || '—'}</span>
-                </div>
-                <div className="text-[13.5px] font-[600] leading-[1.4] line-clamp-2 min-h-[38px]">{p.title}</div>
-                <div className="flex gap-[11px] text-[12px] text-textItemBlur tabular-nums flex-wrap mt-auto">
-                  {p.views != null && <span>▶ <b className="text-textColor">{nice(p.views)}</b></span>}
-                  {p.likes != null && <span>👍 <b className="text-textColor">{nice(p.likes)}</b></span>}
-                  {p.comments != null && <span>💬 <b className="text-textColor">{nice(p.comments)}</b></span>}
-                  {p.shares ? (
-                    <span className="text-[#FFC53D]">↗ <b className="text-[#FFC53D] text-[13px] font-[800]">{nice(p.shares)}</b></span>
-                  ) : (
-                    <span className="italic opacity-70" title={t('viral_no_share_data_hint', 'Share count not available yet')}>{t('viral_no_share_data', 'no share data')}</span>
-                  )}
-                  {p.clonedCount > 0 && <span title={t('viral_stat_cloned', 'cloned')}>↺ {p.clonedCount}</span>}
-                  {(() => {
-                    // gợi ý sản xuất AI (content_type + podcast) — gán lúc chấm điểm
-                    try {
-                      const d = JSON.parse(p.scoreDetail || '{}');
-                      if (!d.content_type) return null;
-                      const ic = d.content_type === 'infographic' ? '🖼' : d.content_type === 'video' ? '🎬' : '📝';
-                      return (
-                        <span className="ms-auto" title={t('viral_produce_suggest', 'AI production suggestion')}>
-                          {ic}{(d.podcast_score ?? 0) >= 75 ? ' 🎧' : ''}
-                        </span>
-                      );
-                    } catch {
-                      return null;
-                    }
-                  })()}
-                </div>
-                {/* hành động nhanh theo tab */}
-                <div className="flex gap-[6px] pt-[8px] border-t border-newBgLineColor/60">
-                  {isArchive ? (
-                    <>
-                      <button onClick={restoreOne(p.id)} className="flex-1 py-[6px] rounded-[7px] text-[11.5px] font-[700] text-btnPrimary hover:bg-btnPrimary/10">
-                        ↩ {t('viral_restore', 'Restore')}
-                      </button>
-                      <button onClick={hardDeleteOne(p.id)} className="flex-1 py-[6px] rounded-[7px] text-[11.5px] font-[700] text-[#FF5A52] hover:bg-[#FF5A52]/10">
-                        ✕ {t('viral_delete_forever', 'Delete forever')}
-                      </button>
-                    </>
-                  ) : p.status === 'pending' ? (
-                    <>
-                      <button onClick={quickStatus(p.id, 'approved')} className="flex-1 py-[6px] rounded-[7px] text-[11.5px] font-[700] bg-[#57D9A3]/12 text-[#57D9A3] hover:bg-[#57D9A3]/25">
-                        ✓ {t('viral_approve', 'Approve')}
-                      </button>
-                      <button onClick={quickStatus(p.id, 'skipped')} className="flex-1 py-[6px] rounded-[7px] text-[11.5px] font-[700] text-[#FF5A52] hover:bg-[#FF5A52]/10">
-                        ✕ {t('viral_skip', 'Skip')}
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <span className={clsx('flex-1 py-[6px] text-center rounded-[7px] text-[11px] font-[700]', p.status === 'approved' ? 'text-[#57D9A3]' : 'text-textItemBlur')}>
-                        {p.status === 'approved' ? `✓ ${t('viral_status_approved', 'Approved')}` : `✕ ${t('viral_status_skipped', 'Skipped')}`}
-                      </span>
-                      <button onClick={quickStatus(p.id, 'pending')} title={t('viral_back_to_review', 'Back to review')} aria-label={t('viral_back_to_review', 'Back to review')} className="px-[10px] py-[6px] rounded-[7px] text-[11.5px] text-textItemBlur hover:text-textColor">
-                        ↩
-                      </button>
-                    </>
-                  )}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openDetail(p)();
-                    }}
-                    className="px-[10px] py-[6px] rounded-[7px] text-[11.5px] font-[700] text-btnPrimary hover:bg-btnPrimary/10"
-                    title={t('viral_dissect_and_clone', 'Dissect the formula & clone')}
-                    aria-label={t('viral_dissect_and_clone', 'Dissect the formula & clone')}
-                  >
-                    ⧉
-                  </button>
-                </div>
+              <div className="text-[13.5px] font-[600] leading-[1.4] line-clamp-2 min-h-[38px]">{p.label}</div>
+              {(syn.hook || p.aiContent) && (
+                <div className="text-[12px] text-textItemBlur leading-[1.5] line-clamp-2">{syn.hook || p.aiContent}</div>
+              )}
+              <div className="flex gap-[10px] text-[11.5px] text-textItemBlur tabular-nums items-center mt-auto">
+                {(p.platforms || []).slice(0, 4).map((pl: string) => (
+                  <i key={pl} className="w-[7px] h-[7px] rounded-full inline-block" style={{ background: platMeta(pl)?.dot || '#888' }} title={pl} />
+                ))}
+                {p.totalShares > 0 && (
+                  <span className="text-[#FFC53D]">↗ <b className="text-[#FFC53D] font-[800]">{nice(p.totalShares)}</b></span>
+                )}
+                <span className="ms-auto" title={t('viral_produce_suggest', 'AI production suggestion')}>
+                  {topicDefaults(sd).map((f) => FORMAT_META[f]?.icon).join(' ')}
+                </span>
+              </div>
+              {/* hành động nhanh theo tab */}
+              <div className="flex gap-[6px] pt-[8px] border-t border-newBgLineColor/60">
+                {isArchive ? (
+                  <>
+                    <button onClick={topicQuick(p.id, 'pending')} className="flex-1 py-[6px] rounded-[7px] text-[11.5px] font-[700] text-btnPrimary hover:bg-btnPrimary/10">
+                      ↩ {t('viral_restore', 'Restore')}
+                    </button>
+                    <button onClick={topicQuick(p.id, 'hard-delete')} className="flex-1 py-[6px] rounded-[7px] text-[11.5px] font-[700] text-[#FF5A52] hover:bg-[#FF5A52]/10">
+                      ✕ {t('viral_delete_forever', 'Delete forever')}
+                    </button>
+                  </>
+                ) : p.status === 'pending' ? (
+                  <>
+                    <button onClick={topicQuick(p.id, 'approve')} className="flex-1 py-[6px] rounded-[7px] text-[11.5px] font-[700] bg-[#57D9A3]/12 text-[#57D9A3] hover:bg-[#57D9A3]/25">
+                      ✓ {t('viral_approve', 'Approve')}
+                    </button>
+                    <button onClick={topicQuick(p.id, 'skip')} className="flex-1 py-[6px] rounded-[7px] text-[11.5px] font-[700] text-[#FF5A52] hover:bg-[#FF5A52]/10">
+                      ✕ {t('viral_skip', 'Skip')}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex-1 py-[6px] text-center rounded-[7px] text-[11px] font-[700] text-[#57D9A3]">
+                      ✓ {t('viral_status_approved', 'Approved')}
+                    </span>
+                    <button onClick={topicQuick(p.id, 'pending')} title={t('viral_back_to_review', 'Back to review')} aria-label={t('viral_back_to_review', 'Back to review')} className="px-[10px] py-[6px] rounded-[7px] text-[11.5px] text-textItemBlur hover:text-textColor">
+                      ↩
+                    </button>
+                  </>
+                )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openTopic(p.id)();
+                  }}
+                  className="px-[10px] py-[6px] rounded-[7px] text-[11.5px] font-[700] text-btnPrimary hover:bg-btnPrimary/10"
+                  title={t('viral_topic_open', 'Open content detail')}
+                  aria-label={t('viral_topic_open', 'Open content detail')}
+                >
+                  ⧉
+                </button>
               </div>
             </div>
             );

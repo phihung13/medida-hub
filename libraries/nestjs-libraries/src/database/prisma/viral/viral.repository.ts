@@ -139,12 +139,30 @@ export class ViralRepository {
   }
 
   // Xóa cứng TOÀN BỘ Lưu trữ (bỏ qua + đã xóa).
-  hardDeleteArchive(orgId: string) {
+  async hardDeleteArchive(orgId: string) {
+    // dọn cả CHỦ ĐỀ trong lưu trữ (bỏ qua + xóa mềm) — UI giờ duyệt theo content
+    await this._topics.model.viralTopic.deleteMany({
+      where: {
+        organizationId: orgId,
+        OR: [{ status: 'skipped', deletedAt: null }, { deletedAt: { not: null } }],
+      },
+    }).catch(() => null);
     return this._posts.model.viralPost.deleteMany({
       where: {
         organizationId: orgId,
         OR: [{ status: 'skipped', deletedAt: null }, { deletedAt: { not: null } }],
       },
+    });
+  }
+
+  // Xóa CỨNG chủ đề: bài thành viên chuyển vào lưu trữ (xóa mềm, purge sau).
+  async hardDeleteTopics(orgId: string, ids: string[]) {
+    await this._posts.model.viralPost.updateMany({
+      where: { organizationId: orgId, topicId: { in: ids } },
+      data: { topicId: null, deletedAt: new Date() },
+    });
+    return this._topics.model.viralTopic.deleteMany({
+      where: { id: { in: ids }, organizationId: orgId },
     });
   }
 
@@ -173,6 +191,15 @@ export class ViralRepository {
     await this._clones.model.viralClone.deleteMany({
       where: { deletedAt: { not: null, lt: cutoff } },
     });
+    // dọn cả chủ đề trong lưu trữ cũ (bỏ qua lâu / xóa mềm lâu)
+    await this._topics.model.viralTopic.deleteMany({
+      where: {
+        OR: [
+          { status: 'skipped', deletedAt: null, updatedAt: { lt: cutoff } },
+          { deletedAt: { not: null, lt: cutoff } },
+        ],
+      },
+    }).catch(() => null);
     return r.count;
   }
 

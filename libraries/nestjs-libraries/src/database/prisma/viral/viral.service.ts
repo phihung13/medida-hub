@@ -158,11 +158,13 @@ export class ViralService implements OnModuleInit {
       }
     }, 10 * 60000);
 
-    // Tự dọn Lưu trữ (bỏ qua + đã xóa) cũ hơn 7 ngày + reaper bài chờ duyệt ứ
-    // quá 30 ngày → bỏ qua. Chạy sau 2 phút rồi mỗi 6h.
+    // Tự dọn Lưu trữ (bỏ qua + đã xóa) cũ hơn 7 ngày + reaper bài & CONTENT chờ
+    // duyệt ứ quá 30 ngày → bỏ qua. Chạy sau 2 phút rồi mỗi 6h.
     const purge = () =>
       this._repo
         .expirePendingOlderThan(30)
+        .catch(() => null)
+        .then(() => this._repo.expireTopicsOlderThan(30))
         .catch(() => null)
         .then(() => this._repo.purgeArchiveOlderThan(7))
         .catch(() => null);
@@ -539,8 +541,8 @@ export class ViralService implements OnModuleInit {
     }
     await this.afterCrawl(orgId, since).catch(() => null);
     // Mẻ lớn: mỗi lượt tổng hợp tối đa 12 chủ đề — vét tiếp tới khi hết
-    // (trần 4 lượt phòng lặp vô hạn).
-    for (let i = 0; i < 4; i++) {
+    // (trần 8 lượt ≈ 108 content/mẻ, phòng lặp vô hạn).
+    for (let i = 0; i < 8; i++) {
       const more = await this.synthesizeTopics(orgId).catch(() => 0);
       if (!more) break;
     }
@@ -816,9 +818,32 @@ export class ViralService implements OnModuleInit {
     } else {
       await this.clusterByAI(orgId, startedAt).catch(() => null);
     }
+    // MỌI bài đều thành CONTENT (user chốt: 1 content = nhiều bài HOẶC 1 bài):
+    // bài không gom được vào cụm nào → mỗi bài 1 chủ đề 1-nguồn, vẫn đi qua
+    // tổng hợp + chấm + phễu 90/70/3 như chủ đề nhiều nguồn.
+    await this.topicizeLeftovers(orgId, startedAt).catch(() => null);
     const synthed = await this.synthesizeTopics(orgId).catch(() => 0);
     if (synthed > 0) await this.enrichPersonas(orgId).catch(() => null);
     return synthed;
+  }
+
+  // Bài lẻ chưa có chủ đề (dưới ngưỡng hội tụ) → chủ đề 1 bài. Trần 150/mẻ.
+  private async topicizeLeftovers(orgId: string, since: Date): Promise<number> {
+    const rows = await this._repo.unclusteredSince(orgId, since, 150);
+    let made = 0;
+    for (const p of rows as any[]) {
+      const topic = await this._repo
+        .createTopic(orgId, {
+          label: decodeEntities(p.title).slice(0, 120),
+          origin: 'auto',
+        })
+        .catch(() => null);
+      if (!topic) continue;
+      await this._repo.setPostsTopic([p.id], topic.id).catch(() => null);
+      await this.recomputeTopic(orgId, topic.id).catch(() => null);
+      made++;
+    }
+    return made;
   }
 
   // ── GOM CỤM BẰNG AI (cửa sổ = mỗi lần cào) ────────────────────────────────
@@ -965,8 +990,9 @@ export class ViralService implements OnModuleInit {
 
   // ── TỔNG HỢP CHỦ ĐỀ (nhiều nguồn → 1 content gốc) + chấm điểm cấp chủ đề ───
   private async synthesizeTopics(orgId: string): Promise<number> {
-    const min = getViralConfig().convergenceMin;
-    const topics = await this._repo.topicsToSynthesize(orgId, min, 12);
+    // min=1: chủ đề 1 bài cũng tổng hợp (mọi bài đều thành content); cụm nhiều
+    // bài/nguồn vẫn được ưu tiên trước nhờ orderBy postCount/sourceCount.
+    const topics = await this._repo.topicsToSynthesize(orgId, 1, 12);
     if (!topics.length) return 0;
     const personasText = await this.personasTextFor(orgId);
     const rubric = getSkill('tieu-chi-cham-diem') || VIRAL_RUBRIC;
@@ -1257,6 +1283,7 @@ export class ViralService implements OnModuleInit {
   }
 
   async bulkTopicStatus(orgId: string, ids: string[], status: string) {
+    if (status === 'hard-delete') return this._repo.hardDeleteTopics(orgId, ids);
     if (status === 'delete') return this._repo.softDeleteTopics(orgId, ids);
     const res = await this._repo.setTopicStatusMany(orgId, ids, status);
     // Duyệt chủ đề = tự sản xuất định dạng đề xuất (nền, tắt được ở Cài đặt).

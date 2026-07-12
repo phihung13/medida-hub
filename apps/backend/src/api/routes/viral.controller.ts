@@ -88,6 +88,7 @@ export class ViralController {
       skip: 'skipped',
       pending: 'pending',
       delete: 'delete',
+      'hard-delete': 'hard-delete',
     };
     const target = map[body.action || ''];
     if (!target) throw new HttpException('Hành động không hợp lệ.', 400);
