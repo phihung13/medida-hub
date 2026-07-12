@@ -1,6 +1,7 @@
 import { SentryComponent } from '@gitroom/frontend/components/layout/sentry.component';
 import { SuppressDevWarnings } from '@gitroom/frontend/components/layout/suppress.dev.warnings';
 import { LanMediaFix } from '@gitroom/frontend/components/layout/lan.media.fix';
+import { MaintenanceSw } from '@gitroom/frontend/components/layout/maintenance.sw';
 
 export const dynamic = 'force-dynamic';
 import '../global.scss';
@@ -65,6 +66,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       >
         <SuppressDevWarnings />
         <LanMediaFix />
+        <MaintenanceSw />
         <VariableContextComponent
           storageProvider={
             process.env.STORAGE_PROVIDER! as 'local' | 'cloudflare'
