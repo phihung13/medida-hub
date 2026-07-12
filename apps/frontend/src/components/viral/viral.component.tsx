@@ -521,6 +521,19 @@ const ConfigModal: FC = () => {
   useEffect(() => {
     if (data?.clusterMode) setClusterMode(data.clusterMode);
   }, [data?.clusterMode]);
+  // Phễu tự động 90/70/3: ≥duyệt → tự duyệt (+tự sản xuất) · <bỏ → tự bỏ ·
+  // ở giữa → AI viết lại tối đa N vòng rồi chờ người duyệt.
+  const [approveMin, setApproveMin] = useState<number>(90);
+  const [skipMax, setSkipMax] = useState<number>(70);
+  const [maxRounds, setMaxRounds] = useState<number>(3);
+  const [autoProduce, setAutoProduce] = useState<boolean>(true);
+  useEffect(() => {
+    if (!data) return;
+    if (typeof data.autoApproveMin === 'number') setApproveMin(data.autoApproveMin);
+    if (typeof data.autoSkipMax === 'number') setSkipMax(data.autoSkipMax);
+    if (typeof data.rewriteMaxRounds === 'number') setMaxRounds(data.rewriteMaxRounds);
+    if (typeof data.autoProduce === 'boolean') setAutoProduce(data.autoProduce);
+  }, [data]);
   // Nhóm Zalo nhận bản tin tuần — danh sách lấy từ bot qua proxy /botapi
   // (same-origin, cookie đăng nhập Hub đi kèm; KHÔNG qua useFetch backend).
   const [zaloThread, setZaloThread] = useState<string>(data?.reportZaloThreadId ?? '');
@@ -546,7 +559,15 @@ const ConfigModal: FC = () => {
   }, []);
 
   const save = useCallback(async () => {
-    const body: any = { crawlEveryHours: Number(hours), reportZaloThreadId: zaloThread, clusterMode };
+    const body: any = {
+      crawlEveryHours: Number(hours),
+      reportZaloThreadId: zaloThread,
+      clusterMode,
+      autoApproveMin: Number(approveMin),
+      autoSkipMax: Number(skipMax),
+      rewriteMaxRounds: Number(maxRounds),
+      autoProduce,
+    };
     if (apify.trim()) body.apifyToken = apify.trim();
     if (yt.trim()) body.youtubeKey = yt.trim();
     if (mmKey.trim()) body.minimaxKey = mmKey.trim();
@@ -558,7 +579,7 @@ const ConfigModal: FC = () => {
     }
     toast.show(t('viral_config_saved', 'Configuration saved.'), 'success');
     modal.closeCurrent();
-  }, [apify, yt, mmKey, mmGroup, hours, zaloThread, clusterMode]);
+  }, [apify, yt, mmKey, mmGroup, hours, zaloThread, clusterMode, approveMin, skipMax, maxRounds, autoProduce]);
 
   return (
     <div className="flex flex-col gap-[14px]">
@@ -630,6 +651,31 @@ const ConfigModal: FC = () => {
         </select>
         <span className="text-[11px] text-textItemBlur mt-[4px] block">
           {t('viral_cluster_hint', 'When ≥2 posts share the same story, the system surfaces that content (not each post) for approval — most-shared first.')}
+        </span>
+      </Field>
+      {/* Phễu tự động: ≥ngưỡng duyệt → tự duyệt + tự sản xuất · <ngưỡng bỏ → tự bỏ ·
+          ở giữa → AI viết lại tối đa N vòng rồi nằm chờ người duyệt */}
+      <Field label={t('viral_funnel', 'Auto funnel (score thresholds)')}>
+        <div className="flex gap-[8px]">
+          <label className="flex flex-col gap-[2px] flex-1 text-[11px] text-textItemBlur">
+            {t('viral_funnel_approve', 'Auto-approve ≥')}
+            <input type="number" min={50} max={100} value={approveMin} onChange={(e) => setApproveMin(Number(e.target.value))} className={inputCls} />
+          </label>
+          <label className="flex flex-col gap-[2px] flex-1 text-[11px] text-textItemBlur">
+            {t('viral_funnel_skip', 'Auto-skip <')}
+            <input type="number" min={0} max={85} value={skipMax} onChange={(e) => setSkipMax(Number(e.target.value))} className={inputCls} />
+          </label>
+          <label className="flex flex-col gap-[2px] flex-1 text-[11px] text-textItemBlur">
+            {t('viral_funnel_rounds', 'Rewrite rounds')}
+            <input type="number" min={0} max={5} value={maxRounds} onChange={(e) => setMaxRounds(Number(e.target.value))} className={inputCls} />
+          </label>
+        </div>
+        <label className="flex items-center gap-[6px] text-[11.5px] text-textItemBlur cursor-pointer mt-[6px]">
+          <input type="checkbox" checked={autoProduce} onChange={(e) => setAutoProduce(e.target.checked)} />
+          🏭 {t('viral_funnel_autoproduce', 'Approve = auto-produce the AI-suggested format (products wait in the Products tab, nothing is scheduled automatically)')}
+        </label>
+        <span className="text-[11px] text-textItemBlur mt-[4px] block">
+          {t('viral_funnel_hint', 'Between the two thresholds the AI rewrites and re-scores up to N rounds (keeping the better version); if still short, the content waits for manual review.')}
         </span>
       </Field>
       {/* Báo cáo tuần: bản tin + todo list gửi về nhóm Zalo (bot trang Zalo) + email */}

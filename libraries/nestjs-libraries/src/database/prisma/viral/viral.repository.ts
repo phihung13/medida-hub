@@ -15,12 +15,36 @@ export class ViralRepository {
   ) {}
 
   // URL chuẩn hoá để dedup — bỏ query + slash cuối + lowercase (như n8n).
+  // Riêng Facebook/YouTube: GIỮ tham số định danh bài (story_fbid/fbid/id/v) —
+  // permalink dạng query (permalink.php?story_fbid=...) mà cắt hết query thì
+  // mọi bài cùng trang gộp về 1 URL → bài thứ 2 trở đi bị vứt nhầm vì "trùng".
   static normUrl(u?: string | null): string {
-    return String(u || '')
-      .trim()
-      .replace(/\?.*$/, '')
-      .replace(/\/$/, '')
-      .toLowerCase();
+    const raw = String(u || '').trim();
+    if (!raw) return '';
+    try {
+      const url = new URL(raw);
+      let kept = '';
+      if (
+        /(^|\.)(facebook\.com|fb\.watch|fb\.com|youtube\.com|youtu\.be)$/.test(
+          url.hostname.toLowerCase()
+        )
+      ) {
+        kept = ['story_fbid', 'fbid', 'id', 'v']
+          .map((k) => {
+            const v = url.searchParams.get(k);
+            return v ? `${k}=${v}` : '';
+          })
+          .filter(Boolean)
+          .join('&');
+      }
+      return (
+        (url.origin + url.pathname).replace(/\/$/, '').toLowerCase() +
+        (kept ? '?' + kept : '')
+      );
+    } catch {
+      // không phải URL tuyệt đối — giữ cách chuẩn hoá cũ
+      return raw.replace(/\?.*$/, '').replace(/\/$/, '').toLowerCase();
+    }
   }
 
   // Điều kiện WHERE theo tab: pending/approved (chưa xóa), archive (bỏ qua HOẶC
@@ -301,6 +325,28 @@ export class ViralRepository {
       orderBy: { createdAt: 'desc' },
       take: 200,
     });
+  }
+
+  // Chủ đề nào (trong danh sách) đã có sản phẩm — duyệt lại không sản xuất trùng.
+  async topicIdsWithProducts(orgId: string, topicIds: string[]): Promise<string[]> {
+    if (!topicIds.length) return [];
+    const rows = await this._products.model.viralProduct.findMany({
+      where: { organizationId: orgId, topicId: { in: topicIds }, deletedAt: null },
+      select: { topicId: true },
+      distinct: ['topicId'],
+    });
+    return rows.map((r) => r.topicId as string);
+  }
+
+  // Chủ đề (distinct) của một nhóm bài — cho luồng "duyệt bài = duyệt chủ đề".
+  async topicIdsOfPosts(orgId: string, postIds: string[]): Promise<string[]> {
+    if (!postIds.length) return [];
+    const rows = await this._posts.model.viralPost.findMany({
+      where: { organizationId: orgId, id: { in: postIds }, topicId: { not: null } },
+      select: { topicId: true },
+      distinct: ['topicId'],
+    });
+    return rows.map((r) => r.topicId as string);
   }
 
   getProduct(orgId: string, id: string) {

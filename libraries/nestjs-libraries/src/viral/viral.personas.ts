@@ -71,13 +71,14 @@ export const VIRAL_RUBRIC = `RUBRIC CHẤM (tổng 100):
 - SEO/Hashtag (15): có 4-6 hashtag đúng chủ đề + từ khoá tìm kiếm
 Chấm BẢN VIẾT LẠI (không chấm bài gốc). Chấm rộng rãi: bản viết tốt, đúng brand, đủ hook+CTA+hashtag → 90-100; ổn còn 1 điểm nhỏ → 80-89; tạm/ý tưởng gốc yếu → 60-79; dưới 50 chỉ khi nội dung thật sự không liên quan giáo dục/phụ huynh hoặc không thể tận dụng.`;
 
-// Ngưỡng trạng thái theo yêu cầu vận hành web (khác n8n: n8n duyệt tay 100%):
-// >=90 tự duyệt; 50-89 chờ duyệt tay; <50 bỏ qua.
+// Ngưỡng trạng thái: mặc định >=90 tự duyệt, <50 bỏ qua; caller truyền ngưỡng
+// từ Cài đặt (autoApproveMin / autoSkipMax) để chỉnh được không cần deploy.
 export const viralStatusForScore = (
-  score: number | null | undefined
+  score: number | null | undefined,
+  opts?: { approveMin?: number; skipMax?: number }
 ): 'approved' | 'pending' | 'skipped' => {
   if (typeof score !== 'number') return 'pending';
-  if (score >= 90) return 'approved';
-  if (score < 50) return 'skipped';
+  if (score >= (opts?.approveMin ?? 90)) return 'approved';
+  if (score < (opts?.skipMax ?? 50)) return 'skipped';
   return 'pending';
 };

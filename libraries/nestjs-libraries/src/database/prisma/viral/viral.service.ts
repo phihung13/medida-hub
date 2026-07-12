@@ -466,6 +466,87 @@ export class ViralService implements OnModuleInit {
     return this._repo.getById(orgId, created.id);
   }
 
+  // ── ĐỐI TÁC CÀO (Claude Cowork qua Public API) ──────────────────────────
+  // Nhận bài thô từ đối tác — khác capture tay ở 3 điểm: chặn URL trùng NGAY
+  // TẠI CỬA, origin 'auto', KHÔNG tạo chủ đề 1 nguồn (bài chờ gom CHUNG cả mẻ
+  // khi đối tác gọi finish).
+  async capturePartner(
+    orgId: string,
+    body: {
+      url?: string;
+      text?: string;
+      images?: { base64: string; mediaType: string }[];
+      platform?: string;
+      level?: string;
+    }
+  ): Promise<{ id?: string; duplicated?: boolean; spam?: boolean }> {
+    if (body.url && (await this._repo.existsByUrl(orgId, body.url))) {
+      return { duplicated: true };
+    }
+    // Lọc rác lớp 2 (đối tác đã lọc lớp 1): minigame/câu share/khuyến mãi.
+    if (this.isSpam(body.text?.slice(0, 300))) {
+      return { spam: true };
+    }
+    const ai = await this._openai
+      .viralAnalyze({ url: body.url, text: body.text, images: body.images })
+      .catch(() => null);
+    const created = await this._repo.create(orgId, {
+      platform: body.platform || ai?.platform || 'facebook',
+      level: body.level || ai?.level || 'all',
+      title:
+        ai?.title || body.text?.slice(0, 120) || body.url || 'Bài đối tác cào',
+      sourceName: ai?.sourceName || null,
+      url: body.url || null,
+      content: ai?.content || body.text || null,
+      shares: ai?.shares ?? null,
+      likes: ai?.likes ?? null,
+      comments: ai?.comments ?? null,
+      views: ai?.views ?? null,
+      origin: 'auto',
+    });
+    return { id: created.id };
+  }
+
+  // Chống gọi finish chồng nhau (đối tác lỡ gọi 2 lần) — mỗi org 1 pipeline.
+  private finishingOrgs = new Set<string>();
+
+  // Kết mẻ đối tác: cào RSS/News/YouTube nội bộ → gom cụm CHUNG với bài đối
+  // tác (cửa sổ 24h — bài gửi rải nhiều giờ trước finish vẫn vào mẻ) → tổng
+  // hợp + chấm → làm giàu persona → bản tin phễu. Gọi ở chế độ NỀN (Cloudflare
+  // cắt request ~100s nên controller không đợi).
+  async finishPartnerBatch(orgId: string) {
+    if (this.finishingOrgs.has(orgId)) return;
+    this.finishingOrgs.add(orgId);
+    try {
+      await this.runPartnerBatch(orgId);
+    } finally {
+      this.finishingOrgs.delete(orgId);
+    }
+  }
+
+  private async runPartnerBatch(orgId: string) {
+    const since = new Date(Date.now() - 24 * 3600 * 1000);
+    const sources = await this._repo.autoSources(orgId);
+    for (const s of sources) {
+      try {
+        if (s.platform === 'news') await this.crawlRss(orgId, s);
+        else if (s.platform === 'gnews') await this.crawlGnews(orgId, s);
+        else if (s.platform === 'youtube') await this.crawlYoutube(orgId, s);
+        else await this.crawlApify(orgId, s);
+      } catch {
+        /* nguồn lỗi — bỏ qua, cào tiếp nguồn khác */
+      }
+    }
+    await this.afterCrawl(orgId, since).catch(() => null);
+    // Mẻ lớn: mỗi lượt tổng hợp tối đa 12 chủ đề — vét tiếp tới khi hết
+    // (trần 4 lượt phòng lặp vô hạn).
+    for (let i = 0; i < 4; i++) {
+      const more = await this.synthesizeTopics(orgId).catch(() => 0);
+      if (!more) break;
+    }
+    await this.sendWeeklyReport(orgId, 'crawl').catch(() => null);
+  }
+
   // Mổ công thức (cache vào formula để không tốn token gọi lại).
   async formula(orgId: string, id: string) {
     const post = await this._repo.getById(orgId, id);
@@ -551,10 +632,23 @@ export class ViralService implements OnModuleInit {
   }
 
   // ── THAO TÁC HÀNG LOẠT ────────────────────────────────────────────────────
-  bulkStatus(orgId: string, ids: string[], status: string) {
+  async bulkStatus(orgId: string, ids: string[], status: string) {
     const valid = ['approved', 'pending', 'skipped'];
     if (!valid.includes(status)) throw new Error('Trạng thái không hợp lệ');
-    return this._repo.setStatusMany(orgId, ids, status);
+    const res = await this._repo.setStatusMany(orgId, ids, status);
+    // DUYỆT TAY trên UI (thẻ bài) = duyệt CHỦ ĐỀ chứa bài đó → tự sản xuất
+    // 1 bộ/chủ đề (không nhân theo số bài). Chạy nền — duyệt không chờ AI.
+    if (status === 'approved' && getViralConfig().autoProduce) {
+      this._repo
+        .topicIdsOfPosts(orgId, ids)
+        .then(async (tids) => {
+          if (!tids.length) return;
+          await this._repo.setTopicStatusMany(orgId, tids, 'approved');
+          await this.autoProduceTopics(orgId, tids);
+        })
+        .catch(() => null);
+    }
+    return res;
   }
 
   bulkSoftDelete(orgId: string, ids: string[]) {
@@ -906,33 +1000,131 @@ export class ViralService implements OnModuleInit {
       })
       .catch(() => null);
     if (!res) return false;
-    const score = Math.max(0, Math.min(100, Number(res.score) || 0));
+    let score = Math.max(0, Math.min(100, Number(res.score) || 0));
+    let persona = res.persona ? String(res.persona).slice(0, 30) : null;
+    let aiContent = res.rewritten ? String(res.rewritten).slice(0, 4000) : null;
+    let scores = res.scores;
+    let verdict = res.verdict;
+    let reason = res.reason;
+    const label =
+      String(res.label || '').slice(0, 300) ||
+      decodeEntities((posts[0] as any).title).slice(0, 120);
+    // VÒNG LẶP VIẾT LẠI (phễu 90/70/3, ngưỡng chỉnh trong Cài đặt): điểm nằm
+    // giữa "tự bỏ" và "tự duyệt" → viết lại + chấm lại, GIỮ BẢN TỐT HƠN, tối
+    // đa N vòng. Đạt ngưỡng duyệt → dừng sớm; hết vòng chưa đạt → chờ người.
+    const cfg = getViralConfig();
+    let rounds = 0;
+    while (
+      rounds < cfg.rewriteMaxRounds &&
+      score < cfg.autoApproveMin &&
+      score >= cfg.autoSkipMax
+    ) {
+      rounds++;
+      const syn: any = res.synthesis || {};
+      const rw = await this._openai
+        .viralRewriteAndScore({
+          title: label,
+          content:
+            [syn.angle, ...(syn.agreedFacts || []), syn.whyItMatters]
+              .filter(Boolean)
+              .join('\n') || aiContent,
+          prevContent: aiContent,
+          prevScore: score,
+          persona,
+          personasText,
+          rubric,
+        })
+        .catch(() => null);
+      if (!rw || typeof rw.score !== 'number' || !rw.content) break;
+      const newScore = Math.max(0, Math.min(100, Math.round(rw.score)));
+      if (newScore > score) {
+        score = newScore;
+        aiContent = String(rw.content).slice(0, 4000);
+        persona = rw.persona ? String(rw.persona).slice(0, 30) : persona;
+        scores = rw.scores || scores;
+        verdict = rw.verdict || verdict;
+        reason = rw.reason || reason;
+      }
+    }
+    const status = viralStatusForScore(score, {
+      approveMin: cfg.autoApproveMin,
+      skipMax: cfg.autoSkipMax,
+    });
     await this._repo.updateTopic(topic.id, {
-      label:
-        String(res.label || '').slice(0, 300) ||
-        decodeEntities((posts[0] as any).title).slice(0, 120),
+      label,
       synthesis: JSON.stringify(res.synthesis || {}).slice(0, 8000),
-      persona: res.persona ? String(res.persona).slice(0, 30) : null,
-      aiContent: res.rewritten ? String(res.rewritten).slice(0, 4000) : null,
+      persona,
+      aiContent,
       score,
       scoreDetail: JSON.stringify({
-        scores: res.scores,
-        verdict: res.verdict,
-        reason: res.reason,
+        scores,
+        verdict,
+        reason,
         content_type: res.content_type,
         podcast_score: res.podcast_score,
+        rounds, // số vòng viết lại đã chạy (đếm theo yêu cầu vận hành)
       }).slice(0, 3000),
-      status: viralStatusForScore(score),
+      status,
       synthesizedAt: new Date(),
     });
     // Gắn persona + điểm xuống bài thành viên để enrichPersonas giữ tín hiệu
     // VOICE/TREND/WINNING (đọc từ scoredSince — bài có persona, updatedAt mới).
-    if (res.persona) {
+    if (persona) {
       await this._repo
-        .tagMemberPersona(orgId, topic.id, String(res.persona).slice(0, 30), score)
+        .tagMemberPersona(orgId, topic.id, persona, score)
         .catch(() => null);
     }
+    // DUYỆT = TỰ SẢN XUẤT (tắt được trong Cài đặt): đạt ngưỡng tự duyệt → sản
+    // xuất ngay định dạng AI đề xuất, sản phẩm chờ ở tab Sản phẩm (không tự
+    // lên Lịch — người kéo tay theo quyết định vận hành).
+    if (status === 'approved' && cfg.autoProduce) {
+      await this.autoProduceTopics(orgId, [topic.id]).catch(() => null);
+    }
     return true;
+  }
+
+  // Tự sản xuất cho chủ đề vừa duyệt: định dạng chính theo content_type AI đề
+  // xuất (video → podcast; mặc định infographic) + podcast kèm nếu độ hợp ≥75.
+  // Chủ đề đã có sản phẩm thì bỏ qua (duyệt lại không tạo trùng). Lỗi sản xuất
+  // không chặn duyệt.
+  private async autoProduceTopics(orgId: string, topicIds: string[]) {
+    if (!topicIds.length) return;
+    const had = new Set(
+      await this._repo.topicIdsWithProducts(orgId, topicIds).catch(() => [])
+    );
+    // Gộp theo bộ định dạng → 1 lệnh produce/nhóm (1 chuỗi chạy tuần tự) thay
+    // vì 1 chuỗi/chủ đề — duyệt hàng loạt không dội rate-limit AI.
+    const groups = new Map<string, string[]>();
+    for (const id of topicIds) {
+      if (had.has(id)) continue;
+      const t: any = await this._repo.getTopic(orgId, id).catch(() => null);
+      if (!t || t.status !== 'approved') continue;
+      let d: any = {};
+      try {
+        d = JSON.parse(t.scoreDetail || '{}');
+      } catch {
+        /* scoreDetail hỏng — dùng định dạng mặc định */
+      }
+      const primary =
+        d.content_type === 'blog'
+          ? 'blog'
+          : d.content_type === 'video'
+          ? 'podcast'
+          : 'infographic';
+      const formats = [primary];
+      if ((d.podcast_score ?? 0) >= 75 && primary !== 'podcast')
+        formats.push('podcast');
+      const key = formats.join(',');
+      groups.set(key, [...(groups.get(key) || []), id]);
+    }
+    for (const [key, ids] of groups) {
+      await this.produce(orgId, {
+        ids,
+        source: 'topic',
+        formats: key.split(','),
+        bgm: true,
+      }).catch(() => null);
+    }
   }
 
   // Nhập tay ("Thêm bài viral"): tạo chủ đề 1 nguồn + tổng hợp NGAY (bất kể
@@ -1064,9 +1256,14 @@ export class ViralService implements OnModuleInit {
     };
   }
 
-  bulkTopicStatus(orgId: string, ids: string[], status: string) {
+  async bulkTopicStatus(orgId: string, ids: string[], status: string) {
     if (status === 'delete') return this._repo.softDeleteTopics(orgId, ids);
-    return this._repo.setTopicStatusMany(orgId, ids, status);
+    const res = await this._repo.setTopicStatusMany(orgId, ids, status);
+    // Duyệt chủ đề = tự sản xuất định dạng đề xuất (nền, tắt được ở Cài đặt).
+    if (status === 'approved' && getViralConfig().autoProduce) {
+      this.autoProduceTopics(orgId, ids).catch(() => null);
+    }
+    return res;
   }
 
   // "Viết lại thành bài của mình" từ 1 chủ đề: dùng luôn bản AI đã viết
@@ -1200,12 +1397,13 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
   }
 
   // ── AI CHẤM ĐIỂM THEO CHÂN DUNG ─────────────────────────────────────────
-  // Chấm các bài score=null theo lô 8 bài/lần gọi. Ngưỡng: >=90 tự duyệt,
-  // 50-89 chờ duyệt, <50 bỏ qua (viralStatusForScore).
+  // Chấm các bài score=null theo lô 8 bài/lần gọi. Ngưỡng duyệt/bỏ lấy từ
+  // Cài đặt (autoApproveMin / autoSkipMax — mặc định 90/70).
   async scoreUnscored(orgId: string, limit = 60): Promise<number> {
     const posts = await this._repo.unscored(orgId, limit);
     if (!posts.length) return 0;
     const personasText = await this.personasTextFor(orgId);
+    const cfg = getViralConfig();
     // Rubric đọc ĐỘNG từ kho skill (tab 🧪 Công thức AI) — chỉnh là ăn ngay.
     const rubric = getSkill('tieu-chi-cham-diem') || VIRAL_RUBRIC;
     let scored = 0;
@@ -1262,7 +1460,10 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
                   ? Math.max(0, Math.min(100, Math.round(r.podcast_score)))
                   : null,
             }).slice(0, 3000),
-            status: viralStatusForScore(score),
+            status: viralStatusForScore(score, {
+              approveMin: cfg.autoApproveMin,
+              skipMax: cfg.autoSkipMax,
+            }),
           })
           .catch(() => null);
         scored++;

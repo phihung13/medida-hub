@@ -268,6 +268,10 @@ export class ViralController {
       clusterMode?: 'ai' | 'embeddings';
       convergenceMin?: number;
       clusterThreshold?: number;
+      autoApproveMin?: number;
+      autoSkipMax?: number;
+      rewriteMaxRounds?: number;
+      autoProduce?: boolean;
     }
   ) {
     if (!user?.isSuperAdmin) {
@@ -294,6 +298,18 @@ export class ViralController {
         : {}),
       ...(typeof body.clusterThreshold === 'number'
         ? { clusterThreshold: body.clusterThreshold }
+        : {}),
+      ...(typeof body.autoApproveMin === 'number'
+        ? { autoApproveMin: body.autoApproveMin }
+        : {}),
+      ...(typeof body.autoSkipMax === 'number'
+        ? { autoSkipMax: body.autoSkipMax }
+        : {}),
+      ...(typeof body.rewriteMaxRounds === 'number'
+        ? { rewriteMaxRounds: body.rewriteMaxRounds }
+        : {}),
+      ...(typeof body.autoProduce === 'boolean'
+        ? { autoProduce: body.autoProduce }
         : {}),
     });
     return { ok: true, ...getViralStatus() };

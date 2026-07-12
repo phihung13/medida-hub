@@ -27,6 +27,14 @@ interface ViralConfig {
   // Ngưỡng độ giống cosine để gộp bài vào cùng chủ đề (0..1) — chỉ dùng khi
   // clusterMode='embeddings'. Cao = chặt hơn.
   clusterThreshold: number;
+  // PHỄU TỰ ĐỘNG (quy trình 90/70/3): điểm >= autoApproveMin → tự duyệt ·
+  // điểm < autoSkipMax → tự bỏ · ở giữa → viết lại tối đa rewriteMaxRounds vòng
+  // (giữ bản tốt hơn), vẫn chưa đạt thì nằm chờ người duyệt.
+  autoApproveMin: number;
+  autoSkipMax: number;
+  rewriteMaxRounds: number;
+  // Duyệt (tự động hoặc tay) → tự sản xuất định dạng AI đề xuất.
+  autoProduce: boolean;
 }
 
 const config: ViralConfig = {
@@ -39,6 +47,10 @@ const config: ViralConfig = {
   clusterMode: 'ai',
   convergenceMin: 2,
   clusterThreshold: 0.5,
+  autoApproveMin: 90,
+  autoSkipMax: 70,
+  rewriteMaxRounds: 3,
+  autoProduce: true,
 };
 
 try {
@@ -57,6 +69,14 @@ try {
     typeof raw?.convergenceMin === 'number' ? raw.convergenceMin : 2;
   config.clusterThreshold =
     typeof raw?.clusterThreshold === 'number' ? raw.clusterThreshold : 0.5;
+  config.autoApproveMin =
+    typeof raw?.autoApproveMin === 'number' ? raw.autoApproveMin : 90;
+  config.autoSkipMax =
+    typeof raw?.autoSkipMax === 'number' ? raw.autoSkipMax : 70;
+  config.rewriteMaxRounds =
+    typeof raw?.rewriteMaxRounds === 'number' ? raw.rewriteMaxRounds : 3;
+  config.autoProduce =
+    typeof raw?.autoProduce === 'boolean' ? raw.autoProduce : true;
 } catch {
   /* chưa có file — mặc định */
 }
@@ -110,6 +130,10 @@ export function getViralStatus() {
     clusterMode: config.clusterMode,
     convergenceMin: config.convergenceMin,
     clusterThreshold: config.clusterThreshold,
+    autoApproveMin: config.autoApproveMin,
+    autoSkipMax: config.autoSkipMax,
+    rewriteMaxRounds: config.rewriteMaxRounds,
+    autoProduce: config.autoProduce,
   };
 }
 export function setViralConfig(patch: Partial<ViralConfig>) {
@@ -131,6 +155,16 @@ export function setViralConfig(patch: Partial<ViralConfig>) {
     config.convergenceMin = Math.max(1, Math.min(20, Math.round(patch.convergenceMin)));
   if (typeof patch.clusterThreshold === 'number')
     config.clusterThreshold = Math.max(0.2, Math.min(0.95, patch.clusterThreshold));
+  if (typeof patch.autoApproveMin === 'number')
+    config.autoApproveMin = Math.max(50, Math.min(100, Math.round(patch.autoApproveMin)));
+  if (typeof patch.autoSkipMax === 'number')
+    config.autoSkipMax = Math.max(0, Math.min(85, Math.round(patch.autoSkipMax)));
+  // ngưỡng bỏ phải thấp hơn ngưỡng duyệt — kẹp lại nếu người dùng nhập ngược
+  if (config.autoSkipMax >= config.autoApproveMin)
+    config.autoSkipMax = Math.max(0, config.autoApproveMin - 5);
+  if (typeof patch.rewriteMaxRounds === 'number')
+    config.rewriteMaxRounds = Math.max(0, Math.min(5, Math.round(patch.rewriteMaxRounds)));
+  if (typeof patch.autoProduce === 'boolean') config.autoProduce = patch.autoProduce;
   try {
     fs.writeFileSync(FILE, JSON.stringify(config));
   } catch {
