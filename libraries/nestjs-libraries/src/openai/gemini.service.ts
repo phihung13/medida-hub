@@ -44,18 +44,28 @@ function parseJson<T>(raw: string): T | null {
 export class GeminiService {
   // ---- Tạo ảnh (nano banana) ---------------------------------------------
   // Trả base64 PNG (không kèm data: prefix) hoặc null nếu lỗi/không có key.
-  async generateImage(prompt: string): Promise<string | null> {
+  // refImageB64: ảnh THAM CHIẾU (vd bìa carousel) — model nhìn để vẽ đồng bộ
+  // phong cách cả bộ (như node "Gen slide thân" của n8n).
+  async generateImage(
+    prompt: string,
+    refImageB64?: string
+  ): Promise<string | null> {
     if (!hasGeminiKey()) {
       throw new Error('Chưa cấu hình Gemini API key (Cài đặt → Gemini).');
     }
     const key = getGeminiKey();
+    const reqParts: any[] = [];
+    if (refImageB64) {
+      reqParts.push({ inlineData: { mimeType: 'image/png', data: refImageB64 } });
+    }
+    reqParts.push({ text: prompt });
     const res = await fetch(
       `${BASE}/v1beta/models/${IMAGE_MODEL()}:generateContent?key=${key}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
+          contents: [{ parts: reqParts }],
         }),
       }
     );

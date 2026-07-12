@@ -807,6 +807,20 @@ CHI tra JSON array: [{"profile_id","moi_quan_tam","tam_ly","hanh_vi","insights"}
     return claudeJsonStrict(system, user, 20000);
   }
 
+  // SẢN XUẤT: soạn BỘ SLIDE carousel infographic (như node "Soạn truyện" n8n)
+  // — Claude trả json bộ slide, Gemini vẽ từng slide ở viral.service.
+  async viralProduceCarousel(
+    system: string,
+    user: string
+  ): Promise<{
+    title: string;
+    style: string;
+    fb_caption: string;
+    slides: { role?: string; heading?: string; body?: string }[];
+  }> {
+    return claudeJsonStrict(system, user, 8000);
+  }
+
   // SẢN XUẤT: viết kịch bản podcast (monologue, TTS đọc). STRICT + trần 12k.
   async viralProducePodcast(
     system: string,

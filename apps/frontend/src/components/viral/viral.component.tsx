@@ -1186,8 +1186,27 @@ const ProductDetailModal: FC<{ product: any }> = ({ product }) => {
       <div className="text-[15px] font-[700] leading-[1.4]">{product.title || product.topic}</div>
       {meta.meta_description && <div className="text-[12px] italic text-textItemBlur">{meta.meta_description}</div>}
       {product.format === 'infographic' && product.mediaPath && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={product.mediaPath} alt={product.title || ''} className="w-full rounded-[10px]" />
+        // bộ carousel (meta.slides) — hiện đủ cả bộ; bản cũ 1 ảnh vẫn hiện được
+        <div className="flex flex-col gap-[8px]">
+          {(Array.isArray(meta.slides) && meta.slides.length > 1
+            ? meta.slides
+            : [product.mediaPath]
+          ).map((p: string, i: number) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img key={p} src={p} alt={`${product.title || ''} — slide ${i + 1}`} className="w-full rounded-[10px]" />
+          ))}
+          {Array.isArray(meta.slides) && meta.slides.length > 1 && (
+            <div className="text-[11.5px] text-textItemBlur">
+              🖼 {meta.slides.length} {t('viral_carousel_slides', 'slides — all saved in the Media library, post as a Facebook album')}
+            </div>
+          )}
+        </div>
+      )}
+      {product.format === 'infographic' && product.textContent && (
+        <div className="text-[12.5px] leading-[1.7] whitespace-pre-line bg-newColColor rounded-[10px] p-[12px]">
+          <div className="text-[11px] font-[700] text-textItemBlur mb-[6px]">✍️ {t('viral_carousel_caption', 'Caption for the album post')}</div>
+          {product.textContent}
+        </div>
       )}
       {product.format === 'podcast' && product.mediaPath && (
         <audio controls src={product.mediaPath} className="w-full" />
@@ -1261,8 +1280,26 @@ const ProductCard: FC<{ product: any; onDone: () => void }> = ({ product, onDone
   return (
     <div onClick={product.status === 'done' ? openDetail : undefined} className={clsx('bg-newColColor border border-newBgLineColor rounded-[13px] overflow-hidden flex flex-col', product.status === 'done' && 'cursor-pointer hover:border-newTableBorder')}>
       {product.format === 'infographic' && product.mediaPath && product.status === 'done' && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={product.mediaPath} alt="" className="w-full max-h-[240px] object-cover" />
+        <div className="relative">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={product.mediaPath} alt="" className="w-full max-h-[240px] object-cover" />
+          {(() => {
+            // bộ carousel: badge số slide trên ảnh bìa
+            try {
+              const m = product.meta ? JSON.parse(product.meta) : {};
+              if (Array.isArray(m.slides) && m.slides.length > 1) {
+                return (
+                  <span className="absolute top-[8px] right-[8px] text-[11px] font-[800] px-[8px] py-[3px] rounded-[7px] bg-black/70 text-white">
+                    🖼 {m.slides.length}
+                  </span>
+                );
+              }
+            } catch {
+              /* meta hỏng — bỏ badge */
+            }
+            return null;
+          })()}
+        </div>
       )}
       <div className="p-[13px] flex flex-col gap-[9px] flex-1">
         <div className="flex items-center gap-[7px] flex-wrap">

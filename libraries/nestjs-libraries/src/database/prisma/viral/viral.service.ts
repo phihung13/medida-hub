@@ -19,8 +19,9 @@ import {
 } from '@gitroom/nestjs-libraries/viral/viral.personas';
 import {
   buildBlogPrompt,
-  buildInfographicPrompt,
+  buildCarouselPrompt,
   buildPodcastPrompt,
+  carouselSlidePrompt,
   ProduceInput,
 } from '@gitroom/nestjs-libraries/viral/viral.produce.prompts';
 import { VIRAL_DEFAULT_SOURCES } from '@gitroom/nestjs-libraries/viral/viral.default.sources';
@@ -2162,20 +2163,58 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
     }
 
     if (product.format === 'infographic') {
-      const { prompt, ratio } = buildInfographicPrompt(input);
-      const b64 = await this._gemini.generateImage(prompt);
-      if (!b64) throw new Error('Gemini không trả ảnh — thử lại.');
-      const file = await this.storage.uploadSimple(`data:image/png;base64,${b64}`);
-      const saved = await this._media.saveFile(
-        orgId,
-        file.split('/').pop()!,
-        file
-      );
+      // BỘ CAROUSEL như n8n WF-SanXuat: Claude soạn bộ slide (bìa + thân +
+      // CTA) → Gemini vẽ BÌA trước → vẽ từng slide thân KÈM ảnh bìa làm mẫu
+      // (đồng bộ phong cách cả bộ) → lưu hết vào Media library. Thiếu 1 slide
+      // = lỗi cả bộ (không giao album thiếu — giống n8n), bấm Thử lại làm lại.
+      const { system, user } = buildCarouselPrompt(input);
+      const story = await this._openai.viralProduceCarousel(system, user);
+      const slides = (story.slides || []).filter((s) => s?.heading || s?.body).slice(0, 10);
+      if (!slides.length)
+        throw new Error('AI không trả slide nào — bấm Thử lại.');
+      const style =
+        String(story.style || '').trim() ||
+        'hiện đại, ấm áp, màu pastel, font sans-serif tròn';
+      const paths: string[] = [];
+      let coverB64: string | undefined;
+      for (let i = 0; i < slides.length; i++) {
+        const prompt = carouselSlidePrompt(slides[i], i + 1, slides.length, style);
+        // 3 nhịp thử/slide (Gemini image hay lỗi lặt vặt) — như n8n
+        let b64: string | null = null;
+        let lastErr: any = null;
+        for (let a = 0; a < 3 && !b64; a++) {
+          try {
+            b64 = await this._gemini.generateImage(prompt, i > 0 ? coverB64 : undefined);
+          } catch (e) {
+            lastErr = e;
+            await new Promise((r) => setTimeout(r, 1500));
+          }
+        }
+        if (!b64) {
+          throw new Error(
+            `Slide ${i + 1}/${slides.length} lỗi: ${String(
+              lastErr?.message || 'Gemini không trả ảnh'
+            ).slice(0, 350)}`
+          );
+        }
+        if (i === 0) coverB64 = b64;
+        const file = await this.storage.uploadSimple(`data:image/png;base64,${b64}`);
+        const saved = await this._media.saveFile(
+          orgId,
+          file.split('/').pop()!,
+          file
+        );
+        paths.push(saved.path);
+      }
       await this._repo.updateProduct(product.id, {
         status: 'done',
-        title: input.topic.slice(0, 300),
-        mediaPath: saved.path,
-        meta: JSON.stringify({ ratio }),
+        title: String(story.title || input.topic).slice(0, 300),
+        mediaPath: paths[0], // bìa — thẻ sản phẩm hiện ảnh này
+        // caption đăng kèm album (hook + giá trị + CTA + hashtag)
+        textContent: story.fb_caption
+          ? String(story.fb_caption).slice(0, 5000)
+          : null,
+        meta: JSON.stringify({ ratio: '1:1', slides: paths, total: paths.length }).slice(0, 8000),
         error: null,
       });
       return;
