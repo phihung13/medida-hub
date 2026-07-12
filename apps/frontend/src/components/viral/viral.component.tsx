@@ -1822,6 +1822,16 @@ export const ViralComponent: FC = () => {
     await fetch(`/viral/${id}`, { method: 'DELETE' });
     mutate();
   };
+  // Dọn nguồn 1 nút: xoá trùng, phân loại KOL/đối thủ/group/news, AUTO cho
+  // báo + keyword (hệ thống cào), OFF cho FB (đối tác cào — chỉ làm danh bạ).
+  const cleanupSources = useCallback(async () => {
+    const res = await (await fetch('/viral/sources/cleanup', { method: 'POST' })).json();
+    toast.show(
+      `🧹 ${t('viral_cleanup_done', 'Cleaned:')} ${res?.removed ?? 0} ${t('viral_cleanup_dups', 'duplicates removed')}, ${res?.retyped ?? 0} ${t('viral_cleanup_typed', 'reclassified')}, ${res?.autoOn ?? 0} AUTO ${t('viral_cleanup_on', 'on')}, ${res?.autoOff ?? 0} ${t('viral_cleanup_off', 'off')}.`,
+      'success'
+    );
+    mutate();
+  }, [mutate, t]);
   // Nhập bộ nguồn n8n (KOL/đối thủ/group + keyword Google News) — trùng thì bỏ qua.
   const importDefaultSources = useCallback(async () => {
     const res = await (await fetch('/viral/sources/import-defaults', { method: 'POST' })).json();
@@ -2325,6 +2335,13 @@ export const ViralComponent: FC = () => {
             className="border border-dashed border-btnPrimary/40 text-btnPrimary rounded-full px-[14px] py-[6px] text-[12px] hover:bg-btnPrimary/10"
           >
             📥 {t('viral_import_sources', 'Import n8n source pack')}
+          </button>
+          <button
+            onClick={cleanupSources}
+            title={t('viral_cleanup_sources_hint', 'One click: remove duplicates, auto-classify KOL/competitor/group/news (feeds the competitor section of the weekly brief), turn AUTO on for news & keywords, off for Facebook (the partner crawls those)')}
+            className="border border-dashed border-[#57D9A3]/50 text-[#57D9A3] rounded-full px-[14px] py-[6px] text-[12px] hover:bg-[#57D9A3]/10"
+          >
+            🧹 {t('viral_cleanup_sources', 'Clean up sources')}
           </button>
         </div>
       </div>

@@ -473,6 +473,13 @@ export class ViralController {
     return { added };
   }
 
+  // Dọn nguồn 1 nút: xoá trùng + tự phân loại type + bật AUTO báo/keyword,
+  // tắt AUTO nguồn FB (đối tác cào — chỉ giữ làm danh bạ đối thủ).
+  @Post('/sources/cleanup')
+  async cleanupSources(@GetOrgFromRequest() org: Organization) {
+    return this._service.cleanupSources(org.id);
+  }
+
   @Delete('/sources/:id')
   async deleteSource(
     @GetOrgFromRequest() org: Organization,

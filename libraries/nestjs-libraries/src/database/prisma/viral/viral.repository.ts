@@ -780,6 +780,13 @@ export class ViralRepository {
     });
   }
 
+  updateSource(orgId: string, id: string, data: { type?: string; auto?: boolean }) {
+    return this._sources.model.viralSource.updateMany({
+      where: { id, organizationId: orgId },
+      data,
+    });
+  }
+
   setSourceAuto(orgId: string, id: string, auto: boolean) {
     return this._sources.model.viralSource.updateMany({
       where: { id, organizationId: orgId },

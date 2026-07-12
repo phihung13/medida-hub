@@ -1628,6 +1628,59 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
     return this._repo.setSourceAuto(orgId, id, auto);
   }
 
+  // "🧹 Dọn nguồn" 1 nút: xoá nguồn TRÙNG (URL hoặc platform+tên), tự phân
+  // loại type theo tên (KOL/Đối thủ/Group/news — nuôi mục "động tĩnh đối thủ"
+  // của bản tin), bật AUTO cho báo + Google News (hệ thống cào), tắt AUTO
+  // nguồn FB/TikTok (đối tác cào, chỉ giữ làm danh bạ). Bấm lại vô hại.
+  async cleanupSources(orgId: string) {
+    const sources: any[] = await this._repo.allSources(orgId);
+    // bản đã phân loại/bật auto đứng trước — khi trùng thì bản "tốt hơn" sống
+    sources.sort(
+      (a, b) =>
+        (a.type === 'other' ? 1 : 0) - (b.type === 'other' ? 1 : 0) ||
+        (b.auto ? 1 : 0) - (a.auto ? 1 : 0)
+    );
+    const norm = (s: string) =>
+      String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const seen = new Set<string>();
+    let removed = 0;
+    let retyped = 0;
+    let autoOn = 0;
+    let autoOff = 0;
+    for (const s of sources) {
+      const key = s.url
+        ? `u:${ViralRepository.normUrl(s.url)}`
+        : `n:${s.platform}|${norm(s.name)}`;
+      if (seen.has(key)) {
+        await this._repo.deleteSource(orgId, s.id).catch(() => null);
+        removed++;
+        continue;
+      }
+      seen.add(key);
+      const n = norm(s.name);
+      let type = s.type;
+      if (s.platform === 'news' || s.platform === 'gnews') type = 'news';
+      else if (/kol/.test(n)) type = 'kol';
+      else if (/đối thủ|doi thu|school|trường|truong/.test(n)) type = 'school';
+      else if (/group|hội |hoi |nhóm |nhom /.test(n)) type = 'group';
+      const auto = s.platform === 'news' || s.platform === 'gnews';
+      const patch: { type?: string; auto?: boolean } = {};
+      if (type !== s.type) {
+        patch.type = type;
+        retyped++;
+      }
+      if (auto !== !!s.auto) {
+        patch.auto = auto;
+        if (auto) autoOn++;
+        else autoOff++;
+      }
+      if (Object.keys(patch).length) {
+        await this._repo.updateSource(orgId, s.id, patch).catch(() => null);
+      }
+    }
+    return { removed, retyped, autoOn, autoOff };
+  }
+
   setSourceType(orgId: string, id: string, type: string) {
     return this._repo.setSourceType(orgId, id, type);
   }
