@@ -20,7 +20,7 @@
 const MAINTENANCE_HTML = `<!doctype html>
 <html lang="vi"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Đang nâng cấp — Media Hub Việt Anh</title>
+<title>Đang cập nhật — Media Hub Việt Anh</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
   body{min-height:100vh;display:flex;align-items:center;justify-content:center;
@@ -82,10 +82,9 @@ const MAINTENANCE_HTML = `<!doctype html>
   </g>
 </svg>
 </div>
-<h1>Hệ thống đang nâng cấp 🛠️</h1>
-<p>Sư tử nhà Việt Anh đang cùng sếp cập nhật tính năng mới —<br/>1–2 phút thôi, đừng đi đâu nha!</p>
+<h1>Media Hub Việt Anh đang cập nhật tính năng mới</h1>
 <div class="dots"><i></i><i></i><i></i></div>
-<div class="note">Trang sẽ tự vào lại khi hệ thống sẵn sàng — không cần bấm gì cả 🦁</div>
+<div class="note">Trang sẽ tự vào lại khi hệ thống sẵn sàng — không cần bấm gì cả.</div>
 </div>
 <script>
   (function(){
