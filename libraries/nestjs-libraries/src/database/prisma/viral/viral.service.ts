@@ -2361,17 +2361,8 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
         textContent: story.fb_caption
           ? String(story.fb_caption).slice(0, 5000)
           : null,
-        // slides = [{id, path}]: id media để nút "Đăng lên Lịch" đính ảnh.
-        // commentPin = comment ghim (mục 6 fb-value-sharing) — RIÊNG, không
-        // nằm trong caption; UI hiện để dán tay vào bình luận sau khi đăng.
-        meta: JSON.stringify({
-          ratio: '1:1',
-          slides: slideItems,
-          total: slideItems.length,
-          ...(story.comment_ghim
-            ? { commentPin: String(story.comment_ghim).slice(0, 1500) }
-            : {}),
-        }).slice(0, 10000),
+        // slides = [{id, path}]: id media để nút "Đăng lên Lịch" đính ảnh
+        meta: JSON.stringify({ ratio: '1:1', slides: slideItems, total: slideItems.length }).slice(0, 8000),
         error: null,
       });
       return;

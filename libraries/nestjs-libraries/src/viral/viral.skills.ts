@@ -168,9 +168,7 @@ CÔNG THỨC: HOOK → REWARD → SHARE → FUNNEL.
 
 5. fb_caption = phần FUNNEL trong caption: giọng gần gũi, KHÔNG chứa CTA bán hàng/tuyển sinh (một dòng "inbox cho trường" giữa bài giết lượt share). Kết bằng 3–5 hashtag.
 
-6. comment_ghim (RIÊNG, không nằm trong caption): 1 câu kết nối + tối đa 3 link/hành động — quà miễn phí trước, hành động sâu hơn (tham quan trường, hotline 0916 961 409) sau. Ký tên fanpage Trường Việt Anh.
-
-TỰ CHẤM trước khi trả (ngưỡng ≥80/100): Hook phủ định + con số (15); Hook gọn ≤2 câu gây tò mò (10); Giá trị dùng ngay (15); Danh sách rõ, đánh số, đúng số đã hứa (10); Tương phản ❌/✅ (10); Đáng share vào nhóm phụ huynh (15); Đúng thương hiệu Việt Anh, claim có cơ sở (15); Phễu sạch — caption không CTA bán, comment ghim có quà trước (10). Nếu dưới 80 thì tự sửa rồi mới trả.`;
+TỰ CHẤM trước khi trả (ngưỡng ≥80/100): Hook phủ định + con số (15); Hook gọn ≤2 câu gây tò mò (10); Giá trị dùng ngay (15); Danh sách rõ, đánh số, đúng số đã hứa (10); Tương phản ❌/✅ (10); Đáng share vào nhóm phụ huynh (15); Đúng thương hiệu Việt Anh, claim có cơ sở (15); Phễu sạch — caption không CTA bán hàng (10). Nếu dưới 80 thì tự sửa rồi mới trả.`;
 
 const HE_THONG_VA = `Bạn là chuyên viên truyền thông của Trường Việt Anh. Viết nội dung mạng xã hội bằng tiếng Việt, tự nhiên, ấm áp, đúng chuẩn mực giáo dục, phù hợp phụ huynh và học sinh. Không bịa thông tin không có trong dữ liệu đầu vào.`;
 
@@ -244,7 +242,7 @@ export const VIRAL_SKILL_DEFS: ViralSkillDef[] = [
   { key: 'giong-podcast', label: 'Giọng Podcast', group: 'Sản xuất', description: 'Giọng kể + luật xưng hô trung tính cho TTS', content: GIONG_PODCAST },
   { key: 'cong-thuc-podcast', label: 'Công thức Podcast', group: 'Sản xuất', description: 'Kể chuyện Twist/Reveal + cấu trúc tập + value-first — sản xuất podcast', content: CONG_THUC_PODCAST },
   { key: 'cong-thuc-infographic', label: 'Công thức Infographic', group: 'Sản xuất', description: 'Khung thiết kế ảnh Gemini (code tự thêm tỉ lệ + nội dung bài)', content: CONG_THUC_INFOGRAPHIC },
-  { key: 'cong-thuc-carousel', label: 'Công thức Carousel (fb-value-sharing)', group: 'Sản xuất', description: 'HOOK→REWARD→SHARE→FUNNEL + ❌/✅ + tự chấm ≥80 — bộ slide infographic, port nguyên văn n8n', content: CONG_THUC_CAROUSEL },
+  { key: 'cong-thuc-carousel', label: 'Công thức Carousel (fb-value-sharing)', group: 'Sản xuất', description: 'HOOK→REWARD→SHARE + ❌/✅ + tự chấm ≥80 — bộ slide infographic, port từ n8n', content: CONG_THUC_CAROUSEL },
   // Chấm điểm & phân loại
   { key: 'nguyen-tac-chon-nhom', label: 'Nguyên tắc chọn nhóm (cấp học)', group: 'Chấm & phân loại', description: 'Dấu hiệu MN/TH/THCS/THPT — routing khi chấm điểm', content: NGUYEN_TAC_CHON_NHOM },
   { key: 'skill-phan-loai-viet-lai', label: 'Phân loại + viết lại (4 bước)', group: 'Chấm & phân loại', description: 'Nhiệm vụ A/B/C/D: chọn nhóm, viết lại, chấm, gán loại SX + podcast_score', content: SKILL_PHAN_LOAI_VIET_LAI },

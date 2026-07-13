@@ -134,8 +134,8 @@ export function buildCarouselPrompt(r: ProduceInput): {
   sys += '\n\n' + diversityBlock(evMode, '- Tối đa 1 điểm tựa cho CẢ BỘ.');
   sys +=
     '\n\nTrả về CHỈ 1 JSON thuần (không kèm chữ nào khác, không bọc ```): ' +
-    '{"title":"tên bộ ngắn gọn","style":"mô tả CHI TIẾT phong cách đồng bộ cả bộ: tông màu + font + kiểu minh hoạ + bố cục","fb_caption":"caption đăng kèm album theo mục 5 của công thức: giọng gần gũi, KHÔNG CTA bán hàng, kết 3-5 hashtag","comment_ghim":"theo mục 6 của công thức: 1 câu kết nối + tối đa 3 link/hành động có thật, ký tên fanpage Trường Việt Anh","slides":[{"role":"cover","heading":"...","body":"..."},{"role":"body","heading":"...","body":"..."},{"role":"cta","heading":"...","body":"..."}]}. ' +
-    'Mọi chữ tiếng Việt trong title/heading/body/fb_caption/comment_ghim phải ĐÚNG CHÍNH TẢ CÓ DẤU.';
+    '{"title":"tên bộ ngắn gọn","style":"mô tả CHI TIẾT phong cách đồng bộ cả bộ: tông màu + font + kiểu minh hoạ + bố cục","fb_caption":"caption đăng kèm album theo mục 5 của công thức: giọng gần gũi, KHÔNG CTA bán hàng, kết 3-5 hashtag","slides":[{"role":"cover","heading":"...","body":"..."},{"role":"body","heading":"...","body":"..."},{"role":"cta","heading":"...","body":"..."}]}. ' +
+    'Mọi chữ tiếng Việt trong title/heading/body/fb_caption phải ĐÚNG CHÍNH TẢ CÓ DẤU.';
   const user =
     'Chủ đề: ' + (r.topic || '') +
     '\nNội dung gốc (đã tối ưu cho nhóm khách): ' + (r.idea || '') +

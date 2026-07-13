@@ -891,7 +891,6 @@ CHI tra JSON array: [{"profile_id","moi_quan_tam","tam_ly","hanh_vi","insights"}
     title: string;
     style: string;
     fb_caption: string;
-    comment_ghim?: string;
     slides: { role?: string; heading?: string; body?: string }[];
   }> {
     // 16k token như n8n — bộ tối đa 15 slide cần chỗ, 8k dễ cắt cụt JSON.
