@@ -11,7 +11,6 @@ import {
   BotRoutesFile,
   Card,
   DangerLink,
-  FbPage,
   FieldLabel,
   GbpBusiness,
   HubChannel,
@@ -27,11 +26,11 @@ import {
 } from './zalo.shared';
 
 // ============================================================================
-//  Tab "Nhóm → Trang" — thay thế tab Routes của dashboard bot: mỗi nhóm Zalo
-//  nguồn nối tới Trang Facebook / Google Business / kênh Media Hub, kèm đầy đủ
-//  cài đặt: thời gian chờ gom ảnh, bình luận tự động, CHÂN BÀI, hướng dẫn viết
-//  cho AI, hashtag, lọc ảnh, tự đăng. Lưu = ghi nguyên file routes.json của bot
-//  (bot tự áp chân bài mới vào các bài đang chờ duyệt).
+//  Tab "Nhóm → Trang" — mỗi nhóm Zalo nguồn nối tới kênh Media Hub (bản nháp
+//  chờ duyệt trên Lịch) và/hoặc Google Business. Facebook KHÔNG còn đăng thẳng
+//  từ bot: Trang đã kết nối trong Media Hub, bài thành bản nháp chờ duyệt và
+//  Hub tự chèn CHÂN BÀI của kênh (cài trong Lịch) dưới caption, trên hashtag.
+//  Lưu = ghi nguyên file routes.json của bot.
 // ============================================================================
 
 const newRoute = (): BotRoute => ({
@@ -64,7 +63,6 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
 
   const [file, setFile] = useState<BotRoutesFile | null>(null);
   const [groups, setGroups] = useState<ZaloGroup[] | null>(null);
-  const [pages, setPages] = useState<FbPage[] | null>(null);
   const [businesses, setBusinesses] = useState<GbpBusiness[]>([]);
   const [channels, setChannels] = useState<HubChannel[]>([]);
   const [open, setOpen] = useState<Set<number>>(new Set());
@@ -92,7 +90,6 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
     } catch {
       toast.show(t('zalo_bot_unreachable', 'Cannot reach the Zalo bot'), 'warning');
     }
-    bot('/api/fb/pages?force=1', undefined, 30000).then((p) => Array.isArray(p) && setPages(p)).catch(() => setPages([]));
     bot('/api/gbp/businesses').then((b) => Array.isArray(b) && setBusinesses(b)).catch(() => {});
     bot('/api/postiz/integrations')
       .then((r) => r?.ok && setChannels(r.integrations || []))
@@ -126,15 +123,17 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
 
   const save = useCallback(async () => {
     if (!file) return;
-    // Chuẩn hoá + kiểm tra như dashboard cũ (nhưng Trang FB nay là TUỲ CHỌN —
-    // nhóm có thể chỉ đẩy vào Media Hub).
+    // Chuẩn hoá: Facebook KHÔNG còn đăng thẳng từ bot (đi qua kênh Media Hub),
+    // chân bài route cũng bỏ — Hub tự chèn chân bài của kênh lúc tạo bài.
     for (let i = 0; i < file.routes.length; i++) {
       const r = file.routes[i];
-      r.facebookAutoPublish = !!r.facebookAutoPublish;
+      r.fanpageId = '';
+      r.fanpageTokenEnv = '';
+      r.facebookAutoPublish = false;
+      r.captionFooter = '';
       r.gbpLocationIds = (r.gbpLocationIds || []).map(String).filter(Boolean);
       r.gbpLocationId = r.gbpLocationIds[0] || '';
       r.gbpAutoPublish = !!(r.gbpLocationIds.length && r.gbpAutoPublish);
-      if (r.facebookAutoPublish) r.published = true;
       if (!r.threadId) {
         toast.show(
           t('zalo_routes_missing_thread', 'Route {{n}} ({{name}}) has no Zalo group selected')
@@ -144,15 +143,14 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
         );
         return;
       }
-      if (r.fanpageId && pages) {
-        const pg = pages.find((x) => x.fanpageId === r.fanpageId);
-        if (pg && !pg.hasToken) {
-          toast.show(
-            t('zalo_routes_page_no_token2', 'Page "{{name}}" has no usable token — reconnect it in Add Channel.').replace('{{name}}', pg.name),
-            'warning'
-          );
-          return;
-        }
+      if (!r.postizIntegrationId && !r.gbpLocationIds.length) {
+        toast.show(
+          t('zalo_routes_missing_target', 'Route {{n}} ({{name}}): chọn kênh Media Hub (hoặc Google Business) để bài có đích đến.')
+            .replace('{{n}}', String(i + 1))
+            .replace('{{name}}', r.label || t('zalo_routes_unnamed', 'unnamed')),
+          'warning'
+        );
+        return;
       }
       if (r.debounceMs && r.maxWaitMs && r.maxWaitMs < r.debounceMs) {
         toast.show(
@@ -182,7 +180,7 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
     } finally {
       setSaving(false);
     }
-  }, [file, pages, load, onChanged, t]);
+  }, [file, load, onChanged, t]);
 
   const remove = useCallback(
     async (i: number) => {
@@ -215,8 +213,8 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
     <div className="flex flex-col gap-[14px]">
       <div className="text-[12.5px] text-textItemBlur max-w-[720px]">
         {t(
-          'zalo_routes_intro',
-          'Mỗi thẻ: một nhóm Zalo nguồn → Trang Facebook / Google Business / kênh Media Hub. Nhớ bấm "Lưu cấu hình" sau khi sửa.'
+          'zalo_routes_intro2',
+          'Mỗi thẻ: một nhóm Zalo nguồn → kênh Media Hub (bài thành BẢN NHÁP chờ duyệt trên Lịch, Hub tự chèn chân bài của kênh + hashtag) và/hoặc Google Business. Nhớ bấm "Lưu cấu hình" sau khi sửa.'
         )}
       </div>
 
@@ -250,10 +248,10 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
               <StatusChip tone={r.enabled !== false ? 'ok' : 'off'}>
                 {r.enabled !== false ? t('zalo_on', 'On') : t('zalo_off', 'Off')}
               </StatusChip>
-              <StatusChip tone={r.facebookAutoPublish ? 'warn' : 'wait'}>
-                {r.facebookAutoPublish
-                  ? t('zalo_routes_fb_auto', 'FB auto-publish')
-                  : t('zalo_routes_fb_review', 'FB reviewed')}
+              <StatusChip tone={r.postizIntegrationId ? 'wait' : 'warn'}>
+                {r.postizIntegrationId
+                  ? t('zalo_routes_hub_draft', '→ Nháp chờ duyệt trên Lịch')
+                  : t('zalo_routes_hub_missing', 'Chưa chọn kênh Media Hub')}
               </StatusChip>
               {!!gbpIds.length && (
                 <StatusChip tone={r.gbpAutoPublish ? 'warn' : 'wait'}>
@@ -294,7 +292,7 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
                 </div>
 
                 {/* Nguồn + đích */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-[10px]">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-[10px]">
                   <div className="flex flex-col gap-[5px]">
                     <FieldLabel hint={t('zalo_routes_group_hint', 'The group whose images are collected.')}>
                       {t('zalo_routes_group', 'Zalo group (source)')}
@@ -336,36 +334,10 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
                   </div>
                   <div className="flex flex-col gap-[5px]">
                     <FieldLabel
-                      hint={t('zalo_routes_page_hint2', "Don't see the Page? Connect it once in Add Channel — the bot picks up its token automatically.")}
-                    >
-                      {t('zalo_routes_page', 'Facebook Page (optional)')}
-                    </FieldLabel>
-                    <select
-                      value={r.fanpageId || ''}
-                      onChange={(e) => {
-                        const pg = (pages || []).find((x) => x.fanpageId === e.target.value);
-                        patch(i, {
-                          fanpageId: e.target.value,
-                          fanpageTokenEnv: pg?.envName || r.fanpageTokenEnv || '',
-                        });
-                      }}
-                      className={selectCls}
-                    >
-                      <option value="">{t('zalo_routes_no_page', '— No Facebook —')}</option>
-                      {r.fanpageId && !(pages || []).some((p) => p.fanpageId === r.fanpageId) && (
-                        <option value={r.fanpageId}>{r.fanpageId}</option>
+                      hint={t(
+                        'zalo_routes_hub_hint2',
+                        'Bài thành BẢN NHÁP chờ duyệt trên Lịch cho kênh này. Hub tự chèn chân bài đã cài cho kênh (bấm avatar kênh trên Lịch) dưới caption, trên hashtag.'
                       )}
-                      {(pages || []).map((p) => (
-                        <option key={p.fanpageId} value={p.fanpageId}>
-                          {p.name}
-                          {p.hasToken ? '' : ` (${t('zalo_routes_no_token', 'no token')})`}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex flex-col gap-[5px]">
-                    <FieldLabel
-                      hint={t('zalo_routes_hub_hint', 'Posts also become Media Hub drafts on the Calendar for this channel.')}
                     >
                       {t('zalo_routes_hub_channel', 'Media Hub channel')}
                     </FieldLabel>
@@ -443,19 +415,6 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
                     <Toggle small on={r.curateImages !== false} onChange={() => patch(i, { curateImages: !(r.curateImages !== false) })} />
                     {t('zalo_routes_curate', 'Curate images')}
                   </label>
-                  <label className="flex items-center gap-[8px] text-[13px] font-[600] cursor-pointer text-amber-400">
-                    <Toggle
-                      small
-                      on={!!r.facebookAutoPublish}
-                      onChange={() =>
-                        patch(i, {
-                          facebookAutoPublish: !r.facebookAutoPublish,
-                          published: !r.facebookAutoPublish ? true : r.published,
-                        })
-                      }
-                    />
-                    {t('zalo_routes_fb_autopublish', 'Facebook auto-publish (skip review)')}
-                  </label>
                   <label
                     className={clsx(
                       'flex items-center gap-[8px] text-[13px] font-[600] text-amber-400',
@@ -472,7 +431,7 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
                   </label>
                 </div>
 
-                {/* Nâng cao: thời gian · bình luận · chân bài · hướng dẫn viết · hashtag */}
+                {/* Nâng cao: thời gian · bình luận · hướng dẫn viết · hashtag */}
                 <div
                   onClick={() =>
                     setAdv((cur) => {
@@ -486,7 +445,7 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
                 >
                   <b className="text-[13px]">{t('zalo_routes_advanced', 'Advanced settings')}</b>
                   <span className="text-[11.5px] text-textItemBlur">
-                    {t('zalo_routes_advanced_sub', 'timing · auto-comment · footer · writing guide · hashtags')}{' '}
+                    {t('zalo_routes_advanced_sub2', 'thời gian · bình luận tự động · hướng dẫn viết · hashtag')}{' '}
                     {advOpen ? '▾' : '▸'}
                   </span>
                 </div>
@@ -539,20 +498,11 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
                         className={inputCls}
                       />
                     </div>
-                    <div className="flex flex-col gap-[5px]">
-                      <FieldLabel
-                        hint={t('zalo_routes_footer_hint', 'Inserted verbatim at the end of every post (hotline, address, hashtags, Google Maps…).')}
-                      >
-                        {t('zalo_routes_footer', 'Fixed footer (hotline + address)')}
-                        {(r.captionFooter || '').length ? ` · ${(r.captionFooter || '').length} ${t('zalo_routes_chars', 'chars')}` : ''}
-                      </FieldLabel>
-                      <textarea
-                        rows={5}
-                        value={r.captionFooter || ''}
-                        onChange={(e) => patch(i, { captionFooter: e.target.value })}
-                        placeholder={t('zalo_routes_footer_ph', 'Paste the whole contact block here.')}
-                        className={textareaCls}
-                      />
+                    <div className="text-[12px] text-textItemBlur border border-dashed border-newTableBorder rounded-[8px] px-[10px] py-[8px]">
+                      {t(
+                        'zalo_routes_footer_moved',
+                        'Chân bài (hotline/địa chỉ) nay cài MỘT LẦN cho từng kênh trong Lịch — bấm avatar kênh trên trang Lịch. Hub tự chèn vào mọi bài của kênh, kể cả bản nháp từ Zalo.'
+                      )}
                     </div>
                     <div className="flex flex-col gap-[5px]">
                       <FieldLabel
