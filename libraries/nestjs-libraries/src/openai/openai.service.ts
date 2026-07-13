@@ -79,27 +79,33 @@ async function claudeText(
 }
 
 // Bóc + parse JSON từ text model trả (bỏ ```json fences, bóc block đầu tiên).
+// Kèm bước SỬA JSON BỆNH: model viết body_html/script dài hay chèn XUỐNG DÒNG
+// THẬT vào giữa chuỗi JSON (chuẩn JSON cấm control char trong chuỗi) → thay
+// mọi control char bằng khoảng trắng — không phá JSON hợp lệ (giữa các token
+// chúng vốn chỉ là whitespace), chữa được ca lỗi phổ biến nhất của bài dài.
 function tryParseJson<T>(raw: string): T | null {
   const cleaned = raw
     .replace(/^```(?:json)?/i, '')
     .replace(/```$/i, '')
     .trim();
-  try {
-    return JSON.parse(cleaned) as T;
-  } catch {
-    const s = cleaned.indexOf('{');
-    const a = cleaned.indexOf('[');
-    const start = a >= 0 && (a < s || s < 0) ? a : s;
-    const end = Math.max(cleaned.lastIndexOf('}'), cleaned.lastIndexOf(']'));
-    if (start >= 0 && end > start) {
-      try {
-        return JSON.parse(cleaned.slice(start, end + 1)) as T;
-      } catch {
-        /* ignore */
-      }
-    }
-    return null;
+  const attempts: string[] = [cleaned];
+  const s = cleaned.indexOf('{');
+  const a = cleaned.indexOf('[');
+  const start = a >= 0 && (a < s || s < 0) ? a : s;
+  const end = Math.max(cleaned.lastIndexOf('}'), cleaned.lastIndexOf(']'));
+  if (start >= 0 && end > start) attempts.push(cleaned.slice(start, end + 1));
+  // bản đã "chữa bệnh" control char (xuống dòng thật trong chuỗi → space)
+  for (const base of [...attempts]) {
+    attempts.push(base.replace(/[\u0000-\u001f]/g, ' '));
   }
+  for (const candidate of attempts) {
+    try {
+      return JSON.parse(candidate) as T;
+    } catch {
+      /* thử bản kế */
+    }
+  }
+  return null;
 }
 
 // Bản STRICT cho dây chuyền SẢN XUẤT: parse hỏng thì NÉM LỖI CHẨN ĐOÁN rõ

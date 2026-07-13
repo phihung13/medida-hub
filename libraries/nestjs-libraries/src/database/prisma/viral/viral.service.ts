@@ -1309,14 +1309,44 @@ export class ViralService implements OnModuleInit {
     for (const pr of prods as any[]) {
       byTopic.set(pr.topicId, [...(byTopic.get(pr.topicId) || []), pr]);
     }
-    return rows.map((t: any) => ({
+    const shaped = rows.map((t: any) => ({
       ...this.shapeTopic(t),
       products: byTopic.get(t.id) || [],
     }));
+    // Tab "Đã duyệt" chỉ giữ thẻ CHƯA SẢN XUẤT XONG (chưa có sản phẩm / đang
+    // chạy / lỗi) — sản xuất đủ thì sản phẩm đã nằm bên "Chờ đăng", thẻ tự
+    // rời tab cho đỡ rối (yêu cầu vận hành 13/07).
+    if (filter.status === 'approved') {
+      return shaped.filter(
+        (t: any) =>
+          !(
+            t.products.length &&
+            t.products.every((p: any) => p.status === 'done')
+          )
+      );
+    }
+    return shaped;
   }
 
-  topicStatusCounts(orgId: string) {
-    return this._repo.topicStatusCounts(orgId);
+  async topicStatusCounts(orgId: string) {
+    const counts = await this._repo.topicStatusCounts(orgId);
+    // khớp với listTopics: thẻ approved đã sản xuất XONG rời tab → trừ khỏi số
+    if (counts.approved > 0) {
+      const rows: any[] = await this._repo
+        .listTopics(orgId, { status: 'approved', convergenceMin: 1 })
+        .catch(() => [] as any[]);
+      const prods: any[] = await this._repo
+        .productsOfTopics(orgId, rows.map((r) => r.id))
+        .catch(() => [] as any[]);
+      const by = new Map<string, string[]>();
+      for (const p of prods) by.set(p.topicId, [...(by.get(p.topicId) || []), p.status]);
+      let fullyDone = 0;
+      for (const [, sts] of by) {
+        if (sts.length && sts.every((x) => x === 'done')) fullyDone++;
+      }
+      counts.approved = Math.max(0, counts.approved - fullyDone);
+    }
+    return counts;
   }
 
   // Chi tiết 1 chủ đề: content tổng hợp + các bài NGUỒN (bằng chứng).

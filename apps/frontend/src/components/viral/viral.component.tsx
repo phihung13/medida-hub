@@ -2019,7 +2019,7 @@ export const ViralComponent: FC = () => {
         <span className="shrink-0">💡</span>
         <span>
           {tab === 'pending' && t('viral_flow_pending_topics', 'Step 1 · Each card is one CONTENT — many posts from many sources merged (a 1-post content is fine too). The AI already scored & rewrote it up to 3 rounds: ≥ threshold auto-approved, low ones auto-skipped, the rest wait for you here. ✓ Approve = auto-produce the suggested format.')}
-          {tab === 'approved' && t('viral_flow_approved_topics', 'Step 2 · Approved content. The suggested format was auto-produced (see "Ready to post"). Select cards → "🏭 Produce" for MORE formats or "⧉ Clone" for a social post.')}
+          {tab === 'approved' && t('viral_flow_approved_topics2', 'Step 2 · Only content still being produced (or failed) stays here — once every product finishes, the card leaves this tab automatically (its products are in "Ready to post"). Select cards → "🏭 Produce" for more formats or "⧉ Clone" for a social post.')}
           {tab === 'ready' && t('viral_flow_ready', 'Step 3 · Everything finished, waiting to publish. ✍️ Social posts → 📤 push to the Calendar (Facebook…). 🏭 Blog/infographic/podcast → download & publish to the website / YouTube / fanpage.')}
           {tab === 'archive' && t('viral_flow_archive_topics', 'Outside the flow · Skipped + deleted content rests here. Everything is permanently deleted after 7 days. You can still ↩ Restore a content back to "To review".')}
           {tab === 'skills' && t('viral_flow_skills', 'Outside the flow · The AI recipes behind every step: writing formulas, scoring rubric, group routing, weekly brief… Edit as markdown, import a .md file, or reset to the built-in default — changes apply from the very next AI run.')}
