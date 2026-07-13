@@ -54,7 +54,12 @@ export function buildBlogPrompt(r: ProduceInput): { system: string; user: string
   sys += '\n\n' + diversityBlock(evMode, '- Tối đa 1-2 cho cả bài.');
   sys += '\n\n' + getSkill('cta-that');
   sys +=
-    '\n\nTrả về CHỈ 1 JSON thuần (không kèm chữ nào khác, không bọc ```): {"title":"tiêu đề SEO chứa keyword + lợi ích","slug":"slug-khong-dau","meta_description":"<=160 ký tự, có keyword","tags":["..."],"body_html":"nội dung dạng HTML SẠCH: chỉ dùng h2,h3,p,ul,li,ol,strong,em,table,thead,tbody,tr,th,td — KHÔNG dùng html/head/body. Bao gồm cả phần FAQ và bảng so sánh."}';
+    '\n\nTRẢ VỀ theo 5 khối, mỗi nhãn trên MỘT DÒNG RIÊNG, nội dung ngay dòng dưới (KHÔNG dùng JSON, KHÔNG bọc ```):\n' +
+    '[[TITLE]]\ntiêu đề SEO chứa keyword + lợi ích\n' +
+    '[[SLUG]]\nslug-khong-dau\n' +
+    '[[META]]\nmeta description <=160 ký tự, có keyword\n' +
+    '[[TAGS]]\ntag1, tag2, tag3 (ngăn bằng dấu phẩy)\n' +
+    '[[BODY]]\nnội dung dạng HTML SẠCH: chỉ dùng h2,h3,p,ul,li,ol,strong,em,table,thead,tbody,tr,th,td — KHÔNG dùng html/head/body. Bao gồm cả phần FAQ và bảng so sánh. Viết HTML tự nhiên, thoải mái dùng dấu nháy trong thẻ.';
   const user =
     'Chủ đề: ' + (r.topic || '') +
     '\nNội dung định hướng (đã tối ưu cho nhóm khách): ' + (r.idea || '') +
@@ -80,7 +85,10 @@ export function buildPodcastPrompt(r: ProduceInput): { system: string; user: str
   sys += '\n\n' + diversityBlock(evMode, '- TỐI ĐA 1 điểm tựa cho CẢ TẬP.');
   sys += '\n\n' + getSkill('cta-that');
   sys +=
-    '\n\nTrả về CHỈ 1 JSON thuần (không kèm chữ nào khác, không bọc ```): {"title":"tên tập ngắn, hấp dẫn","full_script":"toàn bộ lời đọc liền mạch, văn bản thuần, KHÔNG ký hiệu/gạch đầu dòng","est_minutes":3}';
+    '\n\nTRẢ VỀ theo 3 khối, mỗi nhãn trên MỘT DÒNG RIÊNG, nội dung ngay dòng dưới (KHÔNG dùng JSON, KHÔNG bọc ```):\n' +
+    '[[TITLE]]\ntên tập ngắn, hấp dẫn\n' +
+    '[[MINUTES]]\nsố phút ước lượng (chỉ con số, vd 3)\n' +
+    '[[SCRIPT]]\ntoàn bộ lời đọc liền mạch, văn bản thuần, KHÔNG ký hiệu/gạch đầu dòng';
   const user =
     'Chủ đề: ' + (r.topic || '') +
     '\nNội dung định hướng (đã tối ưu cho nhóm khách): ' + (r.idea || '') +

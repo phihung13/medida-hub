@@ -137,6 +137,63 @@ async function claudeJsonStrict<T = any>(
   );
 }
 
+// Parse KHỐI CÓ NHÃN (không dùng JSON) — cho nội dung DÀI như body_html blog /
+// full_script podcast: model viết HTML có dấu " sẽ làm JSON gãy, nên tách bằng
+// nhãn [[KEY]] thay vì nhét vào chuỗi JSON. Field cuối lấy hết phần còn lại →
+// thân bài tự do, KHÔNG cần escape gì. Trả null nếu thiếu nhãn.
+function parseDelimited(
+  raw: string,
+  keys: string[]
+): Record<string, string> | null {
+  const out: Record<string, string> = {};
+  for (let i = 0; i < keys.length; i++) {
+    const marker = `[[${keys[i]}]]`;
+    const si = raw.indexOf(marker);
+    if (si < 0) return null;
+    const from = si + marker.length;
+    let end = raw.length;
+    for (let j = i + 1; j < keys.length; j++) {
+      const ni = raw.indexOf(`[[${keys[j]}]]`, from);
+      if (ni >= 0) {
+        end = ni;
+        break;
+      }
+    }
+    out[keys[i]] = raw.slice(from, end).replace(/^\s*\n?/, '').trim();
+  }
+  return out;
+}
+
+// STRICT cho nội dung dài dạng khối-có-nhãn (blog/podcast). keys bắt buộc phải
+// xuất hiện đủ; thiếu do cắt trần → báo vượt trần, thiếu do model lỗi → thử lại.
+async function claudeBlockStrict(
+  system: string,
+  user: string,
+  keys: string[],
+  maxTokens: number
+): Promise<Record<string, string>> {
+  const sys =
+    system +
+    `\n\nĐỊNH DẠNG TRẢ VỀ (BẮT BUỘC): mỗi phần bắt đầu bằng nhãn trên MỘT DÒNG RIÊNG đúng như liệt kê, nội dung ngay dòng dưới. KHÔNG kèm giải thích, KHÔNG bọc \`\`\`. Các nhãn theo THỨ TỰ: ${keys
+      .map((k) => `[[${k}]]`)
+      .join(' ')}`;
+  let lastSnippet = '';
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { text, stopReason } = await claudeRaw(sys, user, maxTokens);
+    const parsed = parseDelimited(text, keys);
+    if (parsed) return parsed;
+    if (stopReason === 'max_tokens') {
+      throw new Error(
+        `AI viết vượt trần ${maxTokens} token nên bài bị cắt giữa chừng — bấm Thử lại; nếu lặp lại cần tăng trần cho định dạng này.`
+      );
+    }
+    lastSnippet = text.slice(0, 120).replace(/\s+/g, ' ');
+  }
+  throw new Error(
+    `AI trả nội dung không đúng định dạng sau 2 lần thử ("${lastSnippet}…") — bấm Thử lại sau ít phút.`
+  );
+}
+
 // Gọi Claude yêu cầu JSON, tự bóc ```json fences nếu có, parse an toàn.
 async function claudeJson<T = any>(
   system: string,
@@ -798,8 +855,8 @@ CHI tra JSON array: [{"profile_id","moi_quan_tam","tam_ly","hanh_vi","insights"}
 
   // SẢN XUẤT (WF-SanXuat): viết bài BLOG chuẩn EEAT từ nội dung đã duyệt.
   // system/user dựng sẵn ở viral.produce.prompts.ts — service chỉ gọi model.
-  // STRICT + trần 20k token (bài 1500-2500 chữ + HTML + JSON escaping từng bị
-  // cắt cụt ở trần 8k → parse hỏng → lỗi mù mờ "AI chưa viết được bài").
+  // KHỐI-CÓ-NHÃN thay JSON: body_html chứa dấu " của HTML từng làm JSON gãy.
+  // Trần 20k (bài 1500-2500 chữ + HTML).
   async viralProduceBlog(
     system: string,
     user: string
@@ -810,7 +867,19 @@ CHI tra JSON array: [{"profile_id","moi_quan_tam","tam_ly","hanh_vi","insights"}
     tags: string[];
     body_html: string;
   }> {
-    return claudeJsonStrict(system, user, 20000);
+    const r = await claudeBlockStrict(
+      system,
+      user,
+      ['TITLE', 'SLUG', 'META', 'TAGS', 'BODY'],
+      20000
+    );
+    return {
+      title: r.TITLE,
+      slug: r.SLUG,
+      meta_description: r.META,
+      tags: r.TAGS.split(/[,\n]/).map((s) => s.trim()).filter(Boolean).slice(0, 12),
+      body_html: r.BODY,
+    };
   }
 
   // SẢN XUẤT: soạn BỘ SLIDE carousel infographic (như node "Soạn truyện" n8n)
@@ -827,12 +896,22 @@ CHI tra JSON array: [{"profile_id","moi_quan_tam","tam_ly","hanh_vi","insights"}
     return claudeJsonStrict(system, user, 8000);
   }
 
-  // SẢN XUẤT: viết kịch bản podcast (monologue, TTS đọc). STRICT + trần 12k.
+  // KHỐI-CÓ-NHÃN: full_script dài từng làm JSON gãy. Trần 12k.
   async viralProducePodcast(
     system: string,
     user: string
   ): Promise<{ title: string; full_script: string; est_minutes: number }> {
-    return claudeJsonStrict(system, user, 12000);
+    const r = await claudeBlockStrict(
+      system,
+      user,
+      ['TITLE', 'MINUTES', 'SCRIPT'],
+      12000
+    );
+    return {
+      title: r.TITLE,
+      full_script: r.SCRIPT,
+      est_minutes: Math.max(1, Math.min(30, parseInt(r.MINUTES, 10) || 3)),
+    };
   }
 
   // "Bài của mình": viết lại BÀI TỐT HƠN bản trước (điểm cao hơn prevScore), cho
