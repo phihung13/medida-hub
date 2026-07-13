@@ -404,11 +404,11 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
 
   return (
     <div className="flex flex-col gap-[14px]">
-      {/* Giải thích luồng mới: thẻ chỉ là lịch sử, duyệt ở Calendar */}
+      {/* Giải thích luồng mới: bài vào Calendar rồi thì tự rời danh sách này */}
       <div className="text-[12.5px] text-textItemBlur leading-[1.6]">
         {t(
-          'zalo_posts_history_hint',
-          'Every post collected from a Zalo group automatically becomes a draft in the Calendar — review, edit and publish there. This list is just the history.'
+          'zalo_posts_history_hint2',
+          'Mỗi bài gom từ nhóm Zalo tự động thành bản nháp trong Calendar — duyệt, sửa và đăng ở đó. Bài đã vào Media Hub sẽ TỰ RỜI danh sách này; ở đây chỉ còn bài đẩy lỗi hoặc chưa đẩy.'
         )}
       </div>
 
