@@ -548,6 +548,37 @@ export class ViralRepository {
     });
   }
 
+  getReport(orgId: string, id: string) {
+    return this._reports.model.viralReport.findFirst({
+      where: { id, organizationId: orgId },
+    });
+  }
+
+  // Vá cờ vào meta JSON của bản tin (zaloPending/zaloSentAt...) — merge, không đè.
+  async setReportMetaFlag(id: string, patch: Record<string, any>) {
+    const r = await this._reports.model.viralReport.findFirst({ where: { id } });
+    if (!r) return null;
+    let meta: any = {};
+    try {
+      meta = JSON.parse(r.meta || '{}');
+    } catch {
+      /* meta hỏng — ghi mới */
+    }
+    return this._reports.model.viralReport.update({
+      where: { id },
+      data: { meta: JSON.stringify({ ...meta, ...patch }).slice(0, 20000) },
+    });
+  }
+
+  // Bản tin đang CHỜ GỬI Zalo theo giờ hẹn (meta.zaloPending=true).
+  pendingZaloReports(orgId: string) {
+    return this._reports.model.viralReport.findMany({
+      where: { organizationId: orgId, meta: { contains: '"zaloPending":true' } },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+    });
+  }
+
   // Nguyên liệu bản tin tuần: tin báo nổi bật + bài đối thủ share cao (7 ngày).
   async weeklyBriefPosts(orgId: string) {
     const since = new Date(Date.now() - 7 * 24 * 3600 * 1000);

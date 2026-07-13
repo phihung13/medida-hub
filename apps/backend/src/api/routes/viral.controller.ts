@@ -273,6 +273,9 @@ export class ViralController {
       autoSkipMax?: number;
       rewriteMaxRounds?: number;
       autoProduce?: boolean;
+      reportRecipients?: { threadId: string; type: string; name: string }[];
+      reportAutoSend?: boolean;
+      reportSendHour?: number;
     }
   ) {
     if (!user?.isSuperAdmin) {
@@ -312,6 +315,15 @@ export class ViralController {
       ...(typeof body.autoProduce === 'boolean'
         ? { autoProduce: body.autoProduce }
         : {}),
+      ...(Array.isArray(body.reportRecipients)
+        ? { reportRecipients: body.reportRecipients as any }
+        : {}),
+      ...(typeof body.reportAutoSend === 'boolean'
+        ? { reportAutoSend: body.reportAutoSend }
+        : {}),
+      ...(typeof body.reportSendHour === 'number'
+        ? { reportSendHour: body.reportSendHour }
+        : {}),
     });
     return { ok: true, ...getViralStatus() };
   }
@@ -335,6 +347,23 @@ export class ViralController {
   ) {
     await this._service.deleteReport(org.id, id);
     return { ok: true };
+  }
+
+  // Gửi TAY 1 bản tin qua Zalo tới danh sách người nhận đã lưu (tab 📰).
+  @Post('/reports/:id/send-zalo')
+  async sendReportZalo(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string
+  ) {
+    const res = await this._service.sendReportZalo(org.id, id);
+    if (!res) throw new HttpException('Không tìm thấy bản tin.', 404);
+    if (!res.sent && !res.failed) {
+      throw new HttpException(
+        'Chưa cấu hình người nhận — bấm ✏️ Sửa ở khối "Gửi bản tin qua Zalo".',
+        400
+      );
+    }
+    return res;
   }
 
   // Nhạc nền podcast: upload mp3 (base64) / xoá — lưu CONFIG_DIR, bền Docker.

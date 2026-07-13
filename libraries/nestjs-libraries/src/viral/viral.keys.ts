@@ -35,6 +35,12 @@ interface ViralConfig {
   rewriteMaxRounds: number;
   // Duyệt (tự động hoặc tay) → tự sản xuất định dạng AI đề xuất.
   autoProduce: boolean;
+  // GỬI BẢN TIN QUA ZALO: danh sách người nhận (bạn bè/nhóm/SĐT đã tra),
+  // toggle tự gửi sau mỗi bản tin, và giờ gửi (-1 = ngay khi có bản tin,
+  // 0-23 = gom lại gửi vào đúng giờ đó trong ngày).
+  reportRecipients: { threadId: string; type: 'user' | 'group'; name: string }[];
+  reportAutoSend: boolean;
+  reportSendHour: number;
 }
 
 const config: ViralConfig = {
@@ -51,7 +57,23 @@ const config: ViralConfig = {
   autoSkipMax: 70,
   rewriteMaxRounds: 3,
   autoProduce: true,
+  reportRecipients: [],
+  reportAutoSend: true,
+  reportSendHour: -1,
 };
+
+// Làm sạch danh sách người nhận bản tin (dùng cả lúc load file lẫn lúc set).
+function sanitizeRecipients(v: any): ViralConfig['reportRecipients'] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .map((r: any) => ({
+      threadId: String(r?.threadId || '').trim().slice(0, 60),
+      type: r?.type === 'user' ? ('user' as const) : ('group' as const),
+      name: String(r?.name || '').trim().slice(0, 80) || 'Không tên',
+    }))
+    .filter((r) => r.threadId)
+    .slice(0, 30);
+}
 
 try {
   const raw = JSON.parse(fs.readFileSync(FILE, 'utf8'));
@@ -77,6 +99,11 @@ try {
     typeof raw?.rewriteMaxRounds === 'number' ? raw.rewriteMaxRounds : 3;
   config.autoProduce =
     typeof raw?.autoProduce === 'boolean' ? raw.autoProduce : true;
+  config.reportRecipients = sanitizeRecipients(raw?.reportRecipients);
+  config.reportAutoSend =
+    typeof raw?.reportAutoSend === 'boolean' ? raw.reportAutoSend : true;
+  config.reportSendHour =
+    typeof raw?.reportSendHour === 'number' ? raw.reportSendHour : -1;
 } catch {
   /* chưa có file — mặc định */
 }
@@ -134,6 +161,9 @@ export function getViralStatus() {
     autoSkipMax: config.autoSkipMax,
     rewriteMaxRounds: config.rewriteMaxRounds,
     autoProduce: config.autoProduce,
+    reportRecipients: config.reportRecipients,
+    reportAutoSend: config.reportAutoSend,
+    reportSendHour: config.reportSendHour,
   };
 }
 export function setViralConfig(patch: Partial<ViralConfig>) {
@@ -165,6 +195,12 @@ export function setViralConfig(patch: Partial<ViralConfig>) {
   if (typeof patch.rewriteMaxRounds === 'number')
     config.rewriteMaxRounds = Math.max(0, Math.min(5, Math.round(patch.rewriteMaxRounds)));
   if (typeof patch.autoProduce === 'boolean') config.autoProduce = patch.autoProduce;
+  if (patch.reportRecipients !== undefined)
+    config.reportRecipients = sanitizeRecipients(patch.reportRecipients);
+  if (typeof patch.reportAutoSend === 'boolean')
+    config.reportAutoSend = patch.reportAutoSend;
+  if (typeof patch.reportSendHour === 'number')
+    config.reportSendHour = Math.max(-1, Math.min(23, Math.round(patch.reportSendHour)));
   try {
     fs.writeFileSync(FILE, JSON.stringify(config));
   } catch {

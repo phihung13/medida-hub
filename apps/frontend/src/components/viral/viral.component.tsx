@@ -1494,10 +1494,229 @@ const useReports = (active: boolean) => {
   return useSWR(active ? '/viral/reports' : null, async (u: string) => (await fetch(u)).json());
 };
 
+// ── Panel GỬI BẢN TIN QUA ZALO: chọn người + nhóm + SĐT, giờ gửi, toggle
+// auto, nút gửi ngay. Lưu xong "đóng băng" thành bản tóm tắt — bấm ✏️ Sửa để
+// mở lại. Danh bạ lấy thẳng từ bot qua proxy same-origin /botapi.
+const ZaloSendPanel: FC<{ latestId?: string }> = ({ latestId }) => {
+  const t = useT();
+  const fetch = useFetch();
+  const toast = useToaster();
+  const { data: cfg, mutate: mutateCfg } = useSWR('viral-config', async () => (await fetch('/viral/config')).json());
+  const [editing, setEditing] = useState(false);
+  const [recipients, setRecipients] = useState<{ threadId: string; type: string; name: string }[]>([]);
+  const [sendHour, setSendHour] = useState<number>(-1);
+  const [friends, setFriends] = useState<any[]>([]);
+  const [groups, setGroups] = useState<any[]>([]);
+  const [contactsErr, setContactsErr] = useState(false);
+  const [q, setQ] = useState('');
+  const [phone, setPhone] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!cfg) return;
+    setRecipients(Array.isArray(cfg.reportRecipients) ? cfg.reportRecipients : []);
+    setSendHour(typeof cfg.reportSendHour === 'number' ? cfg.reportSendHour : -1);
+  }, [cfg]);
+  // chỉ tải danh bạ khi mở chế độ sửa (đỡ gọi bot mỗi lần xem tab)
+  useEffect(() => {
+    if (!editing) return;
+    (async () => {
+      try {
+        const f = await (await window.fetch('/botapi/api/postiz/contacts', { signal: AbortSignal.timeout(60000) })).json();
+        setFriends(Array.isArray(f?.friends) ? f.friends : []);
+      } catch {
+        setContactsErr(true);
+      }
+      try {
+        const g = await (await window.fetch('/botapi/api/postiz/groups', { signal: AbortSignal.timeout(60000) })).json();
+        const list = (Array.isArray(g) ? g : g?.groups || [])
+          .map((x: any) => ({ threadId: String(x.threadId || x.id || ''), name: String(x.name || x.label || x.threadId) }))
+          .filter((x: any) => x.threadId);
+        setGroups(list);
+      } catch {
+        setContactsErr(true);
+      }
+    })();
+  }, [editing]);
+  const toggleR = (item: { threadId: string; name: string }, type: 'user' | 'group') =>
+    setRecipients((prev) =>
+      prev.some((r) => r.threadId === item.threadId)
+        ? prev.filter((r) => r.threadId !== item.threadId)
+        : [...prev, { threadId: item.threadId, type, name: item.name }]
+    );
+  const addPhone = async () => {
+    const p = phone.replace(/\D/g, '');
+    if (!p) return;
+    try {
+      const r = await (await window.fetch('/botapi/api/postiz/find-user?phone=' + p, { signal: AbortSignal.timeout(30000) })).json();
+      if (!r?.threadId) throw new Error();
+      setRecipients((prev) =>
+        prev.some((x) => x.threadId === r.threadId) ? prev : [...prev, { threadId: r.threadId, type: 'user', name: r.name || p }]
+      );
+      setPhone('');
+    } catch {
+      toast.show(t('viral_zalo_phone_fail', 'No Zalo user found for this phone number.'), 'warning');
+    }
+  };
+  const save = async (patch?: any) => {
+    const res = await fetch('/viral/config', {
+      method: 'POST',
+      body: JSON.stringify({ reportRecipients: recipients, reportSendHour: sendHour, ...patch }),
+    });
+    if (res.status >= 400) {
+      toast.show(t('viral_need_admin', 'System administrator permission required.'), 'warning');
+      return false;
+    }
+    mutateCfg();
+    return true;
+  };
+  const sendNow = async () => {
+    if (!latestId) {
+      toast.show(t('viral_zalo_no_report', 'No brief yet — create one first.'), 'warning');
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch(`/viral/reports/${latestId}/send-zalo`, { method: 'POST' });
+      const d = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(d?.message || '');
+      toast.show(
+        `📨 ${t('viral_zalo_sent', 'Sent to')} ${d?.sent ?? 0} ${t('viral_zalo_sent_suffix', 'recipient(s)')}${d?.failed ? ` · ${d.failed} ${t('viral_zalo_failed', 'failed')}` : ''}`,
+        d?.failed ? 'warning' : 'success'
+      );
+    } catch (e: any) {
+      toast.show(e?.message || t('viral_zalo_send_fail', 'Could not send via Zalo.'), 'warning');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const auto = !!cfg?.reportAutoSend;
+  const norm = (s: string) => String(s || '').toLowerCase();
+  const fFriends = friends.filter((f) => !q || norm(f.name).includes(norm(q))).slice(0, 50);
+  const fGroups = groups.filter((g) => !q || norm(g.name).includes(norm(q))).slice(0, 50);
+  const hourLabel = sendHour < 0 ? t('viral_zalo_hour_now', 'Right when a brief is created') : `${String(sendHour).padStart(2, '0')}:00`;
+  return (
+    <div className="bg-newColColor border border-newBgLineColor rounded-[12px] p-[14px] flex flex-col gap-[10px]">
+      <div className="flex items-center gap-[10px] flex-wrap">
+        <span className="text-[13px] font-[800]">📤 {t('viral_zalo_panel', 'Send briefs via Zalo (bot)')}</span>
+        <label className="flex items-center gap-[6px] text-[12px] text-textItemBlur cursor-pointer">
+          <input type="checkbox" checked={auto} onChange={async (e) => { await save({ reportAutoSend: e.target.checked }); }} />
+          {t('viral_zalo_auto', 'Auto-send every new brief')}
+        </label>
+        <div className="flex-1" />
+        <button onClick={sendNow} disabled={busy} className="h-[32px] px-[12px] rounded-[8px] text-[12px] font-[700] bg-btnPrimary/15 text-btnPrimary hover:bg-btnPrimary/25 disabled:opacity-50">
+          {busy ? t('viral_zalo_sending', 'Sending…') : `📨 ${t('viral_zalo_send_now', 'Send latest brief now')}`}
+        </button>
+        {!editing && (
+          <button onClick={() => setEditing(true)} className="h-[32px] px-[12px] rounded-[8px] text-[12px] font-[700] border border-newBgLineColor text-textItemBlur hover:text-textColor">
+            ✏️ {t('viral_zalo_edit', 'Edit')}
+          </button>
+        )}
+      </div>
+      {!editing ? (
+        // ĐÓNG BĂNG: tóm tắt cấu hình đã lưu
+        <div className="flex items-center gap-[8px] flex-wrap text-[12px] text-textItemBlur">
+          {recipients.length ? (
+            recipients.map((r) => (
+              <span key={r.threadId} className="px-[9px] py-[3px] rounded-full bg-newBgColor border border-newBgLineColor text-textColor">
+                {r.type === 'user' ? '👤' : '👥'} {r.name}
+              </span>
+            ))
+          ) : (
+            <span>⚠ {t('viral_zalo_none', 'No recipients yet — press ✏️ Edit to pick friends/groups.')}</span>
+          )}
+          <span className="ms-auto">🕐 {t('viral_zalo_schedule', 'Schedule:')} <b className="text-textColor">{hourLabel}</b></span>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-[10px]">
+          {/* đã chọn */}
+          <div className="flex items-center gap-[6px] flex-wrap min-h-[26px]">
+            {recipients.map((r) => (
+              <button key={r.threadId} onClick={() => setRecipients((prev) => prev.filter((x) => x.threadId !== r.threadId))} className="px-[9px] py-[3px] rounded-full bg-btnPrimary/12 text-btnPrimary text-[12px] hover:bg-[#FF5A52]/15 hover:text-[#FF5A52]" title={t('viral_zalo_remove', 'Remove')}>
+                {r.type === 'user' ? '👤' : '👥'} {r.name} ✕
+              </button>
+            ))}
+            {!recipients.length && <span className="text-[12px] text-textItemBlur">{t('viral_zalo_pick', 'Pick recipients below…')}</span>}
+          </div>
+          {/* tìm + SĐT */}
+          <div className="flex gap-[8px] flex-wrap">
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('viral_zalo_search', 'Search name…')} className={inputCls + ' flex-1 min-w-[160px]'} />
+            <div className="flex gap-[6px]">
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t('viral_zalo_phone', 'Phone number…')} className={inputCls + ' w-[150px]'} />
+              <button onClick={addPhone} className="px-[12px] rounded-[8px] text-[12px] font-[700] border border-newBgLineColor text-textItemBlur hover:text-textColor" title={t('viral_zalo_phone_hint', 'Look up a Zalo user by phone (careful: messaging strangers may get the bot rate-limited)')}>
+                ＋SĐT
+              </button>
+            </div>
+          </div>
+          {contactsErr && (
+            <div className="text-[11.5px] text-[#FFC53D]">⚠ {t('viral_zalo_bot_err', 'Could not load contacts from the bot — check the Zalo page (bot connected?).')}</div>
+          )}
+          {/* 2 cột: bạn bè + nhóm */}
+          <div className="grid grid-cols-2 mobile:grid-cols-1 gap-[10px]">
+            {[
+              { title: `👤 ${t('viral_zalo_friends', 'Friends')}`, list: fFriends, type: 'user' as const },
+              { title: `👥 ${t('viral_zalo_groups', 'Groups')}`, list: fGroups, type: 'group' as const },
+            ].map((col) => (
+              <div key={col.type} className="border border-newBgLineColor rounded-[10px] p-[8px] max-h-[220px] overflow-auto flex flex-col gap-[4px]">
+                <div className="text-[11px] font-[800] uppercase tracking-[0.05em] text-textItemBlur px-[4px]">{col.title} · {col.list.length}</div>
+                {col.list.map((it: any) => {
+                  const sel = recipients.some((r) => r.threadId === it.threadId);
+                  return (
+                    <button key={it.threadId} onClick={() => toggleR(it, col.type)} className={clsx('text-left px-[8px] py-[5px] rounded-[7px] text-[12.5px] truncate', sel ? 'bg-btnPrimary/15 text-btnPrimary font-[700]' : 'hover:bg-newBgColor')}>
+                      {sel ? '✓ ' : ''}{it.name}
+                    </button>
+                  );
+                })}
+                {!col.list.length && <div className="text-[11.5px] text-textItemBlur px-[4px]">{t('viral_zalo_empty', '(empty)')}</div>}
+              </div>
+            ))}
+          </div>
+          {/* giờ gửi + lưu */}
+          <div className="flex items-center gap-[8px] flex-wrap">
+            <span className="text-[12px] text-textItemBlur">🕐 {t('viral_zalo_schedule', 'Schedule:')}</span>
+            <select value={sendHour} onChange={(e) => setSendHour(Number(e.target.value))} className={inputCls + ' w-auto'}>
+              <option value={-1}>{t('viral_zalo_hour_now', 'Right when a brief is created')}</option>
+              {[6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 21].map((h) => (
+                <option key={h} value={h}>{String(h).padStart(2, '0')}:00 {t('viral_zalo_daily', 'daily')}</option>
+              ))}
+            </select>
+            <div className="flex-1" />
+            <button onClick={() => { setEditing(false); mutateCfg(); }} className="h-[34px] px-[14px] rounded-[8px] text-[12.5px] text-textItemBlur hover:text-textColor">
+              {t('viral_zalo_cancel', 'Cancel')}
+            </button>
+            <Button onClick={async () => { if (await save()) { setEditing(false); toast.show(t('viral_zalo_saved', 'Recipients saved.'), 'success'); } }}>
+              💾 {t('viral_zalo_save', 'Save')}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const ReportCard: FC<{ report: any; onDone: () => void }> = ({ report, onDone }) => {
   const t = useT();
   const fetch = useFetch();
+  const toast = useToaster();
   const [open, setOpen] = useState(false);
+  const [sending, setSending] = useState(false);
+  // Gửi bản tin NÀY qua Zalo tới danh sách người nhận đã lưu (panel phía trên)
+  const sendZalo = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSending(true);
+    try {
+      const res = await fetch(`/viral/reports/${report.id}/send-zalo`, { method: 'POST' });
+      const d = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(d?.message || '');
+      toast.show(
+        `📨 ${t('viral_zalo_sent', 'Sent to')} ${d?.sent ?? 0} ${t('viral_zalo_sent_suffix', 'recipient(s)')}${d?.failed ? ` · ${d.failed} ${t('viral_zalo_failed', 'failed')}` : ''}`,
+        d?.failed ? 'warning' : 'success'
+      );
+    } catch (err: any) {
+      toast.show(err?.message || t('viral_zalo_send_fail', 'Could not send via Zalo.'), 'warning');
+    } finally {
+      setSending(false);
+    }
+  };
   const meta = (() => {
     try {
       return JSON.parse(report.meta || '{}');
@@ -1546,6 +1765,14 @@ const ReportCard: FC<{ report: any; onDone: () => void }> = ({ report, onDone })
           </span>
         </span>
         <span className="text-textItemBlur text-[12px]">{open ? '▲' : '▼'}</span>
+        <button
+          onClick={sendZalo}
+          disabled={sending}
+          title={t('viral_zalo_send_this', 'Send this brief via Zalo to the saved recipients')}
+          className="px-[8px] py-[4px] rounded-[6px] text-[11.5px] text-btnPrimary hover:bg-btnPrimary/10 disabled:opacity-50"
+        >
+          {sending ? '…' : '📤'}
+        </button>
         <button onClick={del} className="px-[8px] py-[4px] rounded-[6px] text-[11.5px] text-[#FF5A52] hover:bg-[#FF5A52]/10">✕</button>
       </button>
       {open && (
@@ -2072,9 +2299,10 @@ export const ViralComponent: FC = () => {
         </div>
       )}
 
-      {/* 📰 Bản tin tuần — đọc lại + tick todo */}
+      {/* 📰 Bản tin tuần — đọc lại + tick todo + cấu hình gửi Zalo */}
       {isReports ? (
         <div className="flex flex-col gap-[12px]">
+          <ZaloSendPanel latestId={(reportsData?.items || [])[0]?.id} />
           <div className="flex">
             <button
               onClick={async () => {

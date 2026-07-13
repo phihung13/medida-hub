@@ -179,11 +179,37 @@ export class ViralService implements OnModuleInit {
     // (port cron "nhắc duyệt 9h" + "digest tuần CN 20h" của n8n, bỏ Telegram).
     let lastRemindDay = '';
     let lastDigestDay = '';
+    let lastZaloSendDay = '';
     setInterval(async () => {
       const vn = new Date(Date.now() + 7 * 3600 * 1000); // giờ VN qua trục UTC
       const day = vn.toISOString().slice(0, 10);
       const hour = vn.getUTCHours();
       try {
+        // Gửi bản tin Zalo theo GIỜ HẸN (reportSendHour) — các bản tin đã gom
+        // chờ (meta.zaloPending) được gửi 1 lượt/ngày vào đúng giờ đó.
+        const cfgZ = getViralConfig();
+        if (
+          cfgZ.reportSendHour >= 0 &&
+          hour === cfgZ.reportSendHour &&
+          lastZaloSendDay !== day
+        ) {
+          lastZaloSendDay = day;
+          const orgsZ = await this._repo.orgIdsWithPosts();
+          for (const { organizationId } of orgsZ) {
+            const pend: any[] = await this._repo
+              .pendingZaloReports(organizationId)
+              .catch(() => [] as any[]);
+            for (const r of pend) {
+              await this.sendReportToRecipients(r.content).catch(() => null);
+              await this._repo
+                .setReportMetaFlag(r.id, {
+                  zaloPending: false,
+                  zaloSentAt: new Date().toISOString(),
+                })
+                .catch(() => null);
+            }
+          }
+        }
         if (hour === 9 && lastRemindDay !== day) {
           lastRemindDay = day;
           const orgs = await this._repo.orgIdsWithPosts();
@@ -2434,9 +2460,13 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
   }
 
   // ── BẢN TIN TUẦN + TODO LIST (gửi Zalo/email/in-app) ─────────────────────
-  // Gửi tin nhắn văn bản vào nhóm Zalo qua bot (endpoint /api/postiz/send,
-  // auth x-hub-token — cùng cơ chế proxy /botapi của dashboard).
-  private async sendZaloReport(threadId: string, text: string) {
+  // Gửi tin nhắn văn bản qua bot Zalo (endpoint /api/postiz/send, auth
+  // x-hub-token). type 'user' = nhắn thẳng 1 người (bạn bè), 'group' = nhóm.
+  private async sendZaloReport(
+    threadId: string,
+    text: string,
+    type: 'user' | 'group' = 'group'
+  ) {
     const base = (process.env.ZALO_BOT_URL || 'http://127.0.0.1:8088').replace(/\/$/, '');
     const res = await fetch(`${base}/api/postiz/send`, {
       method: 'POST',
@@ -2446,10 +2476,50 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
           ? { 'x-hub-token': process.env.HUB_BOT_TOKEN }
           : {}),
       },
-      body: JSON.stringify({ threadId, text }),
+      body: JSON.stringify({ threadId, text, threadType: type }),
       signal: AbortSignal.timeout(30000),
     });
     if (!res.ok) throw new Error(`Bot Zalo trả ${res.status}`);
+  }
+
+  // Gửi 1 văn bản tới TOÀN BỘ danh sách người nhận đã lưu (hoặc list truyền
+  // vào) — tuần tự cách 2 giây né spam-limit Zalo. Chưa cấu hình danh sách
+  // thì rơi về nhóm cũ (reportZaloThreadId) cho tương thích.
+  private async sendReportToRecipients(
+    text: string,
+    override?: { threadId: string; type: 'user' | 'group'; name?: string }[]
+  ): Promise<{ sent: number; failed: number }> {
+    const cfg = getViralConfig();
+    const list =
+      override && override.length
+        ? override
+        : cfg.reportRecipients.length
+        ? cfg.reportRecipients
+        : cfg.reportZaloThreadId
+        ? [{ threadId: cfg.reportZaloThreadId, type: 'group' as const }]
+        : [];
+    let sent = 0;
+    let failed = 0;
+    for (const r of list) {
+      try {
+        await this.sendZaloReport(r.threadId, text, r.type);
+        sent++;
+      } catch {
+        failed++;
+      }
+      await new Promise((res) => setTimeout(res, 2000));
+    }
+    return { sent, failed };
+  }
+
+  // Gửi TAY 1 bản tin qua Zalo (nút 📤 trên thẻ / "Gửi ngay" trên panel).
+  async sendReportZalo(
+    orgId: string,
+    reportId: string
+  ): Promise<{ sent: number; failed: number } | null> {
+    const r: any = await this._repo.getReport(orgId, reportId);
+    if (!r) return null;
+    return this.sendReportToRecipients(r.content);
   }
 
   // Tổng hợp 7 ngày → AI viết bản tin (tin nóng + diễn biến thị trường + todo
@@ -2563,9 +2633,24 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
         .sendEmailsToOrg(orgId, head, text.replace(/\n/g, '<br/>'), 'info')
         .catch(() => null);
     }
-    const threadId = getViralConfig().reportZaloThreadId;
-    if (threadId) await this.sendZaloReport(threadId, text).catch(() => null);
-    return { ok: true, zalo: !!threadId, reportId: (saved as any)?.id || null };
+    // Zalo: theo danh sách người nhận + toggle auto + giờ hẹn (Cài đặt tab 📰)
+    const cfgZ = getViralConfig();
+    const hasRecipients =
+      cfgZ.reportRecipients.length > 0 || !!cfgZ.reportZaloThreadId;
+    let zalo = false;
+    if (hasRecipients && cfgZ.reportAutoSend) {
+      if (cfgZ.reportSendHour >= 0 && (saved as any)?.id) {
+        // gom lại — vòng quét 10 phút sẽ gửi vào đúng giờ đã hẹn trong ngày
+        await this._repo
+          .setReportMetaFlag((saved as any).id, { zaloPending: true })
+          .catch(() => null);
+        zalo = true;
+      } else {
+        const r = await this.sendReportToRecipients(text).catch(() => null);
+        zalo = !!r && r.sent > 0;
+      }
+    }
+    return { ok: true, zalo, reportId: (saved as any)?.id || null };
   }
 
   listReports(orgId: string) {
