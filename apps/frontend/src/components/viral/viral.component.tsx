@@ -1247,6 +1247,14 @@ const ProductDetailModal: FC<{ product: any }> = ({ product }) => {
           {product.textContent}
         </div>
       )}
+      {product.format === 'infographic' && meta.commentPin && (
+        <div className="text-[12.5px] leading-[1.7] whitespace-pre-line bg-newColColor rounded-[10px] p-[12px] border border-amber-400/30">
+          <div className="text-[11px] font-[700] text-amber-400 mb-[6px]">
+            💬 {t('viral_comment_pin', 'Comment ghim — KHÔNG nằm trong caption: sau khi đăng, dán đoạn này vào bình luận đầu tiên rồi ghim lại')}
+          </div>
+          {meta.commentPin}
+        </div>
+      )}
       {product.format === 'podcast' && product.mediaPath && (
         <audio controls src={product.mediaPath} className="w-full" />
       )}

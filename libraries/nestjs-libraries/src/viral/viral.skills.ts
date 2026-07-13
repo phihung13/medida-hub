@@ -141,6 +141,37 @@ Khung bắt buộc (chỉ vậy thôi, còn lại tự do):
 - Góc dưới có dòng chữ nhỏ: Trường Việt Anh · Vui Vẻ & Thực Dụng.
 - Bám đúng nội dung được cung cấp, không bịa số liệu, không nhắc đối thủ hay trường khác.`;
 
+// Công thức BỘ CAROUSEL — port NGUYÊN VĂN từ node "Soạn truyện" của n8n
+// WF-SanXuat (skill fb-value-sharing): đây là bản đã siết mạnh chính tả và
+// cho kết quả ít lỗi nhất — đừng rút gọn khi chỉnh sửa.
+const CONG_THUC_CAROUSEL = `GIỌNG: ấm áp, chân thật, thực tế (số thật, không phóng đại), tôn trọng phụ huynh, KHÔNG dạy đời, KHÔNG nói "tốt nhất/số 1" khi không có bằng chứng, không nhắc đối thủ.
+
+ÁP DỤNG PHƯƠNG PHÁP "fb-value-sharing" (công thức bài chia sẻ giá trị viral cho fanpage). Bộ ảnh infographic này đăng lên Facebook các fanpage Việt Anh. ĐÍCH ĐẾN: ba mẹ đọc xong phải muốn LƯU LẠI và GỬI cho nhóm phụ huynh lớp con — không chỉ khen hay.
+
+CÔNG THỨC: HOOK → REWARD → SHARE → FUNNEL.
+
+1. THẺ BÌA = HOOK (quyết định 80% thành bại): phủ định cách làm của số đông + lời hứa có CON SỐ cụ thể. Chọn 1 trong 4 khung:
+   • Phủ định số đông: "Phần lớn ba mẹ vẫn chỉ… [X]. [N] điều sau giúp con… [kết quả]".
+   • Cấm trực diện: "Đừng nói/làm kiểu A, B, C. [N] cách thay thế giúp con…".
+   • Lật ngộ nhận: "Nhiều người nghĩ [X]. Thực ra không phải vậy…".
+   • Cảm thán + kết quả (dùng tiết kiệm, tránh giật tít rỗng).
+   Con số PHẢI có cơ sở thật — đây là thương hiệu giáo dục, phóng đại vô căn cứ phá uy tín hơn là kéo share.
+
+2. CÁC THẺ NỘI DUNG = REWARD (giá trị dùng ngay): danh sách ĐÁNH SỐ, 5–7 mục (tài nguyên/danh sách có thể nhiều hơn). Mỗi thẻ 1 mục độc lập, dùng được ngay trong 24h không cần nghĩ thêm.
+   • Khi dạy "cách nói/cách làm": dùng cấu trúc TƯƠNG PHẢN ❌/✅ — cho ba mẹ thấy chính câu họ đang nói (❌) rồi câu thay thế nguyên văn (✅). Tự nhận ra "đúng là mình đang làm vậy" = niềm tin tức thì.
+   • Mỗi mục: tối đa 1 câu giải thích "tại sao", còn lại là "làm thế nào" (câu nói nguyên văn / bước cụ thể).
+   • KHÔNG lời khuyên chung chung kiểu "hãy kiên nhẫn với con" — không ai lưu lại.
+
+3. SHARE TRIGGER: tự kiểm — bài có đáng để 1 phụ huynh gửi vào nhóm Zalo lớp con không? Đáng khi (a) trúng nỗi đau chung cả nhóm, (b) có thứ "lưu lại dùng sau" (checklist, bảng, danh sách tra cứu).
+
+4. THẺ KẾT: tóm tắt nhanh + nhắc "Lưu lại & gửi cho ba mẹ cần" + nhắc xem phần đọc thêm.
+
+5. fb_caption = phần FUNNEL trong caption: giọng gần gũi, KHÔNG chứa CTA bán hàng/tuyển sinh (một dòng "inbox cho trường" giữa bài giết lượt share). Kết bằng 3–5 hashtag.
+
+6. comment_ghim (RIÊNG, không nằm trong caption): 1 câu kết nối + tối đa 3 link/hành động — quà miễn phí trước, hành động sâu hơn (tham quan trường, hotline 0916 961 409) sau. Ký tên fanpage Trường Việt Anh.
+
+TỰ CHẤM trước khi trả (ngưỡng ≥80/100): Hook phủ định + con số (15); Hook gọn ≤2 câu gây tò mò (10); Giá trị dùng ngay (15); Danh sách rõ, đánh số, đúng số đã hứa (10); Tương phản ❌/✅ (10); Đáng share vào nhóm phụ huynh (15); Đúng thương hiệu Việt Anh, claim có cơ sở (15); Phễu sạch — caption không CTA bán, comment ghim có quà trước (10). Nếu dưới 80 thì tự sửa rồi mới trả.`;
+
 const HE_THONG_VA = `Bạn là chuyên viên truyền thông của Trường Việt Anh. Viết nội dung mạng xã hội bằng tiếng Việt, tự nhiên, ấm áp, đúng chuẩn mực giáo dục, phù hợp phụ huynh và học sinh. Không bịa thông tin không có trong dữ liệu đầu vào.`;
 
 const NGUYEN_TAC_CHON_NHOM = `NGUYÊN TẮC CHỌN NHÓM (BẮT BUỘC):
@@ -213,6 +244,7 @@ export const VIRAL_SKILL_DEFS: ViralSkillDef[] = [
   { key: 'giong-podcast', label: 'Giọng Podcast', group: 'Sản xuất', description: 'Giọng kể + luật xưng hô trung tính cho TTS', content: GIONG_PODCAST },
   { key: 'cong-thuc-podcast', label: 'Công thức Podcast', group: 'Sản xuất', description: 'Kể chuyện Twist/Reveal + cấu trúc tập + value-first — sản xuất podcast', content: CONG_THUC_PODCAST },
   { key: 'cong-thuc-infographic', label: 'Công thức Infographic', group: 'Sản xuất', description: 'Khung thiết kế ảnh Gemini (code tự thêm tỉ lệ + nội dung bài)', content: CONG_THUC_INFOGRAPHIC },
+  { key: 'cong-thuc-carousel', label: 'Công thức Carousel (fb-value-sharing)', group: 'Sản xuất', description: 'HOOK→REWARD→SHARE→FUNNEL + ❌/✅ + tự chấm ≥80 — bộ slide infographic, port nguyên văn n8n', content: CONG_THUC_CAROUSEL },
   // Chấm điểm & phân loại
   { key: 'nguyen-tac-chon-nhom', label: 'Nguyên tắc chọn nhóm (cấp học)', group: 'Chấm & phân loại', description: 'Dấu hiệu MN/TH/THCS/THPT — routing khi chấm điểm', content: NGUYEN_TAC_CHON_NHOM },
   { key: 'skill-phan-loai-viet-lai', label: 'Phân loại + viết lại (4 bước)', group: 'Chấm & phân loại', description: 'Nhiệm vụ A/B/C/D: chọn nhóm, viết lại, chấm, gán loại SX + podcast_score', content: SKILL_PHAN_LOAI_VIET_LAI },

@@ -2302,7 +2302,9 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
       // = lỗi cả bộ (không giao album thiếu — giống n8n), bấm Thử lại làm lại.
       const { system, user } = buildCarouselPrompt(input);
       const story = await this._openai.viralProduceCarousel(system, user);
-      const slides = (story.slides || []).filter((s) => s?.heading || s?.body).slice(0, 10);
+      // Tối đa 15 slide như n8n — AI được dặn CHIA THÊM slide cho thoáng chữ
+      // (ít chữ mỗi slide = ít lỗi chính tả khi Gemini render).
+      const slides = (story.slides || []).filter((s) => s?.heading || s?.body).slice(0, 15);
       if (!slides.length)
         throw new Error('AI không trả slide nào — bấm Thử lại.');
       const style =
@@ -2359,8 +2361,17 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
         textContent: story.fb_caption
           ? String(story.fb_caption).slice(0, 5000)
           : null,
-        // slides = [{id, path}]: id media để nút "Đăng lên Lịch" đính ảnh
-        meta: JSON.stringify({ ratio: '1:1', slides: slideItems, total: slideItems.length }).slice(0, 8000),
+        // slides = [{id, path}]: id media để nút "Đăng lên Lịch" đính ảnh.
+        // commentPin = comment ghim (mục 6 fb-value-sharing) — RIÊNG, không
+        // nằm trong caption; UI hiện để dán tay vào bình luận sau khi đăng.
+        meta: JSON.stringify({
+          ratio: '1:1',
+          slides: slideItems,
+          total: slideItems.length,
+          ...(story.comment_ghim
+            ? { commentPin: String(story.comment_ghim).slice(0, 1500) }
+            : {}),
+        }).slice(0, 10000),
         error: null,
       });
       return;

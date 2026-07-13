@@ -112,24 +112,35 @@ export function buildCarouselPrompt(r: ProduceInput): {
   user: string;
 } {
   const evMode = evidenceMode(r.id, 'info');
+  const MAX_SLIDES = 15;
+  // Port ĐỦ Ý ĐỒ node "Soạn truyện" của n8n WF-SanXuat (bản user đã siết mạnh
+  // chính tả, chạy thật ít lỗi): hồ sơ trường + CHÍNH TẢ + skill fb-value-sharing
+  // (kèm GIỌNG) + chia NHIỀU slide cho thoáng chữ (ít chữ/slide = ít lỗi render)
+  // + style tự chọn đa dạng + CTA thật + điểm tựa xoay vòng.
   let sys =
-    'Bạn là designer-content giáo dục cho Trường Việt Anh, soạn BỘ SLIDE carousel Facebook theo giáo trình của nhà sáng lập Nguyễn Mạnh Dương.\n\n' +
     getSkill('ho-so-truong-ngan') +
     '\n\n' +
     getSkill('chinh-ta') +
     '\n\n' +
-    getSkill('cong-thuc-infographic') +
-    '\n\nNHIỆM VỤ: từ nội dung định hướng (đã duyệt & tối ưu cho nhóm khách), soạn 1 BỘ CAROUSEL 4-8 slide đăng Facebook: slide 1 là BÌA (hook mạnh nhất, tiêu đề lớn), các slide thân mỗi slide 1 Ý TRỌN VẸN (heading ngắn + body súc tích, ưu tiên gạch đầu dòng/bước đánh số), slide cuối là CTA nhẹ nhàng. Chữ trên slide phải NGẮN — người đọc hiểu trong 3 giây; chi tiết dài để dành cho caption.';
-  sys += '\n\n' + diversityBlock(evMode, '- Tối đa 1 điểm tựa cho CẢ BỘ.');
+    getSkill('cong-thuc-carousel') +
+    '\n\nBạn là content creator giáo dục cho Trường Việt Anh (hệ thống K-12, triết lý Vui Vẻ & Thực Dụng, đối tượng mẹ Millennial 28-40 tuổi).' +
+    '\nNHIỆM VỤ: từ NỘI DUNG GỐC (đã duyệt & tối ưu cho nhóm khách), soạn nội dung cho các SLIDE INFOGRAPHIC theo đúng công thức fb-value-sharing ở trên. Cấu trúc: 1 THẺ BÌA (hook phủ định số đông + con số) → các THẺ NỘI DUNG (đánh số, ❌/✅ khi hợp) → 1 THẺ KẾT (tóm tắt + nhắc lưu/gửi).' +
+    '\nMỖI SLIDE chỉ 1 Ý rõ ràng, súc tích nhưng có chiều sâu. Đây là INFOGRAPHIC CÓ HÌNH VẼ: chữ VỪA ĐỦ làm rõ ý, chừa chỗ cho HÌNH MINH HOẠ. KHÔNG đặc kín chữ làm mất hình.' +
+    '\nNếu nội dung nhiều ý: ƯU TIÊN CHIA THÊM SLIDE (mỗi slide 1 ý cho thoáng), KHÔNG dồn hết vào ít slide. Số slide TỰ QUYẾT, tối đa ' + MAX_SLIDES + ' slide.' +
+    '\nMỗi slide: heading = tiêu đề NGẮN/mạnh; body = vài câu súc tích HOẶC cặp ❌/✅ HOẶC 2-4 ý ngắn (KHÔNG phải đoạn văn dày đặc).' +
+    '\nViết SÚC TÍCH hơn một chút: giảm khoảng 10-20% lượng chữ trên mỗi slide so với mức thông thường — cắt từ thừa, bỏ ý lặp, gọn câu lại — nhưng VẪN giữ đủ ý và phong cách hiện tại (vẫn được có câu/giải thích ngắn). Mục tiêu: bớt chữ vừa phải để giảm lỗi chính tả khi render, KHÔNG làm slide trống trải hay cụt ý. Ưu tiên mỗi chữ đúng chính tả tiếng Việt có dấu.' +
+    '\nstyle: TỰ CHỌN 1 phong cách infographic ĐẸP & hợp chủ đề (ĐỪNG mặc định kiểu phẳng mỗi lần) — ví dụ: Tối giản hiện đại / Minh hoạ hoạt hình / Corporate flat / Timeline / 3D... Mô tả CHI TIẾT phong cách (tông màu, font, kiểu minh hoạ, bố cục) bằng tiếng Việt để ÁP DỤNG Y HỆT cho TẤT CẢ slide — ĐỒNG NHẤT cả bộ.';
   sys += '\n\n' + getSkill('cta-that');
+  sys += '\n\n' + diversityBlock(evMode, '- Tối đa 1 điểm tựa cho CẢ BỘ.');
   sys +=
     '\n\nTrả về CHỈ 1 JSON thuần (không kèm chữ nào khác, không bọc ```): ' +
-    '{"title":"tên bộ ngắn gọn","style":"mô tả phong cách đồng bộ cả bộ: tông màu + font + vibe (vd: hiện đại ấm áp, pastel xanh mint-kem, sans-serif tròn)","fb_caption":"caption đăng kèm album: mở bằng hook, thân tóm giá trị, kết CTA + 4-6 hashtag","slides":[{"role":"cover","heading":"...","body":"..."},{"role":"body","heading":"...","body":"..."},{"role":"cta","heading":"...","body":"..."}]}';
+    '{"title":"tên bộ ngắn gọn","style":"mô tả CHI TIẾT phong cách đồng bộ cả bộ: tông màu + font + kiểu minh hoạ + bố cục","fb_caption":"caption đăng kèm album theo mục 5 của công thức: giọng gần gũi, KHÔNG CTA bán hàng, kết 3-5 hashtag","comment_ghim":"theo mục 6 của công thức: 1 câu kết nối + tối đa 3 link/hành động có thật, ký tên fanpage Trường Việt Anh","slides":[{"role":"cover","heading":"...","body":"..."},{"role":"body","heading":"...","body":"..."},{"role":"cta","heading":"...","body":"..."}]}. ' +
+    'Mọi chữ tiếng Việt trong title/heading/body/fb_caption/comment_ghim phải ĐÚNG CHÍNH TẢ CÓ DẤU.';
   const user =
     'Chủ đề: ' + (r.topic || '') +
-    '\nNội dung định hướng (đã tối ưu cho nhóm khách): ' + (r.idea || '') +
+    '\nNội dung gốc (đã tối ưu cho nhóm khách): ' + (r.idea || '') +
     '\nGóc tiếp cận: ' + (r.detail || '') +
-    '\nNhóm khách: ' + (r.category || '');
+    '\nNhóm KH: ' + (r.category || '');
   return { system: sys, user };
 }
 
