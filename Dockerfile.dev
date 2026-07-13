@@ -26,14 +26,28 @@ RUN npm --no-update-notifier --no-fund --global install pnpm@10.6.1 pm2
 
 WORKDIR /app
 
+# ── TẦNG 1: cài dependency CHỈ từ manifest ─────────────────────────────────
+# Copy manifest TRƯỚC code: layer install (13-14 phút) chỉ phụ thuộc lockfile
+# → cache-hit qua mọi commit (trước đây nằm sau COPY . nên chạy lại MỖI deploy).
+# --ignore-scripts: postinstall (prisma-generate, fetch-gtm) cần source — chưa
+# copy — nên hoãn; lần install thứ 2 bên dưới sẽ chạy scripts đầy đủ.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY apps/backend/package.json apps/backend/
+COPY apps/commands/package.json apps/commands/
+COPY apps/extension/package.json apps/extension/
+COPY apps/frontend/package.json apps/frontend/
+COPY apps/orchestrator/package.json apps/orchestrator/
+COPY apps/sdk/package.json apps/sdk/
+RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --ignore-scripts --reporter=silent
+
+# ── TẦNG 2: code + scripts ──────────────────────────────────────────────────
 COPY . /app
 COPY var/docker/nginx.conf /etc/nginx/nginx.conf
 
-# --frozen-lockfile: cài ĐÚNG theo pnpm-lock.yaml — lệch lock/package.json thì
-# fail sớm + rõ ràng thay vì âm thầm resolve lại (build lâu + kết quả trôi).
-# --reporter=silent: pnpm KHÔNG phun cả nghìn dòng "Progress: added X" — log build
-# khổng lồ làm phình RAM worker Coolify → Horizon restart worker → "Gracefully
-# shutting down" giết build ở ~18-30'. Im lặng = log nhỏ = build về đích.
+# Install lần 2: node_modules đã có nên rất nhanh — chủ yếu chạy postinstall
+# (prisma generate, fetch-gtm). --reporter=silent giữ log gọn (log khổng lồ
+# từng làm phình RAM phía Coolify → build bị giết giữa chừng).
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile --reporter=silent
 
