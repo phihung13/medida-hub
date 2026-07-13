@@ -1189,7 +1189,7 @@ const ProductDetailModal: FC<{ product: any }> = ({ product }) => {
         // bộ carousel (meta.slides) — hiện đủ cả bộ; bản cũ 1 ảnh vẫn hiện được
         <div className="flex flex-col gap-[8px]">
           {(Array.isArray(meta.slides) && meta.slides.length > 1
-            ? meta.slides
+            ? meta.slides.map((s: any) => (typeof s === 'string' ? s : s?.path)).filter(Boolean)
             : [product.mediaPath]
           ).map((p: string, i: number) => (
             // eslint-disable-next-line @next/next/no-img-element
@@ -1225,6 +1225,64 @@ const ProductDetailModal: FC<{ product: any }> = ({ product }) => {
       {Array.isArray(meta.tags) && meta.tags.length > 0 && (
         <div className="text-[11.5px] text-textItemBlur">🏷 {meta.tags.join(', ')}</div>
       )}
+    </div>
+  );
+};
+
+// Modal chọn kênh để đăng BỘ INFOGRAPHIC → bản nháp trên Lịch (cả bộ ảnh +
+// caption album) — người chỉnh giờ rồi bấm đăng trên Lịch như thường.
+const PostProductModal: FC<{ product: any; onDone: () => void }> = ({ product, onDone }) => {
+  const t = useT();
+  const fetch = useFetch();
+  const toast = useToaster();
+  const modal = useModals();
+  const { data: integrations } = useIntegrationList();
+  const [integrationId, setIntegrationId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const submit = useCallback(async () => {
+    if (!integrationId) {
+      toast.show(t('viral_pick_channel_first', 'Pick a target channel first.'), 'warning');
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch(`/viral/products/${product.id}/post`, {
+        method: 'POST',
+        body: JSON.stringify({ integrationId }),
+      });
+      const d = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(d?.message || '');
+      toast.show(
+        `📤 ${t('viral_product_posted', 'Added as a draft on the Calendar with')} ${d?.images ?? ''} ${t('viral_product_posted_suffix', 'image(s) — review & schedule there.')}`,
+        'success'
+      );
+      onDone();
+      modal.closeCurrent();
+    } catch (e: any) {
+      toast.show(e?.message || t('viral_post_failed', 'Could not post, try again.'), 'warning');
+    } finally {
+      setBusy(false);
+    }
+  }, [integrationId, product.id]);
+  return (
+    <div className="flex flex-col gap-[12px]">
+      <div className="text-[12.5px] text-textItemBlur">
+        {t('viral_post_product_hint', 'Pick a channel — the WHOLE image set + album caption becomes a draft on the Calendar (not published right away).')}
+      </div>
+      {product.mediaPath && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={product.mediaPath} alt="" className="w-full max-h-[220px] object-cover rounded-[10px]" />
+      )}
+      {product.textContent && (
+        <div className="text-[12.5px] leading-[1.6] whitespace-pre-line max-h-[140px] overflow-auto bg-newColColor rounded-[8px] p-[10px]">{product.textContent}</div>
+      )}
+      <select value={integrationId} onChange={(e) => setIntegrationId(e.target.value)} className={inputCls}>
+        <option value="">{t('viral_write_for_channel', 'Write for channel…')}</option>
+        {(integrations || []).map((i: any) => (
+          <option key={i.id} value={i.id}>{i.name} ({i.identifier})</option>
+        ))}
+      </select>
+      <Button onClick={submit} loading={busy}>📤 {t('viral_post_to_calendar', 'Add to Calendar as draft')}</Button>
     </div>
   );
 };
@@ -1325,6 +1383,22 @@ const ProductCard: FC<{ product: any; onDone: () => void }> = ({ product, onDone
           {product.status === 'done' && product.format === 'blog' && (
             <button onClick={downloadDocx} disabled={busy} className="flex-1 py-[6px] rounded-[7px] text-[11.5px] font-[700] bg-btnPrimary/15 text-btnPrimary hover:bg-btnPrimary/25 disabled:opacity-50">
               ⬇ {t('viral_download_docx', 'Download .docx')}
+            </button>
+          )}
+          {product.status === 'done' && product.format === 'infographic' && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                modal.openModal({
+                  title: t('viral_modal_post_product', 'Post image set to Calendar'),
+                  withCloseButton: true,
+                  classNames: { modal: 'w-[100%] max-w-[520px]' },
+                  children: <PostProductModal product={product} onDone={onDone} />,
+                });
+              }}
+              className="flex-1 py-[6px] rounded-[7px] text-[11.5px] font-[700] bg-[#57D9A3]/15 text-[#57D9A3] hover:bg-[#57D9A3]/25"
+            >
+              📤 {t('viral_post_calendar', 'Post to Calendar')}
             </button>
           )}
           {product.status === 'done' && product.format !== 'blog' && product.mediaPath && (

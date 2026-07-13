@@ -426,6 +426,25 @@ export class ViralController {
     return { ok: true };
   }
 
+  // Đẩy infographic (bộ carousel) lên Lịch → bản nháp bài đăng kèm cả bộ ảnh.
+  @Post('/products/:id/post')
+  async postProduct(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string,
+    @Body('integrationId') integrationId: string
+  ) {
+    if (!integrationId) throw new HttpException('Chọn kênh đích.', 400);
+    const res = await this._service.postProduct(org.id, id, integrationId);
+    if (!res) throw new HttpException('Không tìm thấy sản phẩm (hoặc chưa xong).', 404);
+    if ((res as any).needRetry) {
+      throw new HttpException(
+        'Bộ ảnh này tạo bằng bản cũ (chưa lưu id media) — bấm ↻ Thử lại để tạo lại rồi mới đăng được.',
+        400
+      );
+    }
+    return res;
+  }
+
   // Blog → .docx (base64) — frontend tự tạo file tải về.
   @Get('/products/:id/docx')
   async productDocx(
