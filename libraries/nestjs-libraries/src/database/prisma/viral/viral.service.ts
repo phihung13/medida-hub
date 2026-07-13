@@ -740,7 +740,11 @@ export class ViralService implements OnModuleInit {
     const res = await this._repo.setStatusMany(orgId, ids, status);
     // DUYỆT TAY trên UI (thẻ bài) = duyệt CHỦ ĐỀ chứa bài đó → tự sản xuất
     // 1 bộ/chủ đề (không nhân theo số bài). Chạy nền — duyệt không chờ AI.
-    if (status === 'approved' && getViralConfig().autoProduce) {
+    if (
+      status === 'approved' &&
+      getViralConfig().autoProduce &&
+      !getViralConfig().productionPaused
+    ) {
       this._repo
         .topicIdsOfPosts(orgId, ids)
         .then(async (tids) => {
@@ -1199,7 +1203,10 @@ export class ViralService implements OnModuleInit {
     // đa N vòng. Đạt ngưỡng duyệt → dừng sớm; hết vòng chưa đạt → chờ người.
     const cfg = getViralConfig();
     let rounds = 0;
+    // ⏸ Dừng sản xuất: bỏ vòng viết lại (mục đích của nó là đẩy điểm lên
+    // ngưỡng tự duyệt — đang dừng thì viết lại chỉ tốn tiền AI vô ích).
     while (
+      !cfg.productionPaused &&
       rounds < cfg.rewriteMaxRounds &&
       score < cfg.autoApproveMin &&
       score >= cfg.autoSkipMax
@@ -1231,10 +1238,13 @@ export class ViralService implements OnModuleInit {
         reason = rw.reason || reason;
       }
     }
-    const status = viralStatusForScore(score, {
+    // ⏸ Dừng sản xuất: KHÔNG tự duyệt — điểm cao đến mấy cũng đứng ở Chờ duyệt
+    // (điểm thấp vẫn tự bỏ như thường để khỏi ngập rác).
+    let status = viralStatusForScore(score, {
       approveMin: cfg.autoApproveMin,
       skipMax: cfg.autoSkipMax,
     });
+    if (cfg.productionPaused && status === 'approved') status = 'pending';
     await this._repo.updateTopic(topic.id, {
       label,
       synthesis: JSON.stringify(res.synthesis || {}).slice(0, 8000),
@@ -1262,7 +1272,7 @@ export class ViralService implements OnModuleInit {
     // DUYỆT = TỰ SẢN XUẤT (tắt được trong Cài đặt): đạt ngưỡng tự duyệt → sản
     // xuất ngay định dạng AI đề xuất, sản phẩm chờ ở tab Sản phẩm (không tự
     // lên Lịch — người kéo tay theo quyết định vận hành).
-    if (status === 'approved' && cfg.autoProduce) {
+    if (status === 'approved' && cfg.autoProduce && !cfg.productionPaused) {
       await this.autoProduceTopics(orgId, [topic.id]).catch(() => null);
     }
     return true;
@@ -1502,7 +1512,11 @@ export class ViralService implements OnModuleInit {
     if (status === 'delete') return this._repo.softDeleteTopics(orgId, ids);
     const res = await this._repo.setTopicStatusMany(orgId, ids, status);
     // Duyệt chủ đề = tự sản xuất định dạng đề xuất (nền, tắt được ở Cài đặt).
-    if (status === 'approved' && getViralConfig().autoProduce) {
+    if (
+      status === 'approved' &&
+      getViralConfig().autoProduce &&
+      !getViralConfig().productionPaused
+    ) {
       this.autoProduceTopics(orgId, ids).catch(() => null);
     }
     return res;
@@ -1722,10 +1736,14 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
                   ? Math.max(0, Math.min(100, Math.round(r.podcast_score)))
                   : null,
             }).slice(0, 3000),
-            status: viralStatusForScore(score, {
-              approveMin: cfg.autoApproveMin,
-              skipMax: cfg.autoSkipMax,
-            }),
+            // ⏸ Dừng sản xuất: bài lẻ cũng không tự duyệt — đứng ở chờ duyệt.
+            status: (() => {
+              const st = viralStatusForScore(score, {
+                approveMin: cfg.autoApproveMin,
+                skipMax: cfg.autoSkipMax,
+              });
+              return cfg.productionPaused && st === 'approved' ? 'pending' : st;
+            })(),
           })
           .catch(() => null);
         scored++;

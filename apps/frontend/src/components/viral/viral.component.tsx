@@ -527,12 +527,14 @@ const ConfigModal: FC = () => {
   const [skipMax, setSkipMax] = useState<number>(70);
   const [maxRounds, setMaxRounds] = useState<number>(3);
   const [autoProduce, setAutoProduce] = useState<boolean>(true);
+  const [paused, setPaused] = useState<boolean>(false);
   useEffect(() => {
     if (!data) return;
     if (typeof data.autoApproveMin === 'number') setApproveMin(data.autoApproveMin);
     if (typeof data.autoSkipMax === 'number') setSkipMax(data.autoSkipMax);
     if (typeof data.rewriteMaxRounds === 'number') setMaxRounds(data.rewriteMaxRounds);
     if (typeof data.autoProduce === 'boolean') setAutoProduce(data.autoProduce);
+    if (typeof data.productionPaused === 'boolean') setPaused(data.productionPaused);
   }, [data]);
   // Nhóm Zalo nhận bản tin tuần — danh sách lấy từ bot qua proxy /botapi
   // (same-origin, cookie đăng nhập Hub đi kèm; KHÔNG qua useFetch backend).
@@ -567,6 +569,7 @@ const ConfigModal: FC = () => {
       autoSkipMax: Number(skipMax),
       rewriteMaxRounds: Number(maxRounds),
       autoProduce,
+      productionPaused: paused,
     };
     if (apify.trim()) body.apifyToken = apify.trim();
     if (yt.trim()) body.youtubeKey = yt.trim();
@@ -579,7 +582,7 @@ const ConfigModal: FC = () => {
     }
     toast.show(t('viral_config_saved', 'Configuration saved.'), 'success');
     modal.closeCurrent();
-  }, [apify, yt, mmKey, mmGroup, hours, zaloThread, clusterMode, approveMin, skipMax, maxRounds, autoProduce]);
+  }, [apify, yt, mmKey, mmGroup, hours, zaloThread, clusterMode, approveMin, skipMax, maxRounds, autoProduce, paused]);
 
   return (
     <div className="flex flex-col gap-[14px]">
@@ -673,6 +676,10 @@ const ConfigModal: FC = () => {
         <label className="flex items-center gap-[6px] text-[11.5px] text-textItemBlur cursor-pointer mt-[6px]">
           <input type="checkbox" checked={autoProduce} onChange={(e) => setAutoProduce(e.target.checked)} />
           🏭 {t('viral_funnel_autoproduce', 'Approve = auto-produce the AI-suggested format (products wait in the Products tab, nothing is scheduled automatically)')}
+        </label>
+        <label className={clsx('flex items-center gap-[6px] text-[11.5px] cursor-pointer mt-[6px] font-[700]', paused ? 'text-amber-400' : 'text-textItemBlur')}>
+          <input type="checkbox" checked={paused} onChange={(e) => setPaused(e.target.checked)} />
+          ⏸ {t('viral_funnel_paused', 'DỪNG SẢN XUẤT — không tự duyệt (điểm cao đến mấy cũng đứng ở Chờ duyệt), không viết lại, duyệt tay cũng không tự sản xuất. Điểm quá thấp vẫn tự bỏ.')}
         </label>
         <span className="text-[11px] text-textItemBlur mt-[4px] block">
           {t('viral_funnel_hint', 'Between the two thresholds the AI rewrites and re-scores up to N rounds (keeping the better version); if still short, the content waits for manual review.')}
@@ -849,8 +856,33 @@ const PostMineModal: FC<{ clone: any; onDone: () => void }> = ({ clone, onDone }
   );
 };
 
+// Ô tích chọn cho thẻ "Chờ đăng" (bài social + sản phẩm) — cùng kiểu thẻ content.
+const ReadyTick: FC<{ sel?: boolean; onToggle?: () => void }> = ({ sel, onToggle }) =>
+  !onToggle ? null : (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      className={clsx(
+        'absolute z-[10] top-[10px] left-[10px] w-[22px] h-[22px] rounded-[6px] border-2 flex items-center justify-center text-[13px] font-[900] transition-all',
+        sel
+          ? 'bg-btnPrimary border-btnPrimary text-white'
+          : 'bg-newBgColor border-newBgLineColor text-transparent opacity-0 group-hover/card:opacity-100'
+      )}
+    >
+      ✓
+    </button>
+  );
+
 // Thẻ "Bài của mình" — bản AI viết lại + điểm mới so với bài gốc.
-const MineCard: FC<{ clone: any; onDone: () => void }> = ({ clone, onDone }) => {
+const MineCard: FC<{
+  clone: any;
+  onDone: () => void;
+  sel?: boolean;
+  onToggleSel?: () => void;
+  cardRef?: (el: HTMLDivElement | null) => void;
+}> = ({ clone, onDone, sel, onToggleSel, cardRef }) => {
   const t = useT();
   const fetch = useFetch();
   const toast = useToaster();
@@ -889,7 +921,14 @@ const MineCard: FC<{ clone: any; onDone: () => void }> = ({ clone, onDone }) => 
     }
   };
   return (
-    <div className="bg-newColColor border border-newBgLineColor rounded-[13px] p-[14px] flex flex-col gap-[10px]">
+    <div
+      ref={cardRef}
+      className={clsx(
+        'group/card relative bg-newColColor border rounded-[13px] p-[14px] flex flex-col gap-[10px]',
+        sel ? 'border-btnPrimary ring-2 ring-btnPrimary/40' : 'border-newBgLineColor'
+      )}
+    >
+      <ReadyTick sel={sel} onToggle={onToggleSel} />
       <div className="flex items-center gap-[8px] flex-wrap">
         <span className={clsx('text-[12px] font-[800] px-[9px] py-[3px] rounded-[7px] tabular-nums', scoreStyle(clone.score))}>⭐ {clone.score ?? '—'}</span>
         {clone.sourceScore != null && (
@@ -1287,8 +1326,97 @@ const PostProductModal: FC<{ product: any; onDone: () => void }> = ({ product, o
   );
 };
 
+// Modal ĐĂNG HÀNG LOẠT từ "Chờ đăng": chọn 1 kênh → mọi thẻ đã chọn thành bản
+// nháp trên Lịch. Chỉ bài social + bộ infographic hoàn tất là đăng được;
+// blog/podcast (tải về đăng web) và bài đã đăng sẽ tự bỏ qua, có báo rõ.
+const BulkPostReadyModal: FC<{
+  mineItems: any[];
+  productItems: any[];
+  onDone: () => void;
+}> = ({ mineItems, productItems, onDone }) => {
+  const t = useT();
+  const fetch = useFetch();
+  const toast = useToaster();
+  const modal = useModals();
+  const { data: integrations } = useIntegrationList();
+  const [integrationId, setIntegrationId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState('');
+  const eligibleMine = mineItems.filter((c) => c.status !== 'posted');
+  const eligibleProducts = productItems.filter(
+    (p) => p.format === 'infographic' && p.status === 'done'
+  );
+  const skipped =
+    mineItems.length + productItems.length - eligibleMine.length - eligibleProducts.length;
+  const total = eligibleMine.length + eligibleProducts.length;
+  const submit = useCallback(async () => {
+    if (!integrationId) {
+      toast.show(t('viral_pick_channel_first', 'Pick a target channel first.'), 'warning');
+      return;
+    }
+    setBusy(true);
+    let ok = 0;
+    let fail = 0;
+    let done = 0;
+    const step = () => setProgress(`${++done}/${total}`);
+    for (const c of eligibleMine) {
+      const res = await fetch(`/viral/mine/${c.id}/post`, {
+        method: 'POST',
+        body: JSON.stringify({ integrationId }),
+      }).catch(() => null);
+      res?.ok ? ok++ : fail++;
+      step();
+    }
+    for (const p of eligibleProducts) {
+      const res = await fetch(`/viral/products/${p.id}/post`, {
+        method: 'POST',
+        body: JSON.stringify({ integrationId }),
+      }).catch(() => null);
+      res?.ok ? ok++ : fail++;
+      step();
+    }
+    setBusy(false);
+    toast.show(
+      `📤 ${ok} ${t('viral_bulk_posted', 'draft(s) added to the Calendar')}${fail ? ` · ${fail} ${t('viral_bulk_post_failed', 'failed')}` : ''}`,
+      fail ? 'warning' : 'success'
+    );
+    onDone();
+    modal.closeCurrent();
+  }, [integrationId, eligibleMine, eligibleProducts, total]);
+  return (
+    <div className="flex flex-col gap-[12px]">
+      <div className="text-[12.5px] text-textItemBlur">
+        {t('viral_bulk_post_hint', 'Pick ONE channel — every selected card becomes a draft on the Calendar (nothing publishes right away).')}
+      </div>
+      <div className="text-[12.5px] leading-[1.7] bg-newColColor rounded-[8px] p-[12px]">
+        ✍️ {eligibleMine.length} {t('viral_bulk_social_n', 'social post(s)')} · 🖼 {eligibleProducts.length} {t('viral_bulk_info_n', 'infographic set(s)')}
+        {skipped > 0 && (
+          <div className="text-[11.5px] text-amber-400 mt-[4px]">
+            ⚠ {skipped} {t('viral_bulk_skipped_n', 'card(s) will be skipped — blog/podcast are download-only, and already-posted or unfinished cards cannot be posted.')}
+          </div>
+        )}
+      </div>
+      <select value={integrationId} onChange={(e) => setIntegrationId(e.target.value)} className={inputCls}>
+        <option value="">{t('viral_write_for_channel', 'Write for channel…')}</option>
+        {(integrations || []).map((i: any) => (
+          <option key={i.id} value={i.id}>{i.name} ({i.identifier})</option>
+        ))}
+      </select>
+      <Button onClick={submit} loading={busy} disabled={!total}>
+        📤 {busy && progress ? progress + ' · ' : ''}{t('viral_bulk_post_button', 'Add all to Calendar as drafts')} ({total})
+      </Button>
+    </div>
+  );
+};
+
 // Thẻ sản phẩm trong tab "Sản phẩm".
-const ProductCard: FC<{ product: any; onDone: () => void }> = ({ product, onDone }) => {
+const ProductCard: FC<{
+  product: any;
+  onDone: () => void;
+  sel?: boolean;
+  onToggleSel?: () => void;
+  cardRef?: (el: HTMLDivElement | null) => void;
+}> = ({ product, onDone, sel, onToggleSel, cardRef }) => {
   const t = useT();
   const fetch = useFetch();
   const toast = useToaster();
@@ -1336,7 +1464,16 @@ const ProductCard: FC<{ product: any; onDone: () => void }> = ({ product, onDone
     onDone();
   };
   return (
-    <div onClick={product.status === 'done' ? openDetail : undefined} className={clsx('bg-newColColor border border-newBgLineColor rounded-[13px] overflow-hidden flex flex-col', product.status === 'done' && 'cursor-pointer hover:border-newTableBorder')}>
+    <div
+      ref={cardRef}
+      onClick={product.status === 'done' ? openDetail : undefined}
+      className={clsx(
+        'group/card relative bg-newColColor border rounded-[13px] overflow-hidden flex flex-col',
+        sel ? 'border-btnPrimary ring-2 ring-btnPrimary/40' : 'border-newBgLineColor',
+        product.status === 'done' && 'cursor-pointer hover:border-newTableBorder'
+      )}
+    >
+      <ReadyTick sel={sel} onToggle={onToggleSel} />
       {product.format === 'infographic' && product.mediaPath && product.status === 'done' && (
         <div className="relative">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1918,6 +2055,11 @@ export const ViralComponent: FC = () => {
   const { data: topicsData, isLoading: topicsLoading, mutate: mutateTopics } = useTopics(sort, topicStatus);
   const { data: mineData, mutate: mutateMine } = useMine();
   const { data: productsData, mutate: mutateProducts } = useProducts(isReady);
+  // Trạng thái ⏸ Dừng sản xuất — hiện băng rôn + nút mở lại ngay trên trang.
+  const { data: cfgData, mutate: mutateCfgMain } = useSWR(
+    'viral-config',
+    async () => (await fetch('/viral/config')).json()
+  );
   const refreshAll = useCallback(() => {
     mutate();
     mutateTopics();
@@ -2037,9 +2179,61 @@ export const ViralComponent: FC = () => {
   );
 
   const selectAllOnPage = useCallback(() => {
+    if (isReady) {
+      // Tab Chờ đăng: id có tiền tố phân loại — 'p:' sản phẩm, 'm:' bài social.
+      const ids = [
+        ...(productsData?.items || []).map((p: any) => 'p:' + p.id),
+        ...(mineData?.items || []).map((c: any) => 'm:' + c.id),
+      ];
+      setSelected((prev) => (prev.size >= ids.length && ids.length > 0 ? new Set() : new Set(ids)));
+      return;
+    }
     const list = isTopicTab ? topicsData?.topics || [] : data?.items || [];
     setSelected((prev) => (prev.size >= list.length && list.length > 0 ? new Set() : new Set(list.map((p: any) => p.id))));
-  }, [data, topicsData, isTopicTab]);
+  }, [data, topicsData, isTopicTab, isReady, productsData, mineData]);
+
+  // ── "Chờ đăng": xóa hàng loạt + đăng Lịch hàng loạt ───────────────────────
+  const bulkReadyDelete = useCallback(async () => {
+    const ids = [...selected];
+    if (!ids.length) return;
+    if (!(await deleteDialog(`${t('viral_ready_delete_confirm', 'Delete the selected cards from "Ready to post"')} (${ids.length})?`, t('viral_delete', 'Delete')))) return;
+    for (const id of ids) {
+      const real = id.slice(2);
+      await fetch(id.startsWith('p:') ? `/viral/products/${real}` : `/viral/mine/${real}`, { method: 'DELETE' }).catch(() => null);
+    }
+    setSelected(new Set());
+    refreshAll();
+  }, [selected, refreshAll, t]);
+
+  const openBulkPostReady = useCallback(() => {
+    const mineItems = (mineData?.items || []).filter((c: any) => selected.has('m:' + c.id));
+    const productItems = (productsData?.items || []).filter((p: any) => selected.has('p:' + p.id));
+    modal.openModal({
+      title: t('viral_bulk_post_title', 'Post selected to Calendar'),
+      withCloseButton: true,
+      classNames: { modal: 'w-[100%] max-w-[520px]' },
+      children: (
+        <BulkPostReadyModal
+          mineItems={mineItems}
+          productItems={productItems}
+          onDone={() => {
+            setSelected(new Set());
+            refreshAll();
+          }}
+        />
+      ),
+    });
+  }, [selected, mineData, productsData, refreshAll, t]);
+
+  const resumeProduction = useCallback(async () => {
+    const res = await fetch('/viral/config', { method: 'POST', body: JSON.stringify({ productionPaused: false }) });
+    if (res.status >= 400) {
+      toast.show(t('viral_need_admin', 'System administrator permission required.'), 'warning');
+      return;
+    }
+    toast.show(t('viral_production_resumed', 'Production resumed — the funnel auto-approves and produces again.'), 'success');
+    mutateCfgMain();
+  }, [mutateCfgMain, t]);
 
   const purgeArchive = useCallback(async () => {
     if (!(await deleteDialog(t('viral_purge_all_confirm', 'Permanently delete the ENTIRE archive from the database?'), t('viral_delete_all', 'Delete all')))) return;
@@ -2321,12 +2515,27 @@ export const ViralComponent: FC = () => {
         <span>
           {tab === 'pending' && t('viral_flow_pending_topics', 'Step 1 · Each card is one CONTENT — many posts from many sources merged (a 1-post content is fine too). The AI already scored & rewrote it up to 3 rounds: ≥ threshold auto-approved, low ones auto-skipped, the rest wait for you here. ✓ Approve = auto-produce the suggested format.')}
           {tab === 'approved' && t('viral_flow_approved_topics2', 'Step 2 · Only content still being produced (or failed) stays here — once every product finishes, the card leaves this tab automatically (its products are in "Ready to post"). Select cards → "🏭 Produce" for more formats or "⧉ Clone" for a social post.')}
-          {tab === 'ready' && t('viral_flow_ready', 'Step 3 · Everything finished, waiting to publish. ✍️ Social posts → 📤 push to the Calendar (Facebook…). 🏭 Blog/infographic/podcast → download & publish to the website / YouTube / fanpage.')}
+          {tab === 'ready' && t('viral_flow_ready2', 'Step 3 · Everything finished, waiting to publish. ✍️ Social posts → 📤 push to the Calendar (Facebook…). 🏭 Blog/infographic/podcast → download & publish to the website / YouTube / fanpage. Tick or drag-select multiple cards → bulk "📤 Add to Calendar" / "🗑 Delete".')}
           {tab === 'archive' && t('viral_flow_archive_topics', 'Outside the flow · Skipped + deleted content rests here. Everything is permanently deleted after 7 days. You can still ↩ Restore a content back to "To review".')}
           {tab === 'skills' && t('viral_flow_skills', 'Outside the flow · The AI recipes behind every step: writing formulas, scoring rubric, group routing, weekly brief… Edit as markdown, import a .md file, or reset to the built-in default — changes apply from the very next AI run.')}
           {tab === 'reports' && t('viral_flow_reports', 'Outside the flow · Weekly briefs the AI compiles from 7 days of crawling: hot news, market moves and a to-do list. Auto-created on the Mon-Wed-Fri schedule + Sunday recap, also sent to Zalo/email — tick off to-dos right here.')}
         </span>
       </div>
+
+      {/* ⏸ băng rôn Dừng sản xuất — thấy ngay tại sao không có gì tự duyệt/sản xuất */}
+      {cfgData?.productionPaused && (
+        <div className="flex items-center gap-[10px] flex-wrap bg-amber-400/10 border border-amber-400/40 rounded-[10px] px-[14px] py-[9px]">
+          <span className="text-[12.5px] font-[700] text-amber-400">
+            ⏸ {t('viral_paused_banner', 'PRODUCTION PAUSED — every content stops at "To review" no matter the score; no rewriting, and approving does not auto-produce.')}
+          </span>
+          <button
+            onClick={resumeProduction}
+            className="ms-auto h-[30px] px-[12px] rounded-[8px] text-[12px] font-[700] bg-[#57D9A3]/15 text-[#57D9A3] hover:bg-[#57D9A3]/25"
+          >
+            ▶ {t('viral_resume_production_btn', 'Resume production')}
+          </button>
+        </div>
+      )}
 
       {/* thanh thao tác hàng loạt + điều khiển Lưu trữ */}
       {(selected.size > 0 || isArchive) && (
@@ -2337,7 +2546,12 @@ export const ViralComponent: FC = () => {
               <button onClick={selectAllOnPage} className="text-[12px] text-btnPrimary hover:underline">{t('viral_select_all', 'Select all')}</button>
               <button onClick={() => setSelected(new Set())} className="text-[12px] text-textItemBlur hover:text-textColor">{t('viral_clear_selection', 'Clear')}</button>
               <div className="w-[1px] h-[18px] bg-newBgLineColor mx-[2px]" />
-              {!isArchive ? (
+              {isReady ? (
+                <>
+                  <button onClick={openBulkPostReady} className="h-[32px] px-[12px] rounded-[8px] text-[12px] font-[700] bg-btnPrimary/15 text-btnPrimary hover:bg-btnPrimary/25">📤 {t('viral_bulk_post_button_bar', 'Add to Calendar')}</button>
+                  <button onClick={bulkReadyDelete} className="h-[32px] px-[12px] rounded-[8px] text-[12px] font-[700] text-[#FF5A52] border border-[#FF5A52]/30 hover:bg-[#FF5A52]/10">🗑 {t('viral_delete', 'Delete')}</button>
+                </>
+              ) : !isArchive ? (
                 <>
                   <button onClick={() => bulkAction('approve')} className="h-[32px] px-[12px] rounded-[8px] text-[12px] font-[700] bg-[#57D9A3]/15 text-[#57D9A3] hover:bg-[#57D9A3]/25">✓ {t('viral_approve', 'Approve')}</button>
                   <button onClick={() => bulkAction('skip')} className="h-[32px] px-[12px] rounded-[8px] text-[12px] font-[700] text-[#FF5A52] border border-[#FF5A52]/30 hover:bg-[#FF5A52]/10">✕ {t('viral_skip', 'Skip')}</button>
@@ -2437,9 +2651,18 @@ export const ViralComponent: FC = () => {
                   🏭 {t('viral_ready_products_head', 'Products — download & publish to website / YouTube / fanpage')}
                   <span className="text-[11px] text-textItemBlur font-[400]">{(productsData.items || []).length}</span>
                 </div>
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-[14px]">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-[14px] select-none" onMouseDown={onGridMouseDown}>
                   {(productsData.items || []).map((p: any) => (
-                    <ProductCard key={p.id} product={p} onDone={refreshAll} />
+                    <ProductCard
+                      key={p.id}
+                      product={p}
+                      onDone={refreshAll}
+                      sel={selected.has('p:' + p.id)}
+                      onToggleSel={() => toggleSelect('p:' + p.id)}
+                      cardRef={(el) => {
+                        cardRefs.current['p:' + p.id] = el;
+                      }}
+                    />
                   ))}
                 </div>
               </div>
@@ -2451,9 +2674,18 @@ export const ViralComponent: FC = () => {
                   ✍️ {t('viral_ready_social_head', 'Social posts — push to the Calendar (Facebook…)')}
                   <span className="text-[11px] text-textItemBlur font-[400]">{(mineData.items || []).length}</span>
                 </div>
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-[14px]">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-[14px] select-none" onMouseDown={onGridMouseDown}>
                   {(mineData.items || []).map((c: any) => (
-                    <MineCard key={c.id} clone={c} onDone={refreshAll} />
+                    <MineCard
+                      key={c.id}
+                      clone={c}
+                      onDone={refreshAll}
+                      sel={selected.has('m:' + c.id)}
+                      onToggleSel={() => toggleSelect('m:' + c.id)}
+                      cardRef={(el) => {
+                        cardRefs.current['m:' + c.id] = el;
+                      }}
+                    />
                   ))}
                 </div>
               </div>

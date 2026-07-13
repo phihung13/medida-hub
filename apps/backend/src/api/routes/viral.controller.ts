@@ -273,6 +273,7 @@ export class ViralController {
       autoSkipMax?: number;
       rewriteMaxRounds?: number;
       autoProduce?: boolean;
+      productionPaused?: boolean;
       reportRecipients?: { threadId: string; type: string; name: string }[];
       reportAutoSend?: boolean;
       reportSendHour?: number;
@@ -314,6 +315,9 @@ export class ViralController {
         : {}),
       ...(typeof body.autoProduce === 'boolean'
         ? { autoProduce: body.autoProduce }
+        : {}),
+      ...(typeof body.productionPaused === 'boolean'
+        ? { productionPaused: body.productionPaused }
         : {}),
       ...(Array.isArray(body.reportRecipients)
         ? { reportRecipients: body.reportRecipients as any }

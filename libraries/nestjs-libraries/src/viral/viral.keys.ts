@@ -35,6 +35,9 @@ interface ViralConfig {
   rewriteMaxRounds: number;
   // Duyệt (tự động hoặc tay) → tự sản xuất định dạng AI đề xuất.
   autoProduce: boolean;
+  // ⏸ DỪNG SẢN XUẤT: bật = KHÔNG tự duyệt (mọi content dừng ở Chờ duyệt dù
+  // điểm cao đến mấy) và KHÔNG tự sản xuất (kể cả khi duyệt tay). Bỏ vẫn tự bỏ.
+  productionPaused: boolean;
   // GỬI BẢN TIN QUA ZALO: danh sách người nhận (bạn bè/nhóm/SĐT đã tra),
   // toggle tự gửi sau mỗi bản tin, và giờ gửi (-1 = ngay khi có bản tin,
   // 0-23 = gom lại gửi vào đúng giờ đó trong ngày).
@@ -57,6 +60,7 @@ const config: ViralConfig = {
   autoSkipMax: 70,
   rewriteMaxRounds: 3,
   autoProduce: true,
+  productionPaused: false,
   reportRecipients: [],
   reportAutoSend: true,
   reportSendHour: -1,
@@ -99,6 +103,8 @@ try {
     typeof raw?.rewriteMaxRounds === 'number' ? raw.rewriteMaxRounds : 3;
   config.autoProduce =
     typeof raw?.autoProduce === 'boolean' ? raw.autoProduce : true;
+  config.productionPaused =
+    typeof raw?.productionPaused === 'boolean' ? raw.productionPaused : false;
   config.reportRecipients = sanitizeRecipients(raw?.reportRecipients);
   config.reportAutoSend =
     typeof raw?.reportAutoSend === 'boolean' ? raw.reportAutoSend : true;
@@ -161,6 +167,7 @@ export function getViralStatus() {
     autoSkipMax: config.autoSkipMax,
     rewriteMaxRounds: config.rewriteMaxRounds,
     autoProduce: config.autoProduce,
+    productionPaused: config.productionPaused,
     reportRecipients: config.reportRecipients,
     reportAutoSend: config.reportAutoSend,
     reportSendHour: config.reportSendHour,
@@ -195,6 +202,8 @@ export function setViralConfig(patch: Partial<ViralConfig>) {
   if (typeof patch.rewriteMaxRounds === 'number')
     config.rewriteMaxRounds = Math.max(0, Math.min(5, Math.round(patch.rewriteMaxRounds)));
   if (typeof patch.autoProduce === 'boolean') config.autoProduce = patch.autoProduce;
+  if (typeof patch.productionPaused === 'boolean')
+    config.productionPaused = patch.productionPaused;
   if (patch.reportRecipients !== undefined)
     config.reportRecipients = sanitizeRecipients(patch.reportRecipients);
   if (typeof patch.reportAutoSend === 'boolean')
