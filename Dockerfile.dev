@@ -31,8 +31,11 @@ COPY var/docker/nginx.conf /etc/nginx/nginx.conf
 
 # --frozen-lockfile: cài ĐÚNG theo pnpm-lock.yaml — lệch lock/package.json thì
 # fail sớm + rõ ràng thay vì âm thầm resolve lại (build lâu + kết quả trôi).
+# --reporter=silent: pnpm KHÔNG phun cả nghìn dòng "Progress: added X" — log build
+# khổng lồ làm phình RAM worker Coolify → Horizon restart worker → "Gracefully
+# shutting down" giết build ở ~18-30'. Im lặng = log nhỏ = build về đích.
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile
+    pnpm install --frozen-lockfile --reporter=silent
 
 # 8GB heap: nest build (tsc) biên dịch cả libraries/nestjs-libraries lớn — 4GB
 # tràn heap → build backend chết exit 255 giữa chừng. VPS 62GB nên 8GB an toàn.
