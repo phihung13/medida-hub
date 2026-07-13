@@ -34,7 +34,9 @@ COPY var/docker/nginx.conf /etc/nginx/nginx.conf
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile
 
+# 8GB heap: nest build (tsc) biên dịch cả libraries/nestjs-libraries lớn — 4GB
+# tràn heap → build backend chết exit 255 giữa chừng. VPS 62GB nên 8GB an toàn.
 RUN --mount=type=cache,id=nextjs-cache,target=/app/apps/frontend/.next/cache \
-    NODE_OPTIONS="--max-old-space-size=4096" pnpm run build
+    NODE_OPTIONS="--max-old-space-size=8192" pnpm run build
 
 CMD ["sh", "-c", "nginx && pnpm run pm2"]
