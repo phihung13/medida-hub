@@ -85,3 +85,43 @@ jobs:
             org.opencontainers.image.source=https://github.com/phihung13/medida-hub
           cache-from: type=registry,ref=ghcr.io/phihung13/medida-hub:buildcache
           cache-to: type=registry,ref=ghcr.io/phihung13/medida-hub:buildcache,mode=max
+
+  # ── BÁO VPS KÉO ẢNH MỚI ────────────────────────────────────────────────────
+  # Chỉ chạy sau khi ảnh đã nằm trên GHCR. Webhook làm Coolify `docker compose
+  # pull` (lấy digest :latest mới) rồi `up -d` — vài phút, KHÔNG build gì.
+  # Thiếu secret COOLIFY_WEBHOOK → bỏ qua êm (không báo đỏ).
+  deploy:
+    needs: build-image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Gọi Deploy Webhook của Coolify và chờ kết quả thật
+        env:
+          WEBHOOK: ${{ secrets.COOLIFY_WEBHOOK }}
+          TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "Chưa đặt secret COOLIFY_WEBHOOK — bỏ qua bước deploy."
+            exit 0
+          fi
+          RESP=$(curl --fail -sS "$WEBHOOK" ${TOKEN:+-H "Authorization: Bearer $TOKEN"})
+          echo "✅ Đã kích hoạt deploy (pull ảnh) trên Coolify."
+
+          DEP=$(echo "$RESP" | jq -r '.deployments[0].deployment_uuid // empty' 2>/dev/null || true)
+          if [ -z "$DEP" ] || [ -z "$TOKEN" ]; then
+            echo "⚠️ Không lấy được deployment_uuid (hoặc thiếu COOLIFY_TOKEN) — kiểm tra tay trong Coolify UI."
+            exit 0
+          fi
+          BASE=$(echo "$WEBHOOK" | sed -E 's#(https?://[^/]+).*#\1#')
+          echo "Theo dõi deployment $DEP (poll 20s, tối đa ~18')..."
+          for i in $(seq 1 54); do
+            sleep 20
+            ST=$(curl -sS -m 20 "$BASE/api/v1/deployments/$DEP" -H "Authorization: Bearer $TOKEN" | jq -r '.status // "unknown"' 2>/dev/null || echo unknown)
+            echo "[$i] status=$ST"
+            case "$ST" in
+              finished)   echo "✅ VPS đã kéo ảnh mới và chạy."; exit 0 ;;
+              failed|cancelled|cancelled-by-user)
+                echo "❌ Deploy thất bại (status=$ST) — xem Coolify UI → media-hub → Deployments."; exit 1 ;;
+            esac
+          done
+          echo "⏰ Quá ~18' chưa xong (pull lẽ ra vài phút) — coi là FAIL."; exit 1

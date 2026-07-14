@@ -13,12 +13,14 @@
 # ============================================================================
 services:
   media-hub:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-      args:
-        NEXT_PUBLIC_VERSION: 'media-hub'
-    image: viet-anh-media-hub:latest
+    # ẢNH DỰNG SẴN TRÊN GITHUB (workflow Deploy → GHCR). VPS CHỈ KÉO VỀ, không
+    # build tại chỗ nữa — hết cảnh build 60-75' treo I/O, đụng trần timeout, web
+    # chậm lúc deploy. `pull_policy: always` ép kéo digest mới cho tag :latest
+    # mỗi lần deploy (webhook Coolify gọi pull + up -d).
+    # Chạy tay ngoài Coolify: `docker compose -f docker-compose.prod.yaml pull &&
+    # ... up -d` (cần `docker login ghcr.io` nếu kho để private; hiện để public).
+    image: ghcr.io/phihung13/medida-hub:latest
+    pull_policy: always
     container_name: media-hub
     restart: always
     # env_file nạp API keys/secrets người dùng điền; environment bên dưới cố
