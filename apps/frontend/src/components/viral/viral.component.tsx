@@ -1524,6 +1524,32 @@ const ProductCard: FC<{
     await fetch(`/viral/products/${product.id}`, { method: 'DELETE' });
     onDone();
   };
+  // Tạo lại NGAY trên thẻ (kể cả thẻ 'done') — dựng bản mới, thay bản hiện tại.
+  // Có xác nhận vì dựng lại tốn AI + tạo ảnh. Cũng cứu bộ ảnh cũ thiếu media id.
+  const regenConfirm = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (
+      !(await deleteDialog(
+        t(
+          'viral_regen_product_confirm',
+          'Tạo lại sản phẩm này? Bản hiện tại sẽ bị thay bằng bản mới.'
+        ),
+        t('viral_regenerate_short', 'Tạo lại')
+      ))
+    )
+      return;
+    setBusy(true);
+    try {
+      await fetch(`/viral/products/${product.id}/retry`, { method: 'POST' });
+      toast.show(
+        t('viral_prod_retrying', 'Retrying — check back in a few minutes.'),
+        'success'
+      );
+      onDone();
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <div
       ref={cardRef}
@@ -1619,7 +1645,17 @@ const ProductCard: FC<{
               ↻ {t('viral_retry', 'Retry')}
             </button>
           )}
-          <button onClick={del} className="px-[10px] py-[6px] rounded-[7px] text-[11.5px] text-[#FF5A52] hover:bg-[#FF5A52]/10">✕</button>
+          {product.status === 'done' && (
+            <button
+              onClick={regenConfirm}
+              disabled={busy}
+              title={t('viral_regenerate', 'Tạo lại bản mới hơn')}
+              className="px-[10px] py-[6px] rounded-[7px] text-[11.5px] text-textItemBlur hover:text-textColor disabled:opacity-50 mobile:min-h-[40px]"
+            >
+              {busy ? '…' : '↻'}
+            </button>
+          )}
+          <button onClick={del} className="px-[10px] py-[6px] rounded-[7px] text-[11.5px] text-[#FF5A52] hover:bg-[#FF5A52]/10 mobile:min-h-[40px]">✕</button>
         </div>
       </div>
     </div>
