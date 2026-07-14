@@ -78,18 +78,24 @@ export const ZaloPendingBanner: FC = () => {
   }
 
   return (
-    <div className="border border-amber-400/40 bg-amber-400/10 rounded-[8px] px-[16px] py-[10px] flex items-center gap-[10px] text-[14px] flex-wrap">
+    <div className="border border-amber-400/40 bg-amber-400/10 rounded-[8px] px-[16px] py-[10px] flex items-center gap-[10px] text-[14px] flex-wrap mobile:flex-nowrap mobile:px-[12px] mobile:py-[6px]">
       <span className="text-[16px]">⏳</span>
-      <div className="flex-1 min-w-[240px]">
+      <div className="flex-1 min-w-[240px] mobile:min-w-0 mobile:truncate">
         <b>{count}</b>{' '}
-        {t(
-          'zalo_pending_banner',
-          'posts from the Zalo group are awaiting approval — click a post with the amber border on the calendar to edit & schedule it.'
-        )}
+        {/* Mobile 1 dòng: câu dài đổi thành nhãn ngắn, bấm nút để xem chi tiết */}
+        <span className="mobile:hidden">
+          {t(
+            'zalo_pending_banner',
+            'posts from the Zalo group are awaiting approval — click a post with the amber border on the calendar to edit & schedule it.'
+          )}
+        </span>
+        <span className="hidden mobile:inline">
+          {t('zalo_pending_banner_short', 'Zalo posts awaiting approval')}
+        </span>
       </div>
       <button
         onClick={goList}
-        className="cursor-pointer h-[32px] px-[14px] rounded-[6px] bg-btnSimple text-btnText text-[13px] font-[600]"
+        className="cursor-pointer h-[32px] px-[14px] rounded-[6px] bg-btnSimple text-btnText text-[13px] font-[600] mobile:shrink-0 mobile:h-[44px] mobile:px-[16px] tap-shrink"
       >
         {t('zalo_pending_view_list', 'View list')}
       </button>

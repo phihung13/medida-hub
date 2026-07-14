@@ -24,7 +24,9 @@ export const Support = () => {
   return (
     <div
       id="support-discord"
-      className="bg-customColor39 w-[194px] h-[58px] fixed end-[20px] bottom-[20px] z-[500] text-[16px] text-customColor40 rounded-[30px] !rounded-br-[0] cursor-pointer flex justify-center items-center gap-[10px] mobile:w-[52px] mobile:h-[52px] mobile:rounded-full mobile:!rounded-br-full mobile:bottom-[88px] mobile:end-[12px]"
+      // Mobile: ẨN — bong bóng Discord (support Postiz gốc) chiếm góc FAB của
+      // hành động chính từng trang; desktop giữ nguyên.
+      className="bg-customColor39 w-[194px] h-[58px] fixed end-[20px] bottom-[20px] z-[500] text-[16px] text-customColor40 rounded-[30px] !rounded-br-[0] cursor-pointer flex justify-center items-center gap-[10px] mobile:hidden"
       onClick={() => window.open(discordUrl)}
     >
       <div>

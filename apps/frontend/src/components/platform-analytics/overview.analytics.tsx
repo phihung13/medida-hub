@@ -100,7 +100,7 @@ export const OverviewAnalytics: FC<{
               key={d}
               onClick={() => setDate(d)}
               className={clsx(
-                'px-[12px] py-[6px] rounded-[8px] text-[12.5px] font-[600] border transition-all',
+                'px-[12px] py-[6px] mobile:px-[14px] mobile:py-[10px] rounded-[8px] text-[12.5px] font-[600] border transition-all tap-shrink',
                 date === d
                   ? 'border-[#1e6fd9] bg-[#1e6fd9]/15 text-newTableText'
                   : 'border-newTableBorder text-newTableText/60 hover:text-newTableText'
@@ -128,7 +128,7 @@ export const OverviewAnalytics: FC<{
           {channels.map((ch) => (
             <div
               key={ch.id}
-              className="bg-newTableHeader border border-newTableBorder rounded-[14px] p-[16px] flex flex-col gap-[12px]"
+              className="bg-newTableHeader border border-newTableBorder rounded-[14px] p-[16px] mobile:p-[12px] flex flex-col gap-[12px]"
             >
               <div
                 className={clsx(
@@ -167,11 +167,12 @@ export const OverviewAnalytics: FC<{
                   )}
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-[10px]">
+                // Mobile: ép 2 cột chip gọn (sm:640px vẫn nằm trong dải mobile ≤1025px)
+                <div className="grid grid-cols-2 sm:grid-cols-3 mobile:grid-cols-2 gap-[10px] mobile:gap-[8px]">
                   {ch.metrics.map((m) => (
                     <div
                       key={m.label}
-                      className="bg-newBgColorInner/50 border border-newTableBorder/60 rounded-[10px] p-[10px] flex flex-col gap-[4px]"
+                      className="bg-newBgColorInner/50 border border-newTableBorder/60 rounded-[10px] p-[10px] mobile:p-[9px] flex flex-col gap-[4px]"
                     >
                       <div
                         className="text-[10.5px] uppercase tracking-[0.06em] text-newTableText/55 truncate"

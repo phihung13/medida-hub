@@ -63,7 +63,9 @@ export const NotificationOpenComponent = () => {
   return (
     <div
       id="notification-popup"
-      className="opacity-0 animate-normalFadeDown mt-[10px] absolute w-[420px] min-h-[200px] top-[100%] end-0 bg-third text-textColor rounded-[16px] flex flex-col border border-tableBorder z-[600]"
+      // Mobile: dropdown 420px tràn màn 375px → chuyển thành panel full-width
+      // ghim dưới header (fixed thoát khỏi cha relative). Desktop giữ nguyên.
+      className="opacity-0 animate-normalFadeDown mt-[10px] absolute w-[420px] min-h-[200px] top-[100%] end-0 bg-third text-textColor rounded-[16px] flex flex-col border border-tableBorder z-[600] mobile:fixed mobile:top-[calc(env(safe-area-inset-top,0px)+56px)] mobile:start-[10px] mobile:end-[10px] mobile:w-auto mobile:mt-0 mobile:max-h-[70dvh]"
     >
       <div
         className={`p-[16px] border-b border-tableBorder font-bold`}

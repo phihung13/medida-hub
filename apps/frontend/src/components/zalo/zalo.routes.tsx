@@ -210,7 +210,8 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
   }
 
   return (
-    <div className="flex flex-col gap-[14px]">
+    // Chừa chỗ cho thanh Lưu fixed đáy trên mobile khi có thay đổi chưa lưu
+    <div className={clsx('flex flex-col gap-[14px]', dirty && 'mobile:pb-[76px]')}>
       <div className="text-[12.5px] text-textItemBlur max-w-[720px]">
         {t(
           'zalo_routes_intro2',
@@ -266,7 +267,8 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
             {isOpen && (
               <div className="p-[14px] pt-0 flex flex-col gap-[12px]">
                 {/* Tên + mục */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-[10px]">
+                {/* mobile: phủ lên md — dưới 1025px luôn 1 cột, desktop >1025 giữ nguyên */}
+                <div className="grid grid-cols-1 md:grid-cols-2 mobile:grid-cols-1 gap-[10px]">
                   <div className="flex flex-col gap-[5px]">
                     <FieldLabel>{t('zalo_routes_label', 'Display name')}</FieldLabel>
                     <input
@@ -292,7 +294,7 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
                 </div>
 
                 {/* Nguồn + đích */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-[10px]">
+                <div className="grid grid-cols-1 md:grid-cols-2 mobile:grid-cols-1 gap-[10px]">
                   <div className="flex flex-col gap-[5px]">
                     <FieldLabel hint={t('zalo_routes_group_hint', 'The group whose images are collected.')}>
                       {t('zalo_routes_group', 'Zalo group (source)')}
@@ -373,7 +375,7 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
                           <label
                             key={b.id}
                             className={clsx(
-                              'flex items-center gap-[6px] text-[12.5px] font-[600] border rounded-[8px] px-[10px] h-[32px] cursor-pointer',
+                              'flex items-center gap-[6px] text-[12.5px] font-[600] border rounded-[8px] px-[10px] h-[32px] mobile:h-[40px] mobile:px-[14px] cursor-pointer tap-shrink',
                               on ? 'border-btnPrimary text-btnPrimary bg-btnPrimary/10' : 'border-newTableBorder text-textItemBlur'
                             )}
                           >
@@ -403,13 +405,13 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
                 </div>
 
                 {/* Công tắc chính */}
-                <div className="flex items-center gap-[18px] flex-wrap">
-                  <label className="flex items-center gap-[8px] text-[13px] font-[600] cursor-pointer">
+                <div className="flex items-center gap-[18px] flex-wrap mobile:gap-x-[16px] mobile:gap-y-0">
+                  <label className="flex items-center gap-[8px] text-[13px] font-[600] cursor-pointer mobile:min-h-[44px]">
                     <Toggle small on={r.enabled !== false} onChange={() => patch(i, { enabled: !(r.enabled !== false) })} />
                     {t('zalo_routes_enabled', 'Listen to this group')}
                   </label>
                   <label
-                    className="flex items-center gap-[8px] text-[13px] font-[600] cursor-pointer"
+                    className="flex items-center gap-[8px] text-[13px] font-[600] cursor-pointer mobile:min-h-[44px]"
                     title={t('zalo_routes_curate_title', 'On: AI drops duplicate/blurry/dark images and picks the best ones. Off: keep every image.')}
                   >
                     <Toggle small on={r.curateImages !== false} onChange={() => patch(i, { curateImages: !(r.curateImages !== false) })} />
@@ -417,7 +419,7 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
                   </label>
                   <label
                     className={clsx(
-                      'flex items-center gap-[8px] text-[13px] font-[600] text-amber-400',
+                      'flex items-center gap-[8px] text-[13px] font-[600] text-amber-400 mobile:min-h-[44px]',
                       gbpIds.length ? 'cursor-pointer' : 'opacity-40 cursor-not-allowed'
                     )}
                   >
@@ -441,7 +443,7 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
                       return next;
                     })
                   }
-                  className="border-t border-newTableBorder pt-[10px] flex items-center justify-between cursor-pointer"
+                  className="border-t border-newTableBorder pt-[10px] flex items-center justify-between cursor-pointer mobile:min-h-[44px]"
                 >
                   <b className="text-[13px]">{t('zalo_routes_advanced', 'Advanced settings')}</b>
                   <span className="text-[11.5px] text-textItemBlur">
@@ -451,7 +453,7 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
                 </div>
                 {advOpen && (
                   <div className="flex flex-col gap-[12px]">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-[10px]">
+                    <div className="grid grid-cols-1 md:grid-cols-2 mobile:grid-cols-1 gap-[10px]">
                       <div className="flex flex-col gap-[5px]">
                         <FieldLabel
                           hint={t('zalo_routes_debounce_hint', 'After the group goes quiet this long, the batch closes and a draft is created.')}
@@ -522,7 +524,7 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
                         className={textareaCls}
                       />
                     </div>
-                    <label className="flex items-center gap-[8px] text-[13px] font-[600] cursor-pointer w-fit">
+                    <label className="flex items-center gap-[8px] text-[13px] font-[600] cursor-pointer w-fit mobile:min-h-[44px]">
                       <Toggle small on={r.autoHashtags !== false} onChange={() => patch(i, { autoHashtags: !(r.autoHashtags !== false) })} />
                       {t('zalo_routes_hashtags', 'AI adds 5 hashtags at the end (below the footer)')}
                     </label>
@@ -541,7 +543,8 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
       })}
 
       <div className="flex items-center gap-[10px] flex-wrap">
-        <PrimaryButton disabled={saving || !dirty} onClick={save}>
+        {/* Mobile ẩn nút Lưu inline — thay bằng thanh fixed đáy khi dirty */}
+        <PrimaryButton className="mobile:hidden" disabled={saving || !dirty} onClick={save}>
           {saving ? t('zalo_routes_saving', 'Saving…') : t('zalo_routes_save', 'Save configuration')}
         </PrimaryButton>
         <SimpleButton
@@ -554,7 +557,7 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
           + {t('zalo_routes_add', 'Add group')}
         </SimpleButton>
         {dirty && (
-          <span className="text-[12.5px] text-amber-400 font-[600]">
+          <span className="text-[12.5px] text-amber-400 font-[600] mobile:hidden">
             {t('zalo_routes_unsaved', 'Unsaved changes')}
           </span>
         )}
@@ -564,6 +567,18 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
           </span>
         )}
       </div>
+
+      {/* Mobile: thanh Lưu dính trên tab bar dưới — hành động chính luôn trong tầm ngón cái */}
+      {dirty && (
+        <div className="hidden mobile:flex fixed bottom-[var(--bottom-nav-h,64px)] inset-x-0 z-[120] bg-newBgColorInner border-t border-newTableBorder p-[10px] items-center gap-[10px]">
+          <span className="text-[12px] text-amber-400 font-[600] flex-1 min-w-0">
+            {t('zalo_routes_unsaved', 'Unsaved changes')}
+          </span>
+          <PrimaryButton className="!h-[44px] tap-shrink" disabled={saving} onClick={save}>
+            {saving ? t('zalo_routes_saving', 'Saving…') : t('zalo_routes_save', 'Save configuration')}
+          </PrimaryButton>
+        </div>
+      )}
     </div>
   );
 };

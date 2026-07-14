@@ -34,8 +34,9 @@ export const DatePicker: FC<{
     [date]
   );
   return (
+    // mobile:col-span-2 ăn theo lưới footer của composer (nơi dùng duy nhất)
     <div
-      className="px-[16px] border border-newTextColor/10 rounded-[8px] justify-center flex gap-[8px] items-center relative h-[44px] text-[15px] font-[600] ml-[7px] select-none flex-1"
+      className="px-[16px] border border-newTextColor/10 rounded-[8px] justify-center flex gap-[8px] items-center relative h-[44px] text-[15px] font-[600] ml-[7px] select-none flex-1 mobile:col-span-2 mobile:ml-0 mobile:h-[48px]"
       onClick={changeShow}
       ref={ref}
     >
@@ -48,7 +49,8 @@ export const DatePicker: FC<{
       {open && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className="animate-fadeIn absolute bottom-[100%] mb-[16px] start-[50%] -translate-x-[50%] bg-sixth border border-tableBorder text-textColor rounded-[16px] z-[300] p-[16px] flex flex-col"
+          // Mobile: popup ghim đáy màn (trên tab bar), giới hạn cao — không tràn
+          className="animate-fadeIn absolute bottom-[100%] mb-[16px] start-[50%] -translate-x-[50%] bg-sixth border border-tableBorder text-textColor rounded-[16px] z-[300] p-[16px] flex flex-col mobile:fixed mobile:top-auto mobile:bottom-[calc(var(--bottom-nav-h,64px)+8px)] mobile:start-[12px] mobile:end-[12px] mobile:translate-x-0 mobile:mb-0 mobile:max-h-[70dvh] mobile:overflow-y-auto mobile:z-[400]"
         >
           <Calendar
             onChange={changeDate('date')}

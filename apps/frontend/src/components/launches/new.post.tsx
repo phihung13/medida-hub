@@ -8,7 +8,9 @@ import { SetSelectionModal } from '@gitroom/frontend/components/launches/calenda
 import { AddEditModal } from '@gitroom/frontend/components/new-launch/add.edit.modal';
 import { ModalWrapperComponent } from '@gitroom/frontend/components/new-launch/modal.wrapper.component';
 
-export const NewPost = () => {
+// Logic "tìm slot trống → mở composer" tách thành hook để FAB mobile
+// (launches.component) dùng lại. Phải gọi bên dưới CalendarWeekProvider.
+export const useNewPost = () => {
   const fetch = useFetch();
   const modal = useModals();
   const { integrations, reloadCalendarView, sets } = useCalendar();
@@ -74,6 +76,13 @@ export const NewPost = () => {
       title: ``,
     });
   }, [integrations, sets]);
+
+  return createAPost;
+};
+
+export const NewPost = () => {
+  const createAPost = useNewPost();
+  const t = useT();
   return (
     <button
       onClick={createAPost}

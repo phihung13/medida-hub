@@ -84,7 +84,8 @@ export const FirstBillingComponent = () => {
       title: 'Grow Fast With Social Hub (Play the video)',
       children: (
         <iframe
-          className="h-full aspect-video min-w-[800px]"
+          // min-w-[800px] làm tràn cả trang trên phone — mobile bám theo bề ngang sheet
+          className="h-full aspect-video min-w-[800px] mobile:min-w-0 mobile:w-full mobile:h-auto"
           src="https://www.youtube.com/embed/BdsCVvEYgHU?si=vvhaZJ8I5oXXvVJS?autoplay=1"
           title="Social Hub Tutorial"
           allow="autoplay"

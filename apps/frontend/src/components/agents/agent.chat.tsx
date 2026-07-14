@@ -62,9 +62,11 @@ export const AgentChat: FC = () => {
             '--copilot-kit-background-color': 'var(--new-bg-color)',
           } as CopilotKitCSSProperties
         }
-        className="trz agent bg-newBgColorInner flex flex-col gap-[15px] transition-all flex-1 items-center relative"
+        // Mobile: khung chat cần chiều cao thật (con absolute lấp theo cha) —
+        // khớp min-h đặt ở wrapper trong agent.tsx, đây là chốt chặn thứ hai.
+        className="trz agent bg-newBgColorInner flex flex-col gap-[15px] transition-all flex-1 items-center relative mobile:w-full mobile:min-h-[calc(100dvh-220px)]"
       >
-        <div className="absolute left-0 w-full h-full pb-[20px]">
+        <div className="absolute left-0 w-full h-full pb-[20px] mobile:pb-[8px]">
           <CopilotChat
             className="w-full h-full"
             labels={{
@@ -138,7 +140,8 @@ const Message: FC<UserMessageProps> = (props) => {
   }, [props.message?.content]);
   return (
     <div
-      className="copilotKitMessage copilotKitUserMessage min-w-[300px]"
+      // Mobile: bỏ min-width cứng 300px — màn 375px sẽ tràn ngang
+      className="copilotKitMessage copilotKitUserMessage min-w-[300px] mobile:min-w-0 mobile:max-w-full"
       dangerouslySetInnerHTML={{ __html: convertContentToImagesAndVideo }}
     />
   );
@@ -289,6 +292,9 @@ const OpenModal: FC<{
           id: 'add-edit-modal',
           closeOnClickOutside: false,
           removeLayout: true,
+          // fullScreen: composer edge-to-edge trên mobile (2 tab Soạn/Xem trước)
+          // như mọi đường vào khác — trước thiếu nên mở từ Agent bị bóp 80%.
+          fullScreen: true,
           closeOnEscape: false,
           withCloseButton: false,
           askClose: true,

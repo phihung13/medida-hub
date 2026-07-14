@@ -4,6 +4,16 @@ import { LanMediaFix } from '@gitroom/frontend/components/layout/lan.media.fix';
 import { MaintenanceSw } from '@gitroom/frontend/components/layout/maintenance.sw';
 
 export const dynamic = 'force-dynamic';
+
+// viewport-fit=cover: BẮT BUỘC để env(safe-area-inset-*) hoạt động trên iPhone
+// tai thỏ/Dynamic Island — trước đây thiếu nên mọi safe-area trong code = 0
+// (bottom nav dán sát mép, không né thanh home). Desktop không ảnh hưởng.
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+};
+
 import '../global.scss';
 import 'react-tooltip/dist/react-tooltip.css';
 import '@copilotkit/react-ui/styles.css';

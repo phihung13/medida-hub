@@ -137,6 +137,25 @@ export const PlatformAnalytics = () => {
     return options[0]?.key;
   }, [key, currentIntegration]);
 
+  // Chọn kênh — dùng chung cho sidebar desktop và thanh chip mobile.
+  const pickIntegration = useCallback(
+    (index: number, integration: any) => {
+      if (integration.refreshNeeded) {
+        toaster.show(
+          'Please refresh the integration from the calendar',
+          'warning'
+        );
+        return;
+      }
+      setRefresh(true);
+      setTimeout(() => {
+        setRefresh(false);
+      }, 10);
+      setCurrent(index);
+    },
+    [toaster]
+  );
+
   if (isLoading) {
     return (
       <div className="bg-newBgColorInner p-[20px] flex flex-1 flex-col gap-[15px] transition-all items-center justify-center">
@@ -151,7 +170,7 @@ export const PlatformAnalytics = () => {
         <div>
           <img src="/peoplemarketplace.svg" />
         </div>
-        <div className="text-[48px]">
+        <div className="text-[48px] mobile:text-[30px] mobile:leading-[1.3]">
           {t('can_t_show_analytics_yet', "Can't show analytics yet")}
           <br />
           {t(
@@ -159,7 +178,7 @@ export const PlatformAnalytics = () => {
             'You have to add Social Media channels'
           )}
         </div>
-        <div className="text-[20px]">
+        <div className="text-[20px] mobile:text-[14px]">
           {t('supported', 'Supported:')}
           {allowedIntegrations.map((p) => capitalize(p)).join(', ')}
         </div>
@@ -174,9 +193,58 @@ export const PlatformAnalytics = () => {
   }
   return (
     <>
+      {/* Mobile: sidebar kênh → 1 hàng chip ngang cuộn có đà (desktop ẩn) */}
+      <div className="hidden mobile:flex bg-newBgColorInner px-[12px] py-[10px] gap-[8px] items-center mobile-hscroll shrink-0">
+        <button
+          type="button"
+          onClick={() => setCurrent(-1)}
+          className={clsx(
+            'tap-shrink shrink-0 flex items-center gap-[8px] h-[44px] ps-[7px] pe-[14px] rounded-full border',
+            current === -1
+              ? 'border-btnPrimary bg-boxFocused'
+              : 'border-newTableBorder opacity-70'
+          )}
+        >
+          <span className="w-[32px] h-[32px] rounded-full bg-boxHover grid place-items-center text-[15px]">
+            📊
+          </span>
+          <span className="text-[13px] font-[600] whitespace-nowrap">
+            {t('overview_menu', 'Tổng quan')}
+          </span>
+        </button>
+        {sortedIntegrations.map((integration, index) => (
+          <button
+            key={integration.id}
+            type="button"
+            onClick={() => pickIntegration(index, integration)}
+            className={clsx(
+              'tap-shrink shrink-0 relative flex items-center gap-[8px] h-[44px] ps-[5px] pe-[12px] rounded-full border',
+              currentIntegration?.id === integration.id
+                ? 'border-btnPrimary bg-boxFocused'
+                : 'border-newTableBorder opacity-70',
+              integration.disabled && 'opacity-40'
+            )}
+          >
+            <ImageWithFallback
+              fallbackSrc={`/icons/platforms/${integration.identifier}.png`}
+              src={integration.picture}
+              className="rounded-full"
+              alt={integration.identifier}
+              width={34}
+              height={34}
+            />
+            <span className="text-[13px] whitespace-nowrap max-w-[96px] truncate">
+              {integration.name}
+            </span>
+            {(integration.inBetweenSteps || integration.refreshNeeded) && (
+              <span className="absolute top-[1px] end-[1px] w-[10px] h-[10px] rounded-full bg-red-500" />
+            )}
+          </button>
+        ))}
+      </div>
       <div
         className={clsx(
-          'bg-newBgColorInner p-[20px] flex flex-col gap-[15px] transition-all',
+          'bg-newBgColorInner p-[20px] flex flex-col gap-[15px] transition-all mobile:hidden',
           collapseMenu === '1' ? 'group sidebar w-[100px]' : 'w-[260px]'
         )}
       >
@@ -232,20 +300,7 @@ export const PlatformAnalytics = () => {
           {sortedIntegrations.map((integration, index) => (
             <div
               key={integration.id}
-              onClick={() => {
-                if (integration.refreshNeeded) {
-                  toaster.show(
-                    'Please refresh the integration from the calendar',
-                    'warning'
-                  );
-                  return;
-                }
-                setRefresh(true);
-                setTimeout(() => {
-                  setRefresh(false);
-                }, 10);
-                setCurrent(index);
-              }}
+              onClick={() => pickIntegration(index, integration)}
               className={clsx(
                 'flex gap-[12px] items-center group/profile justify-center hover:bg-boxHover rounded-e-[8px] transition-opacity',
                 currentIntegration?.id !== integration.id &&
@@ -304,7 +359,7 @@ export const PlatformAnalytics = () => {
           ))}
         </div>
       </div>
-      <div className="bg-newBgColorInner flex-1 flex-col flex p-[20px] gap-[12px]">
+      <div className="bg-newBgColorInner flex-1 flex-col flex p-[20px] gap-[12px] mobile:p-[12px]">
         {current === -1 && (
           <OverviewAnalytics
             onOpenChannel={(id) => {

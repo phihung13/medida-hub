@@ -514,7 +514,7 @@ export const TeamsComponent = () => {
         {isAdmin ? ` ${t('and_email', 'and login email')}` : ''}
         .
       </div>
-      <div className="my-[16px] bg-sixth border-fifth border rounded-[8px] p-[24px] flex items-center gap-[12px] flex-wrap">
+      <div className="my-[16px] bg-sixth border-fifth border rounded-[8px] p-[24px] mobile:p-[14px] flex items-center gap-[12px] flex-wrap">
         <div className="w-[36px] h-[36px] rounded-full bg-btnPrimary/20 text-btnPrimary flex items-center justify-center text-[14px] font-[700] uppercase">
           {(myDisplayName || '?').slice(0, 2)}
         </div>
@@ -522,18 +522,19 @@ export const TeamsComponent = () => {
           <div className="text-[14px] font-[600] truncate">{myDisplayName}</div>
           <div className="text-[12px] opacity-60 truncate">{myEmail}</div>
         </div>
-        <div className="flex gap-[6px] flex-wrap">
+        {/* Mobile: nhóm nút xuống hàng riêng full-width, chạm ≥40px */}
+        <div className="flex gap-[6px] flex-wrap mobile:w-full mobile:gap-[8px]">
           <button
             type="button"
             onClick={editMyName}
-            className="text-[12px] rounded-[6px] px-[10px] py-[6px] bg-newColColor border border-fifth hover:bg-boxHover"
+            className="text-[12px] rounded-[6px] px-[10px] py-[6px] bg-newColColor border border-fifth hover:bg-boxHover mobile:flex-1 mobile:min-h-[40px] mobile:px-[14px] mobile:whitespace-nowrap tap-shrink"
           >
             {t('edit_name', 'Edit display name')}
           </button>
           <button
             type="button"
             onClick={changeMyPassword}
-            className="text-[12px] rounded-[6px] px-[10px] py-[6px] bg-newColColor border border-fifth hover:bg-boxHover"
+            className="text-[12px] rounded-[6px] px-[10px] py-[6px] bg-newColColor border border-fifth hover:bg-boxHover mobile:flex-1 mobile:min-h-[40px] mobile:px-[14px] mobile:whitespace-nowrap tap-shrink"
           >
             {t('change_password', 'Change Password')}
           </button>
@@ -541,7 +542,7 @@ export const TeamsComponent = () => {
             <button
               type="button"
               onClick={changeMyEmail}
-              className="text-[12px] rounded-[6px] px-[10px] py-[6px] bg-newColColor border border-fifth hover:bg-boxHover"
+              className="text-[12px] rounded-[6px] px-[10px] py-[6px] bg-newColColor border border-fifth hover:bg-boxHover mobile:flex-1 mobile:min-h-[40px] mobile:px-[14px] mobile:whitespace-nowrap tap-shrink"
             >
               {t('change_email', 'Change email')}
             </button>
@@ -562,14 +563,16 @@ export const TeamsComponent = () => {
             )}
       </div>
 
-      <div className="my-[16px] bg-sixth border-fifth border rounded-[8px] p-[24px] flex flex-col gap-[18px]">
+      <div className="my-[16px] bg-sixth border-fifth border rounded-[8px] p-[24px] mobile:p-[14px] flex flex-col gap-[18px]">
         <div className="flex flex-col gap-[10px]">
           {(data || []).map((p) => {
             const canManage = +myLevel > +getLevel(p.role);
             return (
+              // Mobile: cho wrap để avatar+tên+badge ở hàng 1, nút quản trị rơi
+              // xuống hàng 2 full-width — desktop vẫn 1 hàng như cũ
               <div
                 key={p.user.id}
-                className="flex items-center gap-[12px] py-[8px] border-b border-fifth/40 last:border-0"
+                className="flex items-center gap-[12px] py-[8px] border-b border-fifth/40 last:border-0 mobile:flex-wrap mobile:py-[12px]"
               >
                 <div className="w-[36px] h-[36px] rounded-full bg-btnPrimary/20 text-btnPrimary flex items-center justify-center text-[14px] font-[700] uppercase">
                   {name(p.user.email).slice(0, 2)}
@@ -597,24 +600,24 @@ export const TeamsComponent = () => {
                     : t('super_admin', 'Super Admin')}
                 </div>
                 {isAdmin && canManage ? (
-                  <div className="flex gap-[6px]">
+                  <div className="flex gap-[6px] mobile:w-full mobile:gap-[8px]">
                     <button
                       type="button"
                       onClick={resetPassword(p)}
-                      className="text-[12px] rounded-[6px] px-[10px] py-[6px] bg-newColColor border border-fifth hover:bg-boxHover"
+                      className="text-[12px] rounded-[6px] px-[10px] py-[6px] bg-newColColor border border-fifth hover:bg-boxHover mobile:flex-1 mobile:min-h-[40px] mobile:px-[14px] tap-shrink"
                     >
                       {t('reset_password', 'Reset password')}
                     </button>
                     <button
                       type="button"
                       onClick={remove(p)}
-                      className="text-[12px] rounded-[6px] px-[10px] py-[6px] text-red-500 hover:bg-red-500/10"
+                      className="text-[12px] rounded-[6px] px-[10px] py-[6px] text-red-500 hover:bg-red-500/10 mobile:flex-1 mobile:min-h-[40px] mobile:px-[14px] mobile:border mobile:border-red-500/30 tap-shrink"
                     >
                       {t('remove', 'Remove')}
                     </button>
                   </div>
                 ) : (
-                  <div className="w-[1px]" />
+                  <div className="w-[1px] mobile:hidden" />
                 )}
               </div>
             );

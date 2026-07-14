@@ -10,6 +10,8 @@ import { useToaster } from '@gitroom/react/toaster/toaster';
 import { deleteDialog } from '@gitroom/react/helpers/delete.dialog';
 import { useIntegrationList } from '@gitroom/frontend/components/launches/helpers/use.integration.list';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
+import { MobileFab } from '@gitroom/frontend/components/new-layout/mobile.fab';
+import { useIsMobile } from '@gitroom/frontend/components/new-layout/use.is.mobile';
 
 // ── Lò Bài Thắng: tường bài viral giáo dục → mổ công thức → nhân bản ───────
 // Thước đo chính: LƯỢT SHARE.
@@ -857,7 +859,8 @@ const PostMineModal: FC<{ clone: any; onDone: () => void }> = ({ clone, onDone }
 };
 
 // Ô tích chọn cho thẻ "Chờ đăng" (bài social + sản phẩm) — cùng kiểu thẻ content.
-const ReadyTick: FC<{ sel?: boolean; onToggle?: () => void }> = ({ sel, onToggle }) =>
+// show = chế độ chọn trên mobile: tick luôn hiện (touch không có hover).
+const ReadyTick: FC<{ sel?: boolean; onToggle?: () => void; show?: boolean }> = ({ sel, onToggle, show }) =>
   !onToggle ? null : (
     <button
       onClick={(e) => {
@@ -868,7 +871,10 @@ const ReadyTick: FC<{ sel?: boolean; onToggle?: () => void }> = ({ sel, onToggle
         'absolute z-[10] top-[10px] left-[10px] w-[22px] h-[22px] rounded-[6px] border-2 flex items-center justify-center text-[13px] font-[900] transition-all',
         sel
           ? 'bg-btnPrimary border-btnPrimary text-white'
-          : 'bg-newBgColor border-newBgLineColor text-transparent opacity-0 group-hover/card:opacity-100'
+          : clsx(
+              'bg-newBgColor border-newBgLineColor text-transparent',
+              show ? 'opacity-100' : 'opacity-0 group-hover/card:opacity-100'
+            )
       )}
     >
       ✓
@@ -881,8 +887,9 @@ const MineCard: FC<{
   onDone: () => void;
   sel?: boolean;
   onToggleSel?: () => void;
+  selectMode?: boolean;
   cardRef?: (el: HTMLDivElement | null) => void;
-}> = ({ clone, onDone, sel, onToggleSel, cardRef }) => {
+}> = ({ clone, onDone, sel, onToggleSel, selectMode, cardRef }) => {
   const t = useT();
   const fetch = useFetch();
   const toast = useToaster();
@@ -923,12 +930,21 @@ const MineCard: FC<{
   return (
     <div
       ref={cardRef}
+      // chế độ chọn (mobile): tap nền thẻ = tick — nút/link bên trong vẫn là của chúng
+      onClick={
+        selectMode
+          ? (e) => {
+              if ((e.target as HTMLElement).closest('button, a, select, textarea, input, audio')) return;
+              onToggleSel?.();
+            }
+          : undefined
+      }
       className={clsx(
         'group/card relative bg-newColColor border rounded-[13px] p-[14px] flex flex-col gap-[10px]',
         sel ? 'border-btnPrimary ring-2 ring-btnPrimary/40' : 'border-newBgLineColor'
       )}
     >
-      <ReadyTick sel={sel} onToggle={onToggleSel} />
+      <ReadyTick sel={sel} onToggle={onToggleSel} show={selectMode} />
       <div className="flex items-center gap-[8px] flex-wrap">
         <span className={clsx('text-[12px] font-[800] px-[9px] py-[3px] rounded-[7px] tabular-nums', scoreStyle(clone.score))}>⭐ {clone.score ?? '—'}</span>
         {clone.sourceScore != null && (
@@ -1415,8 +1431,9 @@ const ProductCard: FC<{
   onDone: () => void;
   sel?: boolean;
   onToggleSel?: () => void;
+  selectMode?: boolean;
   cardRef?: (el: HTMLDivElement | null) => void;
-}> = ({ product, onDone, sel, onToggleSel, cardRef }) => {
+}> = ({ product, onDone, sel, onToggleSel, selectMode, cardRef }) => {
   const t = useT();
   const fetch = useFetch();
   const toast = useToaster();
@@ -1466,14 +1483,24 @@ const ProductCard: FC<{
   return (
     <div
       ref={cardRef}
-      onClick={product.status === 'done' ? openDetail : undefined}
+      // chế độ chọn (mobile): tap thẻ = tick; bình thường thẻ done mở chi tiết
+      onClick={
+        selectMode
+          ? (e) => {
+              if ((e.target as HTMLElement).closest('button, a, select, textarea, input, audio')) return;
+              onToggleSel?.();
+            }
+          : product.status === 'done'
+          ? openDetail
+          : undefined
+      }
       className={clsx(
         'group/card relative bg-newColColor border rounded-[13px] overflow-hidden flex flex-col',
         sel ? 'border-btnPrimary ring-2 ring-btnPrimary/40' : 'border-newBgLineColor',
         product.status === 'done' && 'cursor-pointer hover:border-newTableBorder'
       )}
     >
-      <ReadyTick sel={sel} onToggle={onToggleSel} />
+      <ReadyTick sel={sel} onToggle={onToggleSel} show={selectMode} />
       {product.format === 'infographic' && product.mediaPath && product.status === 'done' && (
         <div className="relative">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1572,6 +1599,9 @@ const SkillsPanel: FC = () => {
   const [sel, setSel] = useState<string>('');
   const [draft, setDraft] = useState<string>('');
   const [busy, setBusy] = useState(false);
+  // mobile 2 màn: 'list' = danh sách skill, 'editor' = trình sửa; desktop 2 cột
+  // song song nên state này chỉ ăn qua class mobile: (đổi trên desktop vô hại).
+  const [mobileView, setMobileView] = useState<'list' | 'editor'>('list');
   const fileRef = useRef<HTMLInputElement>(null);
   const current = items.find((s) => s.key === sel) || null;
 
@@ -1627,17 +1657,25 @@ const SkillsPanel: FC = () => {
 
   return (
     <div className="flex gap-[14px] mobile:flex-col">
-      {/* cột trái: danh sách skill theo nhóm */}
-      <div className="w-[290px] mobile:w-full shrink-0 flex flex-col gap-[10px] max-h-[68vh] overflow-auto pr-[4px]">
+      {/* cột trái: danh sách skill theo nhóm — mobile là MÀN 1 (full, không 68vh) */}
+      <div
+        className={clsx(
+          'w-[290px] mobile:w-full shrink-0 flex flex-col gap-[10px] max-h-[68vh] mobile:max-h-none overflow-auto pr-[4px]',
+          mobileView === 'editor' && 'mobile:hidden'
+        )}
+      >
         {groups.map((g) => (
           <div key={g} className="flex flex-col gap-[4px]">
             <div className="text-[10.5px] uppercase tracking-[0.07em] text-textItemBlur px-[4px]">{g}</div>
             {items.filter((s) => s.group === g).map((s) => (
               <button
                 key={s.key}
-                onClick={() => setSel(s.key)}
+                onClick={() => {
+                  setSel(s.key);
+                  setMobileView('editor');
+                }}
                 className={clsx(
-                  'text-left px-[11px] py-[8px] rounded-[9px] border text-[12.5px] leading-[1.35]',
+                  'text-left px-[11px] py-[8px] mobile:min-h-[44px] rounded-[9px] border text-[12.5px] leading-[1.35]',
                   sel === s.key
                     ? 'bg-btnPrimary/15 border-btnPrimary/50 text-btnPrimary font-[700]'
                     : 'border-newBgLineColor text-textColor hover:border-newTableBorder'
@@ -1655,10 +1693,16 @@ const SkillsPanel: FC = () => {
         ))}
       </div>
 
-      {/* cột phải: editor markdown */}
-      <div className="flex-1 flex flex-col gap-[9px] min-w-0">
+      {/* cột phải: editor markdown — mobile là MÀN 2 (có nút quay lại danh sách) */}
+      <div className={clsx('flex-1 flex flex-col gap-[9px] min-w-0', mobileView === 'list' && 'mobile:hidden')}>
         {current ? (
           <>
+            <button
+              onClick={() => setMobileView('list')}
+              className="hidden mobile:flex items-center gap-[6px] min-h-[44px] self-start text-[13.5px] font-[700] text-btnPrimary tap-shrink"
+            >
+              ← {t('viral_skill_back_list', 'All recipes')}
+            </button>
             <div className="flex items-center gap-[8px] flex-wrap">
               <div className="text-[14px] font-[700]">{current.label}</div>
               <span className={clsx('text-[10.5px] font-[700] px-[8px] py-[2px] rounded-full', current.isCustom ? 'bg-[#FFC53D]/15 text-[#FFC53D]' : 'bg-newColColor border border-newBgLineColor text-textItemBlur')}>
@@ -1966,7 +2010,20 @@ const ReportCard: FC<{ report: any; onDone: () => void }> = ({ report, onDone })
   const todos: any[] = meta.todos || [];
   return (
     <div className="bg-newColColor border border-newBgLineColor rounded-[13px] overflow-hidden">
-      <button onClick={() => setOpen(!open)} className="w-full text-left p-[14px] flex items-center gap-[10px] hover:bg-newBgColorInner/40">
+      {/* header accordion = div role=button (button lồng button là HTML sai —
+          nút 📤/✕ bên trong tự stopPropagation); Enter/Space giữ như button thật */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setOpen(!open)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setOpen(!open);
+          }
+        }}
+        className="w-full text-left p-[14px] flex items-center gap-[10px] hover:bg-newBgColorInner/40"
+      >
         <span className="text-[18px]">📰</span>
         <span className="flex-1 min-w-0">
           <span className="block text-[13.5px] font-[700] truncate">{report.title}</span>
@@ -1980,12 +2037,12 @@ const ReportCard: FC<{ report: any; onDone: () => void }> = ({ report, onDone })
           onClick={sendZalo}
           disabled={sending}
           title={t('viral_zalo_send_this', 'Send this brief via Zalo to the saved recipients')}
-          className="px-[8px] py-[4px] rounded-[6px] text-[11.5px] text-btnPrimary hover:bg-btnPrimary/10 disabled:opacity-50"
+          className="px-[8px] py-[4px] mobile:min-h-[36px] mobile:min-w-[36px] rounded-[6px] text-[11.5px] text-btnPrimary hover:bg-btnPrimary/10 disabled:opacity-50"
         >
           {sending ? '…' : '📤'}
         </button>
-        <button onClick={del} className="px-[8px] py-[4px] rounded-[6px] text-[11.5px] text-[#FF5A52] hover:bg-[#FF5A52]/10">✕</button>
-      </button>
+        <button onClick={del} className="px-[8px] py-[4px] mobile:min-h-[36px] mobile:min-w-[36px] rounded-[6px] text-[11.5px] text-[#FF5A52] hover:bg-[#FF5A52]/10">✕</button>
+      </div>
       {open && (
         <div className="px-[16px] pb-[16px] flex flex-col gap-[12px] border-t border-newBgLineColor/60 pt-[12px]">
           {meta.summary && <div className="text-[13px] leading-[1.6]">{meta.summary}</div>}
@@ -2038,6 +2095,12 @@ export const ViralComponent: FC = () => {
   const [sort, setSort] = useState('shares');
   const [tab, setTab] = useState('pending');
   const [crawling, setCrawling] = useState(false);
+  // ── Mobile: touch không có hover/lasso chuột → chế độ "Chọn" bật tick + tap
+  // thẻ = chọn; panel Nguồn theo dõi mặc định gập cho gọn trang.
+  const isMobile = useIsMobile();
+  const [selectMode, setSelectMode] = useState(false);
+  const [srcOpen, setSrcOpen] = useState(false);
+  const showTicks = isMobile && selectMode;
   // "Chờ đăng" (ready) gộp Bài của mình (caption social) + Sản phẩm (blog/ảnh/
   // podcast) — 1 bước cuối trước Lưu trữ, chia 2 khu theo cách đăng.
   const isReady = tab === 'ready';
@@ -2085,9 +2148,10 @@ export const ViralComponent: FC = () => {
   const didDrag = useRef(false);
   const [dragBox, setDragBox] = useState<{ l: number; t: number; w: number; h: number } | null>(null);
 
-  // đổi tab → bỏ chọn hết
+  // đổi tab → bỏ chọn hết (kèm tắt chế độ chọn mobile)
   useEffect(() => {
     setSelected(new Set());
+    setSelectMode(false);
   }, [tab, platform, level]);
 
   const toggleSelect = useCallback((id: string) => {
@@ -2095,6 +2159,14 @@ export const ViralComponent: FC = () => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
+    });
+  }, []);
+
+  // nút "Chọn/Xong" (mobile) — tắt thì bỏ luôn các thẻ đã tick
+  const toggleSelectMode = useCallback(() => {
+    setSelectMode((v) => {
+      if (v) setSelected(new Set());
+      return !v;
     });
   }, []);
 
@@ -2406,50 +2478,83 @@ export const ViralComponent: FC = () => {
     { label: 'YouTube Trending', href: 'https://www.youtube.com/feed/trending' },
   ];
 
+  // Nút "Chọn / Xong" — mobile-only (desktop có hover-tick + lasso chuột):
+  // bật thì tick hiện trên mọi thẻ và TAP thẻ = chọn thay vì mở chi tiết.
+  const selectModeBtn = (
+    <button
+      onClick={toggleSelectMode}
+      className={clsx(
+        'hidden mobile:flex items-center justify-center h-[44px] px-[16px] rounded-[9px] text-[13px] font-[700] border tap-shrink shrink-0',
+        selectMode
+          ? 'bg-btnPrimary/15 border-btnPrimary/50 text-btnPrimary'
+          : 'border-newBgLineColor text-textItemBlur'
+      )}
+    >
+      {selectMode ? `✓ ${t('viral_select_done', 'Done')}` : `☑ ${t('viral_select_mode', 'Select')}`}
+    </button>
+  );
+
   return (
-    <div className="flex-1 bg-newBgColorInner p-[24px] mobile:p-[14px] overflow-auto flex flex-col gap-[16px]">
-      {/* header: stats bên trái + nút bên phải, MỘT hàng cho gọn diện tích */}
+    <div
+      className={clsx(
+        'flex-1 bg-newBgColorInner p-[24px] mobile:p-[14px] overflow-auto flex flex-col gap-[16px]',
+        // Đang chọn hàng loạt trên mobile: bulk bar ghim đáy → chừa đệm để
+        // thẻ cuối lưới không bị che.
+        selected.size > 0 && 'mobile:pb-[140px]'
+      )}
+    >
+      {/* header: stats bên trái + nút bên phải, MỘT hàng cho gọn diện tích.
+          Mobile: stats = dãy chip cuộn ngang, nút = hàng cuộn ngang, Add → FAB. */}
       <div className="flex items-center gap-[10px] flex-wrap">
-        <div className="flex gap-[22px] px-[16px] py-[8px] bg-newColColor border border-newBgLineColor rounded-[10px] flex-wrap items-center">
+        <div className="flex gap-[22px] px-[16px] py-[8px] bg-newColColor border border-newBgLineColor rounded-[10px] flex-wrap items-center mobile-hscroll mobile:w-full mobile:flex-nowrap mobile:gap-[8px] mobile:p-0 mobile:bg-transparent mobile:border-0 mobile:rounded-none">
           {[
             [stats?.total ?? '—', t('viral_stat_captured', 'posts captured'), false],
             [nice(stats?.totalShares) ?? '—', t('viral_stat_total_shares', 'total shares'), true],
             [stats?.cloned ?? '—', t('viral_stat_cloned', 'cloned'), false],
             [stats?.sources ?? '—', t('viral_stat_sources', 'tracked sources'), false],
           ].map(([v, k, gold], i) => (
-            <div key={i} className="flex items-baseline gap-[6px]">
+            <div key={i} className="flex items-baseline gap-[6px] mobile:shrink-0 mobile:whitespace-nowrap mobile:bg-newColColor mobile:border mobile:border-newBgLineColor mobile:rounded-full mobile:px-[12px] mobile:py-[7px]">
               <span className={clsx('text-[16px] font-[700] tabular-nums', gold && 'text-[#FFC53D]')}>{v as any}</span>
               <span className="text-[11px] text-textItemBlur">{k as any}</span>
             </div>
           ))}
         </div>
-        <div className="flex-1" />
-        <button onClick={openPersonas} title={t('viral_modal_personas', '8 customer personas')} className="h-[40px] px-[12px] rounded-[9px] border border-newBgLineColor text-textItemBlur hover:text-textColor text-[13px]">
-          🧬 {t('viral_personas_button', 'Personas')}
-        </button>
-        <button onClick={openConfig} title={t('viral_modal_config', 'Auto-crawl configuration')} className="h-[40px] px-[12px] rounded-[9px] border border-newBgLineColor text-textItemBlur hover:text-textColor text-[13px]">
-          {t('viral_config_button', 'Settings')}
-        </button>
-        <button onClick={crawlNow} disabled={crawling} className="h-[40px] px-[14px] rounded-[9px] border border-newBgLineColor bg-newColColor text-[13px] font-[600] disabled:opacity-50">
-          {crawling ? t('viral_crawling', 'Crawling…') : t('viral_crawl_now', 'Crawl now')}
-        </button>
-        <Button onClick={openCapture}>{t('viral_add_post_button', 'Add viral post')}</Button>
+        <div className="flex-1 mobile:hidden" />
+        {/* contents = vỏ trong suốt trên desktop (không đổi pixel); mobile thành hàng cuộn */}
+        <div className="contents mobile:flex mobile:w-full mobile:items-center mobile:gap-[8px] mobile-hscroll">
+          <button onClick={openPersonas} title={t('viral_modal_personas', '8 customer personas')} className="h-[40px] px-[12px] rounded-[9px] border border-newBgLineColor text-textItemBlur hover:text-textColor text-[13px] mobile:shrink-0 mobile:whitespace-nowrap tap-shrink">
+            🧬 {t('viral_personas_button', 'Personas')}
+          </button>
+          <button onClick={openConfig} title={t('viral_modal_config', 'Auto-crawl configuration')} className="h-[40px] px-[12px] rounded-[9px] border border-newBgLineColor text-textItemBlur hover:text-textColor text-[13px] mobile:shrink-0 mobile:whitespace-nowrap tap-shrink">
+            {t('viral_config_button', 'Settings')}
+          </button>
+          <button onClick={crawlNow} disabled={crawling} className="h-[40px] px-[14px] rounded-[9px] border border-newBgLineColor bg-newColColor text-[13px] font-[600] disabled:opacity-50 mobile:shrink-0 mobile:whitespace-nowrap tap-shrink">
+            {crawling ? t('viral_crawling', 'Crawling…') : t('viral_crawl_now', 'Crawl now')}
+          </button>
+          <Button className="mobile:hidden" onClick={openCapture}>{t('viral_add_post_button', 'Add viral post')}</Button>
+        </div>
       </div>
+      {/* FAB mobile = hành động chính "Thêm bài viral"; nhường chỗ khi đang chọn
+          (thanh bulk fixed đáy) và ở tab ngoài luồng content */}
+      {(isTopicTab || isReady) && !showTicks && selected.size === 0 && (
+        <MobileFab label={t('viral_add_post_button', 'Add viral post')} onClick={openCapture} />
+      )}
 
       {/* LUỒNG 4 BƯỚC: ①Chờ duyệt → ②Đã duyệt → ③Bài của mình → ④Sản phẩm.
-          Lưu trữ nằm NGOÀI luồng (bên phải). Dưới tabs có dòng hướng dẫn bước. */}
-      <div className="flex items-center gap-[6px] flex-wrap">
+          Lưu trữ nằm NGOÀI luồng (bên phải). Dưới tabs có dòng hướng dẫn bước.
+          Mobile: 1 hàng pill cuộn ngang, bỏ mũi tên. */}
+      <div className="flex items-center gap-[6px] flex-wrap mobile:flex-nowrap mobile-hscroll">
         {[
           ['pending', t('viral_status_pending', 'To review'), topicsData?.counts?.pending ?? data?.statusCounts?.pending],
           ['approved', t('viral_status_approved', 'Approved'), topicsData?.counts?.approved ?? data?.statusCounts?.approved],
           ['ready', t('viral_tab_ready', 'Ready to post'), (data?.statusCounts?.mine || 0) + (data?.statusCounts?.products || 0)],
         ].map(([k, l, count], i) => (
           <Fragment key={k as string}>
-            {i > 0 && <span className="text-textItemBlur/50 text-[14px] font-[700] select-none px-[1px]">→</span>}
+            {i > 0 && <span className="text-textItemBlur/50 text-[14px] font-[700] select-none px-[1px] mobile:hidden">→</span>}
             <button
               onClick={() => setTab(k as string)}
               className={clsx(
-                'flex items-center gap-[7px] px-[12px] py-[7px] rounded-[8px] text-[12.5px] font-[700] border',
+                'flex items-center gap-[7px] px-[12px] py-[7px] rounded-[8px] text-[12.5px] font-[700] border mobile:h-[40px] mobile:shrink-0 mobile:whitespace-nowrap tap-shrink',
                 tab === k
                   ? 'bg-btnPrimary/15 border-btnPrimary/50 text-btnPrimary'
                   : 'border-newBgLineColor text-textItemBlur hover:text-textColor'
@@ -2468,12 +2573,13 @@ export const ViralComponent: FC = () => {
             </button>
           </Fragment>
         ))}
-        <div className="flex-1" />
+        {/* mobile: hàng cuộn ngang nên spacer chỉ giữ khoảng ngăn nhóm tab phụ */}
+        <div className="flex-1 mobile:min-w-[16px]" />
         <button
           onClick={() => setTab('reports')}
           title={t('viral_tab_reports_hint', 'Weekly briefs: hot news, market moves, to-do list — also sent to Zalo/email')}
           className={clsx(
-            'px-[12px] py-[7px] rounded-[8px] text-[12.5px] font-[700] border',
+            'px-[12px] py-[7px] rounded-[8px] text-[12.5px] font-[700] border mobile:h-[40px] mobile:flex mobile:items-center mobile:shrink-0 mobile:whitespace-nowrap tap-shrink',
             tab === 'reports'
               ? 'bg-newColColor border-newTableBorder text-textColor'
               : 'border-newBgLineColor text-textItemBlur hover:text-textColor'
@@ -2485,7 +2591,7 @@ export const ViralComponent: FC = () => {
           onClick={() => setTab('skills')}
           title={t('viral_tab_skills_hint', 'Edit the AI recipes: blog/podcast/infographic formulas, scoring rubric, rewrite rules…')}
           className={clsx(
-            'px-[12px] py-[7px] rounded-[8px] text-[12.5px] font-[700] border',
+            'px-[12px] py-[7px] rounded-[8px] text-[12.5px] font-[700] border mobile:h-[40px] mobile:flex mobile:items-center mobile:shrink-0 mobile:whitespace-nowrap tap-shrink',
             tab === 'skills'
               ? 'bg-newColColor border-newTableBorder text-textColor'
               : 'border-newBgLineColor text-textItemBlur hover:text-textColor'
@@ -2496,7 +2602,7 @@ export const ViralComponent: FC = () => {
         <button
           onClick={() => setTab('archive')}
           className={clsx(
-            'px-[12px] py-[7px] rounded-[8px] text-[12.5px] font-[700] border',
+            'px-[12px] py-[7px] rounded-[8px] text-[12.5px] font-[700] border mobile:h-[40px] mobile:flex mobile:items-center mobile:shrink-0 mobile:whitespace-nowrap tap-shrink',
             tab === 'archive'
               ? 'bg-newColColor border-newTableBorder text-textColor'
               : 'border-newBgLineColor text-textItemBlur hover:text-textColor'
@@ -2537,39 +2643,47 @@ export const ViralComponent: FC = () => {
         </div>
       )}
 
-      {/* thanh thao tác hàng loạt + điều khiển Lưu trữ */}
+      {/* thanh thao tác hàng loạt + điều khiển Lưu trữ.
+          Mobile khi CÓ chọn: ghim đáy ngay trên tab bar, 1 hàng nút 44px cuộn
+          ngang (ngón cái với tới); không chọn (ghi chú Lưu trữ) thì nằm in-flow. */}
       {(selected.size > 0 || isArchive) && (
-        <div className="flex items-center gap-[8px] flex-wrap bg-newColColor border border-newBgLineColor rounded-[10px] px-[14px] py-[9px]">
+        <div
+          className={clsx(
+            'flex items-center gap-[8px] flex-wrap bg-newColColor border border-newBgLineColor rounded-[10px] px-[14px] py-[9px]',
+            selected.size > 0 &&
+              'mobile:fixed mobile:bottom-[var(--bottom-nav-h,64px)] mobile:inset-x-0 mobile:z-[160] mobile:flex-nowrap mobile-hscroll mobile:rounded-none mobile:border-x-0 mobile:border-b-0 mobile:bg-newBgColorInner mobile:px-[12px] mobile:py-[10px]'
+          )}
+        >
           {selected.size > 0 ? (
             <>
-              <span className="text-[12.5px] font-[700] text-textColor">{selected.size} {t('viral_selected', 'selected')}</span>
-              <button onClick={selectAllOnPage} className="text-[12px] text-btnPrimary hover:underline">{t('viral_select_all', 'Select all')}</button>
-              <button onClick={() => setSelected(new Set())} className="text-[12px] text-textItemBlur hover:text-textColor">{t('viral_clear_selection', 'Clear')}</button>
-              <div className="w-[1px] h-[18px] bg-newBgLineColor mx-[2px]" />
+              <span className="text-[12.5px] font-[700] text-textColor mobile:shrink-0 mobile:whitespace-nowrap">{selected.size} {t('viral_selected', 'selected')}</span>
+              <button onClick={selectAllOnPage} className="text-[12px] text-btnPrimary hover:underline mobile:min-h-[44px] mobile:px-[8px] mobile:shrink-0 mobile:whitespace-nowrap">{t('viral_select_all', 'Select all')}</button>
+              <button onClick={() => setSelected(new Set())} className="text-[12px] text-textItemBlur hover:text-textColor mobile:min-h-[44px] mobile:px-[8px] mobile:shrink-0 mobile:whitespace-nowrap">{t('viral_clear_selection', 'Clear')}</button>
+              <div className="w-[1px] h-[18px] bg-newBgLineColor mx-[2px] mobile:shrink-0" />
               {isReady ? (
                 <>
-                  <button onClick={openBulkPostReady} className="h-[32px] px-[12px] rounded-[8px] text-[12px] font-[700] bg-btnPrimary/15 text-btnPrimary hover:bg-btnPrimary/25">📤 {t('viral_bulk_post_button_bar', 'Add to Calendar')}</button>
-                  <button onClick={bulkReadyDelete} className="h-[32px] px-[12px] rounded-[8px] text-[12px] font-[700] text-[#FF5A52] border border-[#FF5A52]/30 hover:bg-[#FF5A52]/10">🗑 {t('viral_delete', 'Delete')}</button>
+                  <button onClick={openBulkPostReady} className="h-[32px] mobile:h-[44px] mobile:shrink-0 mobile:whitespace-nowrap px-[12px] rounded-[8px] text-[12px] font-[700] bg-btnPrimary/15 text-btnPrimary hover:bg-btnPrimary/25">📤 {t('viral_bulk_post_button_bar', 'Add to Calendar')}</button>
+                  <button onClick={bulkReadyDelete} className="h-[32px] mobile:h-[44px] mobile:shrink-0 mobile:whitespace-nowrap px-[12px] rounded-[8px] text-[12px] font-[700] text-[#FF5A52] border border-[#FF5A52]/30 hover:bg-[#FF5A52]/10">🗑 {t('viral_delete', 'Delete')}</button>
                 </>
               ) : !isArchive ? (
                 <>
-                  <button onClick={() => bulkAction('approve')} className="h-[32px] px-[12px] rounded-[8px] text-[12px] font-[700] bg-[#57D9A3]/15 text-[#57D9A3] hover:bg-[#57D9A3]/25">✓ {t('viral_approve', 'Approve')}</button>
-                  <button onClick={() => bulkAction('skip')} className="h-[32px] px-[12px] rounded-[8px] text-[12px] font-[700] text-[#FF5A52] border border-[#FF5A52]/30 hover:bg-[#FF5A52]/10">✕ {t('viral_skip', 'Skip')}</button>
-                  <button onClick={() => bulkAction('clone')} className="h-[32px] px-[12px] rounded-[8px] text-[12px] font-[700] bg-btnPrimary/15 text-btnPrimary hover:bg-btnPrimary/25">⧉ {t('viral_clone_bulk', 'Clone → My posts')}</button>
-                  <button onClick={openProduce} className="h-[32px] px-[12px] rounded-[8px] text-[12px] font-[700] bg-[#57D9A3]/15 text-[#57D9A3] hover:bg-[#57D9A3]/25">🏭 {t('viral_produce_bulk', 'Produce')}</button>
-                  <button onClick={() => bulkAction('delete')} className="h-[32px] px-[12px] rounded-[8px] text-[12px] text-textItemBlur border border-newBgLineColor hover:text-textColor">🗑 {t('viral_move_archive', 'Archive')}</button>
+                  <button onClick={() => bulkAction('approve')} className="h-[32px] mobile:h-[44px] mobile:shrink-0 mobile:whitespace-nowrap px-[12px] rounded-[8px] text-[12px] font-[700] bg-[#57D9A3]/15 text-[#57D9A3] hover:bg-[#57D9A3]/25">✓ {t('viral_approve', 'Approve')}</button>
+                  <button onClick={() => bulkAction('skip')} className="h-[32px] mobile:h-[44px] mobile:shrink-0 mobile:whitespace-nowrap px-[12px] rounded-[8px] text-[12px] font-[700] text-[#FF5A52] border border-[#FF5A52]/30 hover:bg-[#FF5A52]/10">✕ {t('viral_skip', 'Skip')}</button>
+                  <button onClick={() => bulkAction('clone')} className="h-[32px] mobile:h-[44px] mobile:shrink-0 mobile:whitespace-nowrap px-[12px] rounded-[8px] text-[12px] font-[700] bg-btnPrimary/15 text-btnPrimary hover:bg-btnPrimary/25">⧉ {t('viral_clone_bulk', 'Clone → My posts')}</button>
+                  <button onClick={openProduce} className="h-[32px] mobile:h-[44px] mobile:shrink-0 mobile:whitespace-nowrap px-[12px] rounded-[8px] text-[12px] font-[700] bg-[#57D9A3]/15 text-[#57D9A3] hover:bg-[#57D9A3]/25">🏭 {t('viral_produce_bulk', 'Produce')}</button>
+                  <button onClick={() => bulkAction('delete')} className="h-[32px] mobile:h-[44px] mobile:shrink-0 mobile:whitespace-nowrap px-[12px] rounded-[8px] text-[12px] text-textItemBlur border border-newBgLineColor hover:text-textColor">🗑 {t('viral_move_archive', 'Archive')}</button>
                 </>
               ) : (
                 <>
-                  <button onClick={() => bulkAction('pending')} className="h-[32px] px-[12px] rounded-[8px] text-[12px] font-[700] text-btnPrimary border border-btnPrimary/40 hover:bg-btnPrimary/10">↩ {t('viral_restore', 'Restore')}</button>
-                  <button onClick={() => bulkAction('hard-delete')} className="h-[32px] px-[12px] rounded-[8px] text-[12px] font-[700] text-[#FF5A52] border border-[#FF5A52]/40 hover:bg-[#FF5A52]/10">✕ {t('viral_delete_forever', 'Delete forever')}</button>
+                  <button onClick={() => bulkAction('pending')} className="h-[32px] mobile:h-[44px] mobile:shrink-0 mobile:whitespace-nowrap px-[12px] rounded-[8px] text-[12px] font-[700] text-btnPrimary border border-btnPrimary/40 hover:bg-btnPrimary/10">↩ {t('viral_restore', 'Restore')}</button>
+                  <button onClick={() => bulkAction('hard-delete')} className="h-[32px] mobile:h-[44px] mobile:shrink-0 mobile:whitespace-nowrap px-[12px] rounded-[8px] text-[12px] font-[700] text-[#FF5A52] border border-[#FF5A52]/40 hover:bg-[#FF5A52]/10">✕ {t('viral_delete_forever', 'Delete forever')}</button>
                 </>
               )}
             </>
           ) : (
             <>
               <span className="text-[12px] text-textItemBlur">🗄 {t('viral_archive_note', 'Skipped + deleted posts. Everything here is auto-deleted after 7 days.')}</span>
-              <button onClick={purgeArchive} className="ms-auto h-[32px] px-[12px] rounded-[8px] text-[12px] font-[700] text-[#FF5A52] border border-[#FF5A52]/40 hover:bg-[#FF5A52]/10">🗑 {t('viral_delete_all', 'Delete all from database')}</button>
+              <button onClick={purgeArchive} className="ms-auto h-[32px] mobile:h-[44px] mobile:shrink-0 px-[12px] rounded-[8px] text-[12px] font-[700] text-[#FF5A52] border border-[#FF5A52]/40 hover:bg-[#FF5A52]/10">🗑 {t('viral_delete_all', 'Delete all from database')}</button>
             </>
           )}
         </div>
@@ -2579,13 +2693,17 @@ export const ViralComponent: FC = () => {
           + nhiều cấp học nên bỏ 2 hàng lọc cũ của chế độ theo-bài) */}
       {isTopicTab && (
         <div className="flex gap-[6px] items-center flex-wrap">
-          <select value={sort} onChange={(e) => setSort(e.target.value)} className="ms-auto bg-newColColor border border-newBgLineColor rounded-[8px] px-[10px] py-[7px] text-[12.5px] outline-none">
+          {selectModeBtn}
+          <select value={sort} onChange={(e) => setSort(e.target.value)} className="ms-auto bg-newColColor border border-newBgLineColor rounded-[8px] px-[10px] py-[7px] mobile:h-[44px] text-[12.5px] outline-none">
             <option value="shares">{t('viral_sort_convergence', 'Hottest (most posts & sources)')}</option>
             <option value="score">{t('viral_sort_score', 'Highest AI score')}</option>
             <option value="new">{t('viral_sort_recent', 'Recently captured')}</option>
           </select>
         </div>
       )}
+
+      {/* tab Chờ đăng không có toolbar sắp xếp → hàng riêng cho nút Chọn (mobile) */}
+      {isReady && <div className="hidden mobile:flex">{selectModeBtn}</div>}
 
       {/* 📰 Bản tin tuần — đọc lại + tick todo + cấu hình gửi Zalo */}
       {isReports ? (
@@ -2658,6 +2776,7 @@ export const ViralComponent: FC = () => {
                       product={p}
                       onDone={refreshAll}
                       sel={selected.has('p:' + p.id)}
+                      selectMode={showTicks}
                       onToggleSel={() => toggleSelect('p:' + p.id)}
                       cardRef={(el) => {
                         cardRefs.current['p:' + p.id] = el;
@@ -2681,6 +2800,7 @@ export const ViralComponent: FC = () => {
                       clone={c}
                       onDone={refreshAll}
                       sel={selected.has('m:' + c.id)}
+                      selectMode={showTicks}
                       onToggleSel={() => toggleSelect('m:' + c.id)}
                       cardRef={(el) => {
                         cardRefs.current['m:' + c.id] = el;
@@ -2723,6 +2843,11 @@ export const ViralComponent: FC = () => {
               }}
               onClick={() => {
                 if (didDrag.current) return;
+                // chế độ chọn (mobile): tap thẻ = tick, không mở chi tiết
+                if (showTicks) {
+                  toggleSelect(p.id);
+                  return;
+                }
                 openTopic(p.id)();
               }}
               className={clsx(
@@ -2738,7 +2863,13 @@ export const ViralComponent: FC = () => {
                 }}
                 className={clsx(
                   'absolute z-[10] top-[12px] left-[12px] w-[22px] h-[22px] rounded-[6px] border-2 flex items-center justify-center text-[13px] font-[900] transition-all',
-                  sel ? 'bg-btnPrimary border-btnPrimary text-white' : 'bg-newBgColor border-newBgLineColor text-transparent opacity-0 group-hover/card:opacity-100'
+                  sel
+                    ? 'bg-btnPrimary border-btnPrimary text-white'
+                    : clsx(
+                        'bg-newBgColor border-newBgLineColor text-transparent',
+                        // chế độ chọn mobile: tick luôn hiện (touch không có hover)
+                        showTicks ? 'opacity-100' : 'opacity-0 group-hover/card:opacity-100'
+                      )
                 )}
                 title={t('viral_select', 'Select')}
                 aria-label={t('viral_select', 'Select')}
@@ -2859,12 +2990,22 @@ export const ViralComponent: FC = () => {
         ))}
       </div>
 
-      {/* nguồn theo dõi */}
+      {/* nguồn theo dõi — desktop luôn mở; mobile mặc định GẬP (panel quản trị
+          phụ, không đáng chiếm màn nhỏ), bấm tiêu đề để mở/đóng */}
       <div className="border-t border-newBgLineColor pt-[14px] flex flex-col gap-[10px]">
-        <div className="text-[14px] font-[650]">
+        <div className="text-[14px] font-[650] mobile:hidden">
           {t('viral_tracked_sources', 'Tracked sources')} <span className="text-[11.5px] text-textItemBlur font-[400]">{t('viral_tracked_sources_note', '— the system auto-crawls new posts on a schedule')}</span>
         </div>
-        <div className="flex gap-[8px] flex-wrap">
+        <button
+          onClick={() => setSrcOpen((v) => !v)}
+          className="hidden mobile:flex items-center justify-between gap-[8px] min-h-[44px] text-[14px] font-[650] text-start tap-shrink"
+        >
+          <span>
+            {t('viral_tracked_sources', 'Tracked sources')} ({sources.length})
+          </span>
+          <span className="text-textItemBlur text-[12px]">{srcOpen ? '▲' : '▼'}</span>
+        </button>
+        <div className={clsx('flex gap-[8px] flex-wrap', !srcOpen && 'mobile:hidden')}>
           {sources.map((s: any) => (
             <div key={s.id} className="flex items-center gap-[7px] bg-newColColor border border-newBgLineColor rounded-full px-[13px] py-[6px] text-[12px]">
               <i className="w-[8px] h-[8px] rounded-full inline-block" style={{ background: platMeta(s.platform)?.dot || '#888' }} />
@@ -2874,7 +3015,7 @@ export const ViralComponent: FC = () => {
                 value={s.type || 'other'}
                 onChange={setSourceType(s)}
                 title={t('viral_source_type', 'Source type — schools & KOLs count as competitors in the weekly brief')}
-                className="text-[10px] bg-transparent border border-newBgLineColor rounded-[5px] px-[3px] py-[1px] text-textItemBlur"
+                className="text-[10px] bg-transparent border border-newBgLineColor rounded-[5px] px-[3px] py-[1px] text-textItemBlur mobile:min-h-[36px] mobile:px-[8px] mobile:rounded-[7px]"
               >
                 <option value="school">{t('viral_type_school', 'Competitor')}</option>
                 <option value="kol">KOL</option>
@@ -2886,7 +3027,7 @@ export const ViralComponent: FC = () => {
                 onClick={toggleSourceAuto(s)}
                 title={t('viral_toggle_auto', 'Toggle scheduled auto-crawl for this source')}
                 className={clsx(
-                  'text-[9.5px] font-[700] px-[6px] py-[1px] rounded-[5px] border',
+                  'text-[9.5px] font-[700] px-[6px] py-[1px] rounded-[5px] border mobile:min-h-[36px] mobile:min-w-[48px] mobile:text-[12.5px] mobile:px-[10px] mobile:rounded-[7px]',
                   s.auto
                     ? 'text-[#57D9A3] border-[#57D9A3]/40 bg-[#57D9A3]/10'
                     : 'text-textItemBlur border-newBgLineColor hover:text-textColor'
@@ -2894,23 +3035,23 @@ export const ViralComponent: FC = () => {
               >
                 {s.auto ? 'AUTO' : 'OFF'}
               </button>
-              <button onClick={removeSource(s.id)} className="text-textItemBlur hover:text-red-400 text-[11px] ms-[2px]">✕</button>
+              <button onClick={removeSource(s.id)} className="text-textItemBlur hover:text-red-400 text-[11px] ms-[2px] mobile:min-h-[36px] mobile:min-w-[36px] mobile:text-[14px]">✕</button>
             </div>
           ))}
-          <button onClick={openSource} className="border border-dashed border-newBgLineColor rounded-full px-[14px] py-[6px] text-[12px] text-textItemBlur hover:text-textColor">
+          <button onClick={openSource} className="border border-dashed border-newBgLineColor rounded-full px-[14px] py-[6px] mobile:min-h-[44px] text-[12px] text-textItemBlur hover:text-textColor">
             ＋ {t('viral_add_source', 'Add source')}
           </button>
           <button
             onClick={importDefaultSources}
             title={t('viral_import_sources_hint', 'KOLs, competitor schools, parent groups (needs Apify) + 10 Google News keywords (free)')}
-            className="border border-dashed border-btnPrimary/40 text-btnPrimary rounded-full px-[14px] py-[6px] text-[12px] hover:bg-btnPrimary/10"
+            className="border border-dashed border-btnPrimary/40 text-btnPrimary rounded-full px-[14px] py-[6px] mobile:min-h-[44px] text-[12px] hover:bg-btnPrimary/10"
           >
             📥 {t('viral_import_sources', 'Import n8n source pack')}
           </button>
           <button
             onClick={cleanupSources}
             title={t('viral_cleanup_sources_hint', 'One click: DELETE all Facebook/IG/TikTok sources (the crawl partner handles those and labels each post itself), remove duplicates, turn AUTO on for news & Google News keywords')}
-            className="border border-dashed border-[#57D9A3]/50 text-[#57D9A3] rounded-full px-[14px] py-[6px] text-[12px] hover:bg-[#57D9A3]/10"
+            className="border border-dashed border-[#57D9A3]/50 text-[#57D9A3] rounded-full px-[14px] py-[6px] mobile:min-h-[44px] text-[12px] hover:bg-[#57D9A3]/10"
           >
             🧹 {t('viral_cleanup_sources', 'Clean up sources')}
           </button>

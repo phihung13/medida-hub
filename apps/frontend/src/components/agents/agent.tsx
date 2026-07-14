@@ -20,7 +20,7 @@ import { useWaitForClass } from '@gitroom/helpers/utils/use.wait.for.class';
 import { MultiMediaComponent } from '@gitroom/frontend/components/media/media.component';
 import { Integration } from '@prisma/client';
 import Link from 'next/link';
-import { useParams, usePathname, useRouter } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { deleteDialog } from '@gitroom/react/helpers/delete.dialog';
 import { TrashIcon } from '@gitroom/frontend/components/ui/icons';
@@ -198,13 +198,56 @@ export const AgentList: FC<{ onChange: (arr: any[]) => void }> = ({
   }, [data]);
 
   return (
-    <div
-      className={clsx(
-        'trz bg-newBgColorInner flex flex-col gap-[15px] transition-all relative',
-        collapseMenu === '1' ? 'group sidebar w-[100px]' : 'w-[260px]'
-      )}
-    >
-      <div className="absolute top-0 start-0 w-full h-full p-[20px] overflow-auto scrollbar scrollbar-thumb-fifth scrollbar-track-newBgColor">
+    <>
+      {/* Mobile: chọn kênh = hàng chip avatar ngang + nút Lịch sử ghim cuối
+          (sidebar dọc bên dưới chỉ còn cho desktop) */}
+      <div className="hidden mobile:flex h-[56px] shrink-0 items-stretch bg-newBgColorInner">
+        <div className="flex-1 min-w-0 flex items-center gap-[8px] ps-[12px] pe-[4px] mobile-hscroll">
+          {sortedIntegrations.map((integration) => {
+            const active = selected.some((p) => p.id === integration.id);
+            return (
+              <button
+                key={integration.id}
+                type="button"
+                onClick={setIntegration(integration)}
+                title={integration.name}
+                aria-label={integration.name}
+                aria-pressed={active}
+                className={clsx(
+                  'tap-shrink shrink-0 relative w-[44px] h-[44px] rounded-[12px] border grid place-items-center',
+                  active
+                    ? 'border-btnPrimary bg-boxFocused'
+                    : 'border-newTableBorder opacity-40'
+                )}
+              >
+                <ImageWithFallback
+                  fallbackSrc={`/icons/platforms/${integration.identifier}.png`}
+                  src={integration.picture}
+                  className="rounded-[8px]"
+                  alt={integration.identifier}
+                  width={34}
+                  height={34}
+                />
+                {(integration.inBetweenSteps || integration.refreshNeeded) && (
+                  <span className="absolute -top-[3px] -end-[3px] w-[12px] h-[12px] rounded-full bg-red-500 text-[8px] text-white grid place-items-center">
+                    !
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <div className="shrink-0 flex items-center pe-[12px] ps-[4px]">
+          <MobileThreadsButton />
+        </div>
+      </div>
+      <div
+        className={clsx(
+          'trz bg-newBgColorInner flex flex-col gap-[15px] transition-all relative mobile:hidden',
+          collapseMenu === '1' ? 'group sidebar w-[100px]' : 'w-[260px]'
+        )}
+      >
+        <div className="absolute top-0 start-0 w-full h-full p-[20px] overflow-auto scrollbar scrollbar-thumb-fifth scrollbar-track-newBgColor">
         <div className="flex items-center">
           <h2 className="group-[.sidebar]:hidden flex-1 text-[20px] font-[500] mb-[15px]">
             {t('select_channels', 'Select Channels')}
@@ -284,8 +327,9 @@ export const AgentList: FC<{ onChange: (arr: any[]) => void }> = ({
             </div>
           ))}
         </div>
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 
@@ -296,23 +340,34 @@ export const Agent: FC<{ children: ReactNode }> = ({ children }) => {
   return (
     <PropertiesContext.Provider value={{ properties }}>
       <AgentList onChange={setProperties} />
-      <div className="bg-newBgColorInner flex flex-1">{children}</div>
+      {/* Mobile: khung chat bên trong định vị absolute → cần chiều cao thật
+          (100dvh trừ header + hàng chip + tab bar) mới có vùng cuộn */}
+      <div className="bg-newBgColorInner flex flex-1 mobile:min-h-[calc(100dvh-220px)]">
+        {children}
+      </div>
       <Threads />
     </PropertiesContext.Provider>
   );
 };
 
-const Threads: FC = () => {
+// SWR threads tách thành hook riêng — dùng chung sidebar desktop + sheet mobile.
+const useThreadsList = () => {
   const fetch = useFetch();
-  const router = useRouter();
-  const pathname = usePathname();
-  const t = useT();
   const threads = useCallback(async () => {
     return (await fetch('/copilot/list')).json();
   }, []);
+  return useSWR('threads', threads);
+};
+
+// Danh sách chat + lịch sử file — thân dùng chung: desktop nằm trong sidebar
+// phải, mobile nằm trong bottom sheet (onNavigate = đóng sheet khi bấm link).
+const ThreadsInner: FC<{ onNavigate?: () => void }> = ({ onNavigate }) => {
+  const fetch = useFetch();
+  const router = useRouter();
+  const t = useT();
   const { id } = useParams<{ id: string }>();
 
-  const { data, mutate } = useSWR('threads', threads);
+  const { data, mutate } = useThreadsList();
 
   const deleteChat = useCallback(
     (threadId: string) => async (e: React.MouseEvent) => {
@@ -337,65 +392,98 @@ const Threads: FC = () => {
   );
 
   return (
+    <>
+      <div className="mb-[15px] justify-center flex group-[.sidebar]:pb-[15px]">
+        <Link
+          href={`/agents`}
+          onClick={onNavigate}
+          className="text-white whitespace-nowrap flex-1 pt-[12px] pb-[14px] ps-[16px] pe-[20px] group-[.sidebar]:p-0 min-h-[44px] max-h-[44px] rounded-md bg-btnPrimary flex justify-center items-center gap-[5px] outline-none"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="21"
+            height="20"
+            viewBox="0 0 21 20"
+            fill="none"
+            className="min-w-[21px] min-h-[20px]"
+          >
+            <path
+              d="M10.5001 4.16699V15.8337M4.66675 10.0003H16.3334"
+              stroke="white"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          <div className="flex-1 text-start text-[16px] group-[.sidebar]:hidden">
+            {t('start_a_new_chat', 'Start a new chat')}
+          </div>
+        </Link>
+      </div>
+      <div className="flex flex-col gap-[1px]">
+        {data?.threads?.map((p: any) => (
+          <div
+            key={p.id}
+            className={clsx(
+              'group/thread flex items-center gap-[4px] hover:bg-newBgColor px-[10px] py-[6px] mobile:py-[11px] rounded-[10px]',
+              p.id === id && 'bg-newBgColor'
+            )}
+          >
+            <Link
+              href={`/agents/${p.id}`}
+              onClick={onNavigate}
+              className="flex-1 min-w-0 overflow-ellipsis overflow-hidden whitespace-nowrap cursor-pointer"
+            >
+              {p.title}
+            </Link>
+            <button
+              onClick={deleteChat(p.id)}
+              title={t('delete_chat', 'Delete chat')}
+              className="shrink-0 opacity-0 group-hover/thread:opacity-100 mobile:opacity-100 transition-opacity text-textItemBlur hover:text-red-500 p-[2px] mobile:p-[8px]"
+            >
+              <TrashIcon />
+            </button>
+          </div>
+        ))}
+      </div>
+      <BulkFilesSection />
+    </>
+  );
+};
+
+// Nút mobile-only ghim cuối hàng chip: mở lịch sử chat trong bottom sheet
+// (openModal trên mobile tự trượt từ đáy — xem new-modal.tsx).
+const MobileThreadsButton: FC = () => {
+  const modals = useModals();
+  const t = useT();
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        modals.openModal({
+          title: <span>🕘 {t('chat_history', 'Lịch sử chat')}</span>,
+          children: (close) => <ThreadsInner onNavigate={close} />,
+        })
+      }
+      className="tap-shrink shrink-0 h-[44px] px-[12px] rounded-[12px] border border-newTableBorder text-[13px] font-[600] flex items-center gap-[6px] text-newTextColor"
+    >
+      <span aria-hidden="true">🕘</span>
+      <span>{t('history', 'Lịch sử')}</span>
+    </button>
+  );
+};
+
+const Threads: FC = () => {
+  return (
     <div
       className={clsx(
         'trz bg-newBgColorInner flex flex-col gap-[15px] transition-all relative',
-        'w-[260px]'
+        // Mobile: sidebar phải ẩn hẳn — lịch sử mở bằng nút 🕘 trên hàng chip
+        'w-[260px] mobile:hidden'
       )}
     >
       <div className="absolute top-0 start-0 w-full h-full p-[20px] overflow-auto scrollbar scrollbar-thumb-fifth scrollbar-track-newBgColor">
-        <div className="mb-[15px] justify-center flex group-[.sidebar]:pb-[15px]">
-          <Link
-            href={`/agents`}
-            className="text-white whitespace-nowrap flex-1 pt-[12px] pb-[14px] ps-[16px] pe-[20px] group-[.sidebar]:p-0 min-h-[44px] max-h-[44px] rounded-md bg-btnPrimary flex justify-center items-center gap-[5px] outline-none"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="21"
-              height="20"
-              viewBox="0 0 21 20"
-              fill="none"
-              className="min-w-[21px] min-h-[20px]"
-            >
-              <path
-                d="M10.5001 4.16699V15.8337M4.66675 10.0003H16.3334"
-                stroke="white"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <div className="flex-1 text-start text-[16px] group-[.sidebar]:hidden">
-              {t('start_a_new_chat', 'Start a new chat')}
-            </div>
-          </Link>
-        </div>
-        <div className="flex flex-col gap-[1px]">
-          {data?.threads?.map((p: any) => (
-            <div
-              key={p.id}
-              className={clsx(
-                'group/thread flex items-center gap-[4px] hover:bg-newBgColor px-[10px] py-[6px] rounded-[10px]',
-                p.id === id && 'bg-newBgColor'
-              )}
-            >
-              <Link
-                href={`/agents/${p.id}`}
-                className="flex-1 min-w-0 overflow-ellipsis overflow-hidden whitespace-nowrap cursor-pointer"
-              >
-                {p.title}
-              </Link>
-              <button
-                onClick={deleteChat(p.id)}
-                title={t('delete_chat', 'Delete chat')}
-                className="shrink-0 opacity-0 group-hover/thread:opacity-100 transition-opacity text-textItemBlur hover:text-red-500 p-[2px]"
-              >
-                <TrashIcon />
-              </button>
-            </div>
-          ))}
-        </div>
-        <BulkFilesSection />
+        <ThreadsInner />
       </div>
     </div>
   );
@@ -460,7 +548,7 @@ const BulkFilesSection: FC = () => {
         <button
           onClick={() => openFile()}
           title={t('bulk_import_new', 'Nhập file Excel/CSV mới')}
-          className="text-[#1e6fd9] hover:bg-[#1e6fd9]/10 rounded-[6px] px-[6px] py-[2px] text-[16px] leading-none font-[700]"
+          className="text-[#1e6fd9] hover:bg-[#1e6fd9]/10 rounded-[6px] px-[6px] py-[2px] mobile:min-w-[36px] mobile:min-h-[36px] text-[16px] leading-none font-[700] tap-shrink"
         >
           +
         </button>
@@ -475,7 +563,7 @@ const BulkFilesSection: FC = () => {
             <div
               key={f.id}
               onClick={() => openFile(f.id, f.name)}
-              className="group/file flex items-center gap-[6px] hover:bg-newBgColor px-[10px] py-[6px] rounded-[10px] cursor-pointer"
+              className="group/file flex items-center gap-[6px] hover:bg-newBgColor px-[10px] py-[6px] mobile:py-[10px] rounded-[10px] cursor-pointer"
             >
               <span className="shrink-0 text-[13px]">📄</span>
               <div className="flex-1 min-w-0">
@@ -499,7 +587,7 @@ const BulkFilesSection: FC = () => {
               <button
                 onClick={removeFile(f.id)}
                 title={t('bulk_delete_file', 'Xóa khỏi lịch sử')}
-                className="shrink-0 opacity-0 group-hover/file:opacity-100 transition-opacity text-textItemBlur hover:text-red-500 p-[2px]"
+                className="shrink-0 opacity-0 group-hover/file:opacity-100 mobile:opacity-100 transition-opacity text-textItemBlur hover:text-red-500 p-[2px] mobile:p-[8px]"
               >
                 <TrashIcon />
               </button>

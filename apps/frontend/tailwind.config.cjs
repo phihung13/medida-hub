@@ -136,6 +136,13 @@ module.exports = {
         newMessages: 'newMessages 1s ease-in-out 4s forwards',
         marqueeUp: 'marquee-up 100s linear infinite',
         marqueeDown: 'marquee-down 100s linear infinite',
+        // Mobile (đại tu 2026-07): sheet trượt từ đáy + easing kiểu iOS.
+        // KHÔNG dùng 'forwards' cho sheetIn: fill-mode giữ transform ở tầng
+        // animation-origin → THẮNG inline style, làm vuốt-đóng chết + panel
+        // thành containing-block cho fixed con (menu ⋯ lệch). Trạng thái nghỉ
+        // tự nhiên (transform:none) = đúng vị trí cuối keyframe nên bỏ được.
+        sheetIn: 'sheetUp 0.32s cubic-bezier(0.32, 0.72, 0, 1)',
+        sheetBackdrop: 'normalFadeIn 0.25s ease-out',
       },
       boxShadow: {
         yellow: '0 0 60px 20px #6b6237',
@@ -153,6 +160,15 @@ module.exports = {
       },
       // that is actual animation
       keyframes: (theme) => ({
+        // Bottom sheet mobile: trượt từ mép dưới lên (đại tu mobile 2026-07)
+        sheetUp: {
+          '0%': {
+            transform: 'translateY(100%)',
+          },
+          '100%': {
+            transform: 'translateY(0)',
+          },
+        },
         fadeOut: {
           '0%': {
             opacity: 0,

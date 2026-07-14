@@ -13,6 +13,7 @@ import { useToaster } from '@gitroom/react/toaster/toaster';
 import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
 import { useShallow } from 'zustand/react/shallow';
 import { UserIcon, DropdownArrowIcon } from '@gitroom/frontend/components/ui/icons';
+import { useIsMobile } from '@gitroom/frontend/components/new-layout/use.is.mobile';
 
 // Chọn KHÁCH HÀNG (nhóm kênh) hoặc TỪNG PAGE/kênh — chọn page thì lịch chỉ
 // hiện bài của page đó (lọc client-side qua calendar.context.channel).
@@ -39,6 +40,7 @@ export const SelectCustomer: FC<{
     }
   });
 
+  const isMobile = useIsMobile();
   const openClose = useCallback(() => {
     if (open) {
       setOpen(false);
@@ -46,9 +48,11 @@ export const SelectCustomer: FC<{
     }
 
     const { x, y, width, height } = ref.current?.getBoundingClientRect();
-    setPos({ top: y + height, left: x });
+    // Mobile: popup neo full-bề-ngang bằng CSS (inset-x) — chỉ cần top,
+    // set left inline sẽ đè mất class.
+    setPos(isMobile ? { top: y + height + 6 } : { top: y + height, left: x });
     setOpen(true);
-  }, [open]);
+  }, [open, isMobile]);
 
   const totalCustomers = useMemo(() => {
     return uniqBy(integrations, (i) => i?.customer?.id).length;
@@ -97,7 +101,7 @@ export const SelectCustomer: FC<{
       {open && (
         <div
           style={pos}
-          className="flex flex-col fixed pt-[12px] pb-[8px] bg-newBgColorInner menu-shadow min-w-[270px] max-h-[420px] overflow-auto"
+          className="flex flex-col fixed pt-[12px] pb-[8px] bg-newBgColorInner menu-shadow min-w-[270px] max-h-[420px] overflow-auto mobile:inset-x-[12px] mobile:min-w-0 mobile:max-h-[50vh] mobile:rounded-[12px] mobile:border mobile:border-newTableBorder"
         >
           {/* Bỏ lọc — xem mọi kênh */}
           <div
@@ -109,7 +113,7 @@ export const SelectCustomer: FC<{
               setCurrent('global');
             }}
             className={clsx(
-              'p-[12px] hover:bg-newBgColor text-[14px] font-[600] h-[36px] flex items-center gap-[8px]',
+              'p-[12px] hover:bg-newBgColor text-[14px] font-[600] h-[36px] flex items-center gap-[8px] mobile:min-h-[44px]',
               !channel && !customer && 'text-btnPrimary'
             )}
           >
@@ -137,7 +141,7 @@ export const SelectCustomer: FC<{
                       setCurrent('global');
                     }}
                     key={p.customer?.id}
-                    className="p-[12px] hover:bg-newBgColor text-[14px] font-[500] h-[32px] flex items-center"
+                    className="p-[12px] hover:bg-newBgColor text-[14px] font-[500] h-[32px] flex items-center mobile:min-h-[44px]"
                   >
                     {p.customer?.name}
                   </div>
@@ -161,7 +165,7 @@ export const SelectCustomer: FC<{
                 );
               }}
               className={clsx(
-                'px-[12px] py-[7px] hover:bg-newBgColor text-[13.5px] font-[500] flex items-center gap-[9px]',
+                'px-[12px] py-[7px] hover:bg-newBgColor text-[13.5px] font-[500] flex items-center gap-[9px] mobile:py-[11px]',
                 channel === p.id && 'text-btnPrimary font-[700]'
               )}
             >

@@ -1267,6 +1267,7 @@
   "zalo_pause_bot": "Tạm dừng bot",
   "zalo_paused": "Đang tạm dừng",
   "zalo_pending_banner": "bài từ nhóm Zalo đang chờ duyệt — bấm vào bài viền vàng trên lịch để sửa & lên lịch.",
+  "zalo_pending_banner_short": "bài Zalo chờ duyệt",
   "zalo_pending_tooltip": "Bài từ nhóm Zalo — chờ bạn duyệt: bấm vào bài để sửa & lên lịch",
   "zalo_pending_view_list": "Xem danh sách",
   "zalo_pick_channel": "⚠ Chọn kênh đăng…",

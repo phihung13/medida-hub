@@ -118,13 +118,14 @@ export const SettingsPopup: FC<{
   return (
     <>
       <div className="bg-newBgColorInner p-[20px] mobile:p-[12px] flex flex-col transition-all w-[260px] mobile:w-full">
-        <div className="flex flex-1 flex-col gap-[15px] mobile:flex-row mobile:flex-wrap mobile:gap-[8px]">
+        {/* Mobile: 1 hàng chip cuộn ngang (mobile-hscroll chỉ ăn ≤1025px) thay vì wrap 3-4 hàng */}
+        <div className="flex flex-1 flex-col gap-[15px] mobile:flex-row mobile:flex-nowrap mobile:gap-[8px] mobile-hscroll mobile:pb-[4px]">
           {list.map(({ tab: tabKey, label }) => (
             <div
               key={tabKey}
               className={clsx(
-                'cursor-pointer flex items-center gap-[12px] group/profile hover:bg-boxHover rounded-e-[8px]',
-                'mobile:gap-0 mobile:rounded-[8px] mobile:border mobile:border-newTableBorder mobile:px-[12px] mobile:py-[8px] mobile:text-[13px]',
+                'cursor-pointer flex items-center gap-[12px] group/profile hover:bg-boxHover rounded-e-[8px] tap-shrink',
+                'mobile:gap-0 mobile:rounded-[8px] mobile:border mobile:border-newTableBorder mobile:px-[14px] mobile:h-[40px] mobile:shrink-0 mobile:whitespace-nowrap mobile:text-[13px]',
                 tabKey === tab && 'bg-boxHover'
               )}
               onClick={() => setTab(tabKey)}
@@ -149,7 +150,7 @@ export const SettingsPopup: FC<{
           )}
         </div>
       </div>
-      <div className="bg-newBgColorInner flex-1 flex-col flex p-[20px] gap-[12px]">
+      <div className="bg-newBgColorInner flex-1 flex-col flex p-[20px] mobile:p-[14px] gap-[12px]">
         <FormProvider {...form}>
           <form onSubmit={form.handleSubmit(submit)}>
             {!!getRef && (

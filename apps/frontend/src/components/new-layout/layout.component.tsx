@@ -90,9 +90,12 @@ export const LayoutComponent = ({ children }: { children: ReactNode }) => {
             <PreConditionComponent />
             <NewSubscription />
             <ContinueProvider />
+            {/* Mobile: edge-to-edge (p-0) — nội dung là trung tâm, không còn
+                khung card bo tròn; chừa đáy đúng chiều cao tab bar mới qua
+                --bottom-nav-h (global.scss). Desktop giữ nguyên p-[12px]. */}
             <div
               className={clsx(
-                'flex flex-col min-h-screen w-full text-newTextColor p-[12px] mobile:p-[6px] mobile:pb-[76px]',
+                'flex flex-col min-h-screen w-full text-newTextColor p-[12px] mobile:p-0 mobile:pb-[var(--bottom-nav-h,64px)]',
                 jakartaSans.className
               )}
             >
@@ -118,25 +121,34 @@ export const LayoutComponent = ({ children }: { children: ReactNode }) => {
                         </div>
                       </div>
                     </div>
-                    <div className="flex-1 bg-newBgLineColor rounded-[12px] overflow-hidden flex flex-col gap-[1px] blurMe">
-                      <div className="flex bg-newBgColorInner h-[80px] px-[20px] items-center mobile:h-auto mobile:min-h-[56px] mobile:flex-wrap mobile:px-[12px] mobile:py-[8px] mobile:gap-y-[6px]">
-                        <div className="text-[24px] font-[600] flex flex-1 mobile:text-[18px]">
+                    <div className="flex-1 bg-newBgLineColor rounded-[12px] overflow-hidden flex flex-col gap-[1px] blurMe mobile:rounded-none">
+                      {/* Header mobile: 1 hàng 52px — CHỈ tiêu đề + chọn tổ chức
+                          + chuông. Streak/Sáng-tối/Ngôn ngữ/Feedback dời vào
+                          sheet "Thêm" của tab bar (mobile.nav.tsx). */}
+                      <div className="flex bg-newBgColorInner h-[80px] px-[20px] items-center mobile:h-[calc(52px+env(safe-area-inset-top,0px))] mobile:px-[14px] mobile:pt-[env(safe-area-inset-top,0px)]">
+                        <div className="text-[24px] font-[600] flex flex-1 mobile:text-[17px] mobile:min-w-0 mobile:[&>*]:truncate">
                           <Title />
                         </div>
-                        <div className="flex gap-[20px] mobile:gap-[12px] text-textItemBlur items-center">
-                          <StreakComponent />
+                        <div className="flex gap-[20px] mobile:gap-[14px] text-textItemBlur items-center">
+                          <div className="mobile:hidden empty:hidden">
+                            <StreakComponent />
+                          </div>
                           <div className="w-[1px] h-[20px] bg-blockSeparator mobile:hidden" />
                           <OrganizationSelector />
-                          <div className="hover:text-newTextColor">
+                          <div className="hover:text-newTextColor mobile:hidden">
                             <ModeComponent />
                           </div>
                           <div className="w-[1px] h-[20px] bg-blockSeparator mobile:hidden" />
-                          <LanguageComponent />
                           <div className="mobile:hidden">
+                            <LanguageComponent />
+                          </div>
+                          <div className="mobile:hidden empty:hidden">
                             <ChromeExtensionComponent />
                           </div>
                           <div className="w-[1px] h-[20px] bg-blockSeparator mobile:hidden" />
-                          <AttachToFeedbackIcon />
+                          <div className="mobile:hidden empty:hidden">
+                            <AttachToFeedbackIcon />
+                          </div>
                           <NotificationComponent />
                         </div>
                       </div>

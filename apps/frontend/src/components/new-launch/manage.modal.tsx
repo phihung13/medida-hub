@@ -43,6 +43,7 @@ import { useHasScroll } from '@gitroom/frontend/components/ui/is.scroll.hook';
 import { useShortlinkPreference } from '@gitroom/frontend/components/settings/shortlink-preference.component';
 import dayjs from 'dayjs';
 import { Button } from '@gitroom/react/form/button';
+import { useIsMobile } from '@gitroom/frontend/components/new-layout/use.is.mobile';
 
 export const ManageModal: FC<AddEditModalProps> = (props) => {
   const t = useT();
@@ -53,6 +54,10 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
   const toaster = useToaster();
   const modal = useModals();
   const [showSettings, setShowSettings] = useState(false);
+  const isMobile = useIsMobile();
+  // Mobile: composer chia 2 tab Soạn/Xem trước — cả 2 pane luôn mounted,
+  // chỉ ẩn/hiện bằng class mobile:. Desktop không đọc state này.
+  const [mobileTab, setMobileTab] = useState<'compose' | 'preview'>('compose');
   const { data: shortlinkPreferenceData } = useShortlinkPreference();
 
   const { addEditSets, mutate, customClose, dummy } = props;
@@ -297,6 +302,10 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
           );
           setLoading(false);
           focus(item.id, 'preview');
+          // Mobile: lỗi nằm ở preview → nhảy sang tab Xem trước cho thấy ngay
+          if (isMobile) {
+            setMobileTab('preview');
+          }
           return;
         }
 
@@ -313,6 +322,10 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
               focus(item.id, 'fix');
               setLoading(false);
               setShowSettings(true);
+              // Mobile: panel settings nằm bên tab Soạn
+              if (isMobile) {
+                setMobileTab('compose');
+              }
               return;
             }
 
@@ -326,6 +339,9 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
               focus(item.id, 'preview');
               setLoading(false);
               setShowSettings(false);
+              if (isMobile) {
+                setMobileTab('preview');
+              }
               return;
             }
 
@@ -339,6 +355,9 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
               );
               focus(item.id, 'preview');
               setLoading(false);
+              if (isMobile) {
+                setMobileTab('preview');
+              }
               return;
             }
           }
@@ -433,15 +452,22 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
         }
       }
     },
-    [ref, repeater, tags, date, addEditSets, dummy, shortlinkPreferenceData]
+    [ref, repeater, tags, date, addEditSets, dummy, shortlinkPreferenceData, isMobile]
   );
 
   return (
-    <div className="w-full h-full flex-1 p-[40px] tablet:p-[16px] mobile:p-[6px] flex relative">
-      <div className="flex flex-1 bg-newBgColorInner rounded-[20px] mobile:rounded-[12px] flex-col min-w-0">
-        <div className="flex-1 flex mobile:flex-col min-w-0">
-          <div className="flex flex-col flex-1 border-e border-newBorder mobile:border-e-0 min-w-0">
-            <div className="bg-newBgColor h-[65px] rounded-s-[20px] !rounded-b-[0] flex items-center gap-[12px] px-[20px] text-[20px] font-[600]">
+    // Mobile: bỏ khung-trong-khung — modal dán sát mép màn như app
+    <div className="w-full h-full flex-1 p-[40px] tablet:p-[16px] mobile:p-0 flex relative">
+      <div className="flex flex-1 bg-newBgColorInner rounded-[20px] mobile:rounded-none flex-col min-w-0">
+        <div className="flex-1 flex mobile:flex-col mobile:min-h-0 min-w-0">
+          <div
+            className={clsx(
+              'flex flex-col flex-1 border-e border-newBorder mobile:border-e-0 min-w-0',
+              // Tab Xem trước: cột soạn co lại chỉ còn header + hàng chọn kênh
+              mobileTab === 'preview' && 'mobile:flex-none'
+            )}
+          >
+            <div className="bg-newBgColor h-[65px] rounded-s-[20px] mobile:rounded-none mobile:h-[56px] mobile:px-[14px] mobile:text-[17px] !rounded-b-[0] flex items-center gap-[12px] px-[20px] text-[20px] font-[600]">
               {existingData?.integration
                 ? t('edit_post_title', 'Edit Post')
                 : t('create_post_title', 'Create Post')}
@@ -449,14 +475,32 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
                 creationMethod={existingData?.posts?.[0]?.creationMethod}
                 size="sm"
               />
+              {/* Mobile: nút đóng ở header chính (header preview bị ẩn) */}
+              <button
+                type="button"
+                onClick={askClose}
+                aria-label={t('close', 'Close')}
+                className="hidden mobile:flex ms-auto -me-[8px] w-[44px] h-[44px] items-center justify-center tap-shrink"
+              >
+                <CloseIcon className="text-[#A3A3A3]" />
+              </button>
             </div>
             <div className="flex-1 flex flex-col gap-[16px]">
               <div
-                className={clsx('flex-1 relative', showSettings && 'hidden')}
+                className={clsx(
+                  'flex-1 relative',
+                  showSettings && 'hidden',
+                  mobileTab === 'preview' && 'mobile:flex-none'
+                )}
               >
                 <div
                   id="social-content"
-                  className="gap-[32px] flex flex-col pe-[8px] pt-[20px] ps-[20px] absolute top-0 left-0 w-full h-full overflow-x-hidden overflow-y-scroll scrollbar scrollbar-thumb-newColColor scrollbar-track-newBgColorInner"
+                  className={clsx(
+                    'gap-[32px] mobile:gap-[16px] flex flex-col pe-[8px] pt-[20px] ps-[20px] mobile:ps-[12px] mobile:pe-[12px] mobile:pt-[12px] absolute top-0 left-0 w-full h-full overflow-x-hidden overflow-y-scroll scrollbar scrollbar-thumb-newColColor scrollbar-track-newBgColorInner',
+                    // Tab Xem trước: bỏ scroll nội bộ, cao theo nội dung thật
+                    mobileTab === 'preview' &&
+                      'mobile:static mobile:h-auto mobile:overflow-visible'
+                  )}
                 >
                   <div className="flex flex-col gap-[8px]">
                     {!existingData?.integration &&
@@ -486,7 +530,41 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
                       </div>
                     </div>
                   </div>
-                  <div className="flex flex-1 gap-[6px] flex-col">
+                  {/* Mobile: segmented 2 tab ngay dưới hàng chọn kênh, dính đỉnh khi cuộn */}
+                  <div className="hidden mobile:flex mobile:sticky mobile:top-0 mobile:z-[120] py-[4px] bg-newBgColorInner">
+                    <div className="flex flex-1 gap-[4px] p-[4px] rounded-[10px] bg-newBgColor">
+                      <button
+                        type="button"
+                        onClick={() => setMobileTab('compose')}
+                        className={clsx(
+                          'flex-1 h-[44px] rounded-[8px] text-[14px] font-[600] tap-shrink',
+                          mobileTab === 'compose'
+                            ? 'bg-boxFocused text-newTextColor'
+                            : 'text-textItemBlur'
+                        )}
+                      >
+                        {t('composer_tab_compose', 'Soạn')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMobileTab('preview')}
+                        className={clsx(
+                          'flex-1 h-[44px] rounded-[8px] text-[14px] font-[600] tap-shrink',
+                          mobileTab === 'preview'
+                            ? 'bg-boxFocused text-newTextColor'
+                            : 'text-textItemBlur'
+                        )}
+                      >
+                        {t('composer_tab_preview', 'Xem trước')}
+                      </button>
+                    </div>
+                  </div>
+                  <div
+                    className={clsx(
+                      'flex flex-1 gap-[6px] flex-col',
+                      mobileTab === 'preview' && 'mobile:hidden'
+                    )}
+                  >
                     <div>{!existingData.integration && <SelectCurrent />}</div>
                     <div className="flex-1 flex">
                       {!hide && <EditorWrapper totalPosts={1} value="" />}
@@ -504,9 +582,11 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
               <div
                 id="wrapper-settings"
                 className={clsx(
-                  'pb-[20px] px-[20px] select-none',
+                  'pb-[20px] px-[20px] mobile:px-[12px] mobile:pb-[12px] select-none',
                   showSettings && 'flex-1 flex pt-[20px]',
-                  current === 'global' && 'hidden'
+                  current === 'global' && 'hidden',
+                  // Settings thuộc tab Soạn — ẩn khi đang Xem trước
+                  mobileTab === 'preview' && 'mobile:hidden'
                 )}
               >
                 <div className="flex-1 flex flex-col rounded-[12px] gap-[12px] overflow-hidden bg-newSettings">
@@ -547,25 +627,39 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
               </div>
             </div>
           </div>
-          <div className="w-[580px] mobile:w-full flex flex-col">
-            <div className="bg-newBgColor h-[65px] rounded-e-[20px] !rounded-b-[0] flex items-center px-[20px] text-[20px] font-[600]">
+          <div
+            className={clsx(
+              'w-[580px] mobile:w-full flex flex-col',
+              // 2 tab mobile: pane vẫn mounted, chỉ ẩn/hiện bằng class
+              mobileTab === 'compose'
+                ? 'mobile:hidden'
+                : 'mobile:flex-1 mobile:min-h-0'
+            )}
+          >
+            <div className="bg-newBgColor h-[65px] rounded-e-[20px] !rounded-b-[0] flex items-center px-[20px] text-[20px] font-[600] mobile:hidden">
               <div className="flex-1">{t('post_preview', 'Post Preview')}</div>
               <div className="cursor-pointer">
                 <CloseIcon onClick={askClose} className="text-[#A3A3A3]" />
               </div>
             </div>
-            <div className="flex-1 relative mobile:min-h-[420px]">
+            <div className="flex-1 relative mobile:min-h-0">
               <Scrollable
                 scrollClasses="!pe-[20px]"
-                className="absolute top-0 p-[20px] pe-[8px] left-0 w-full h-full overflow-x-hidden overflow-y-scroll scrollbar scrollbar-thumb-newColColor scrollbar-track-newBgColorInner"
+                className="absolute top-0 p-[20px] pe-[8px] mobile:p-[12px] left-0 w-full h-full overflow-x-hidden overflow-y-scroll scrollbar scrollbar-thumb-newColColor scrollbar-track-newBgColorInner"
               >
                 <ShowAllProviders ref={ref} />
               </Scrollable>
             </div>
           </div>
         </div>
-        <div className="select-none min-h-[84px] py-[20px] border-t border-newBorder flex items-center mobile:flex-col mobile:items-stretch mobile:gap-[10px] mobile:py-[12px] mobile:px-[12px]">
-          <div className="flex-1 flex ps-[20px] gap-[8px] mobile:ps-0 mobile:flex-wrap">
+        {/* Footer mobile = thanh sticky đáy dạng lưới: [chip phụ] / [ngày giờ] / [Nháp | Đăng] */}
+        <div className="select-none min-h-[84px] py-[20px] border-t border-newBorder flex items-center mobile:grid mobile:grid-cols-2 mobile:items-stretch mobile:gap-[8px] mobile:min-h-0 mobile:px-[12px] mobile:py-[10px] mobile:pb-[calc(10px+env(safe-area-inset-bottom,0px))] mobile:sticky mobile:bottom-0 mobile:z-[150] mobile:bg-newBgColorInner">
+          <div
+            className={clsx(
+              'flex-1 flex ps-[20px] gap-[8px] mobile:ps-0 mobile:flex-wrap mobile:col-span-2 mobile:items-center',
+              dummy && !existingData?.integration && 'mobile:hidden'
+            )}
+          >
             {!dummy && (
               <TagsComponent
                 name="tags"
@@ -580,12 +674,34 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
             {!dummy && (
               <RepeatComponent repeat={repeater} onChange={setRepeater} />
             )}
-          </div>
-          <div className="pe-[20px] flex items-center justify-end gap-[8px] mobile:pe-0 mobile:flex-col mobile:items-stretch mobile:w-full">
+            {/* Mobile: Đăng ngay + Xóa thành chip trong hàng phụ (desktop giữ vị trí gốc) */}
+            {!dummy && !addEditSets && (
+              <button
+                onClick={schedule('now')}
+                disabled={
+                  selectedIntegrations.length === 0 || loading || locked
+                }
+                className="hidden mobile:flex disabled:cursor-not-allowed disabled:opacity-60 h-[44px] px-[14px] items-center gap-[6px] rounded-[8px] border border-[#D82D7E]/60 text-[#D82D7E] text-[14px] font-[600] shrink-0 tap-shrink"
+              >
+                {t('post_now', 'Post Now')}
+              </button>
+            )}
             {existingData?.integration && (
               <button
                 onClick={deletePost}
-                className="cursor-pointer flex text-[#FF3F3F] gap-[8px] items-center text-[15px] font-[600]"
+                className="hidden mobile:flex h-[44px] px-[14px] items-center gap-[6px] rounded-[8px] border border-[#FF3F3F]/50 text-[#FF3F3F] text-[14px] font-[600] shrink-0 tap-shrink"
+              >
+                <TrashIcon />
+                {t('delete_post', 'Delete Post')}
+              </button>
+            )}
+          </div>
+          {/* Mobile: bung phần tử con vào lưới footer (display:contents) */}
+          <div className="pe-[20px] flex items-center justify-end gap-[8px] mobile:contents">
+            {existingData?.integration && (
+              <button
+                onClick={deletePost}
+                className="cursor-pointer flex text-[#FF3F3F] gap-[8px] items-center text-[15px] font-[600] mobile:hidden"
               >
                 <div>
                   <TrashIcon />
@@ -600,7 +716,7 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
                   selectedIntegrations.length === 0 || loading || locked
                 }
                 onClick={schedule('draft')}
-                className="relative cursor-pointer disabled:cursor-not-allowed px-[20px] h-[44px] bg-btnSimple justify-center items-center flex rounded-[8px] text-[15px] font-[600] mobile:w-full"
+                className="relative cursor-pointer disabled:cursor-not-allowed px-[20px] h-[44px] mobile:h-[48px] bg-btnSimple justify-center items-center flex rounded-[8px] text-[15px] font-[600] mobile:w-full"
               >
                 {loading && (
                   <div className="absolute left-[50%] top-[50%] -translate-y-[50%] -translate-x-[50%]">
@@ -614,7 +730,7 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
             )}
             {addEditSets && (
               <button
-                className="text-white text-[15px] font-[600] min-w-[180px] btnSub disabled:cursor-not-allowed disabled:opacity-80 outline-none gap-[8px] flex justify-center items-center h-[44px] rounded-[8px] bg-[#1e6fd9] ps-[20px] pe-[16px]"
+                className="text-white text-[15px] font-[600] min-w-[180px] mobile:min-w-0 mobile:col-span-2 mobile:h-[48px] btnSub disabled:cursor-not-allowed disabled:opacity-80 outline-none gap-[8px] flex justify-center items-center h-[44px] rounded-[8px] bg-[#1e6fd9] ps-[20px] pe-[16px]"
                 disabled={
                   selectedIntegrations.length === 0 || loading || locked
                 }
@@ -624,13 +740,13 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
               </button>
             )}
             {!addEditSets && (
-              <div className="group cursor-pointer relative mobile:w-full mobile:flex mobile:flex-col">
+              <div className="group cursor-pointer relative mobile:contents">
                 <button
                   disabled={
                     selectedIntegrations.length === 0 || loading || locked
                   }
                   onClick={schedule('schedule')}
-                  className="text-white relative min-w-[180px] mobile:min-w-0 mobile:w-full btnSub disabled:cursor-not-allowed disabled:opacity-80 outline-none gap-[8px] flex justify-center items-center h-[44px] rounded-[8px] bg-[#1e6fd9] ps-[20px] pe-[16px]"
+                  className="text-white relative min-w-[180px] mobile:min-w-0 mobile:w-full mobile:h-[48px] btnSub disabled:cursor-not-allowed disabled:opacity-80 outline-none gap-[8px] flex justify-center items-center h-[44px] rounded-[8px] bg-[#1e6fd9] ps-[20px] pe-[16px]"
                 >
                   {loading && (
                     <div className="absolute left-[50%] top-[50%] -translate-y-[50%] -translate-x-[50%]">
@@ -673,20 +789,7 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
                     </div>
                   </button>
                 )}
-                {/* Mobile/cảm ứng không có hover → Post Now là nút tĩnh riêng */}
-                {!dummy && (
-                  <button
-                    onClick={schedule('now')}
-                    disabled={
-                      selectedIntegrations.length === 0 || loading || locked
-                    }
-                    className="hidden mobile:flex disabled:cursor-not-allowed disabled:opacity-80 w-full mt-[8px]"
-                  >
-                    <div className="text-white rounded-[8px] bg-[#D82D7E] h-[44px] w-full flex justify-center items-center">
-                      {t('post_now', 'Post Now')}
-                    </div>
-                  </button>
-                )}
+                {/* Mobile không có hover → Post Now là chip ở hàng phụ phía trên */}
               </div>
             )}
           </div>

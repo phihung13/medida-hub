@@ -65,7 +65,10 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
 
   useEffect(() => {
     load();
-    const i = setInterval(load, 8000);
+    // App nền thì bỏ tick — đỡ hao pin/4G
+    const i = setInterval(() => {
+      if (document.visibilityState === 'visible') load();
+    }, 8000);
     return () => clearInterval(i);
   }, [load]);
 
@@ -142,14 +145,14 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
     <div className="flex flex-col gap-[14px]">
       {/* Vận hành */}
       <Card title={t('zalo_settings_ops', 'Vận hành')}>
-        <label className="flex items-center gap-[10px] cursor-pointer w-fit">
+        <label className="flex items-center gap-[10px] cursor-pointer w-fit mobile:min-h-[44px]">
           <Toggle on={!!settings.paused} onChange={() => setS({ paused: !settings.paused })} />
           <b className="text-[13.5px]">{t('zalo_settings_pause', 'Tạm dừng nhận ảnh (mọi nhóm)')}</b>
         </label>
 
         <div
           onClick={() => setFilterOpen((v) => !v)}
-          className="border-t border-newTableBorder pt-[10px] flex items-center justify-between cursor-pointer"
+          className="border-t border-newTableBorder pt-[10px] flex items-center justify-between cursor-pointer mobile:min-h-[44px]"
         >
           <b className="text-[13px]">{t('zalo_settings_group_filter', 'Lọc nhóm hiển thị')}</b>
           <span className="text-[11.5px] text-textItemBlur">
@@ -168,9 +171,10 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
               )}
             </div>
             <textarea rows={4} value={allowText} onChange={(e) => setAllowText(e.target.value)} className={textareaCls} placeholder="threadId…" />
-            <div className="flex items-center gap-[10px] flex-wrap">
+            {/* Mobile: xếp dọc — input full bề ngang, 2 nút to dễ bấm */}
+            <div className="flex items-center gap-[10px] flex-wrap mobile:flex-col mobile:items-stretch mobile:gap-[8px]">
               <PrimaryButton
-                className="!h-[34px] text-[13px]"
+                className="!h-[34px] mobile:!h-[44px] text-[13px]"
                 onClick={() =>
                   setS(
                     { groupAllowlist: allowText.split('\n').map((x) => x.trim()).filter(Boolean) },
@@ -185,16 +189,16 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
                 value={revealPass}
                 onChange={(e) => setRevealPass(e.target.value)}
                 placeholder={t('zalo_settings_dash_pass', 'bot dashboard password…')}
-                className={clsx(inputCls, '!w-auto min-w-[180px] !h-[34px]')}
+                className={clsx(inputCls, '!w-auto min-w-[180px] !h-[34px] mobile:!w-full mobile:!h-[44px]')}
               />
-              <SimpleButton className="!h-[34px] text-[13px]" disabled={busy} onClick={revealGroups}>
+              <SimpleButton className="!h-[34px] mobile:!h-[44px] text-[13px]" disabled={busy} onClick={revealGroups}>
                 {t('zalo_settings_reveal', 'Show ALL group IDs')}
               </SimpleButton>
             </div>
             {allGroups && (
               <div className="max-h-[220px] overflow-y-auto scrollbar scrollbar-thumb-newColColor scrollbar-track-newBgColorInner border border-newTableBorder rounded-[8px] p-[8px] flex flex-col gap-[2px]">
                 {allGroups.map((g) => (
-                  <div key={g.threadId} className="flex justify-between gap-[10px] text-[12.5px] py-[3px]">
+                  <div key={g.threadId} className="flex justify-between gap-[10px] text-[12.5px] py-[3px] mobile:py-[8px]">
                     <span className="truncate">{g.name}</span>
                     <code
                       onClick={() => {
@@ -250,7 +254,7 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
         <div className="flex items-center gap-[10px] flex-wrap">
           {!zalo?.connected && (
             <PrimaryButton
-              className="!h-[36px] text-[13px]"
+              className="!h-[36px] mobile:!h-[44px] text-[13px]"
               disabled={!!zalo?.relogging}
               onClick={async () => {
                 await bot('/api/zalo/reconnect', { method: 'POST', body: '{}' }).catch(() => {});
@@ -261,7 +265,7 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
               ↻ {t('zalo_settings_reconnect', 'Reconnect')}
             </PrimaryButton>
           )}
-          <SimpleButton className="!h-[36px] text-[13px]" onClick={() => logout(false)}>
+          <SimpleButton className="!h-[36px] mobile:!h-[44px] text-[13px]" onClick={() => logout(false)}>
             {t('zalo_settings_logout_keep', 'Log out · KEEP data')}
           </SimpleButton>
           <DangerLink onClick={() => logout(true)}>
@@ -309,7 +313,10 @@ export const ZaloLogsTab: FC = () => {
 
   useEffect(() => {
     load();
-    const i = setInterval(load, 8000);
+    // App nền thì bỏ tick — đỡ hao pin/4G
+    const i = setInterval(() => {
+      if (document.visibilityState === 'visible') load();
+    }, 8000);
     return () => clearInterval(i);
   }, [load]);
 
@@ -326,8 +333,9 @@ export const ZaloLogsTab: FC = () => {
       {logs.length ? (
         <div className="flex flex-col max-h-[560px] overflow-y-auto scrollbar scrollbar-thumb-newColColor scrollbar-track-newBgColorInner">
           {logs.map((l, i) => (
-            <div key={i} className="flex gap-[10px] py-[5px] border-b border-newTableBorder last:border-b-0 text-[12.5px] leading-[1.5]">
-              <span className="text-textItemBlur shrink-0 tabular-nums">{fmtFull(l.t)}</span>
+            // Mobile: timestamp lên dòng riêng, nội dung ăn trọn bề ngang
+            <div key={i} className="flex gap-[10px] py-[5px] border-b border-newTableBorder last:border-b-0 text-[12.5px] leading-[1.5] mobile:flex-col mobile:gap-[2px] mobile:py-[7px]">
+              <span className="text-textItemBlur shrink-0 tabular-nums mobile:text-[11px]">{fmtFull(l.t)}</span>
               <span className="break-words min-w-0">{l.line}</span>
             </div>
           ))}

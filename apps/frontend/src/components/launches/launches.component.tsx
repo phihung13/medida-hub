@@ -21,13 +21,15 @@ import { useDrag, useDrop } from 'react-dnd';
 import { DNDProvider } from '@gitroom/frontend/components/launches/helpers/dnd.provider';
 import { GeneratorComponent } from './generator/generator';
 import { useVariables } from '@gitroom/react/helpers/variable.context';
-import { NewPost } from '@gitroom/frontend/components/launches/new.post';
+import { NewPost, useNewPost } from '@gitroom/frontend/components/launches/new.post';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useIntegrationList } from '@gitroom/frontend/components/launches/helpers/use.integration.list';
 import useCookie from 'react-use-cookie';
 import { Onboarding } from '@gitroom/frontend/components/onboarding/onboarding';
 import { ZaloPendingBanner } from '@gitroom/frontend/components/launches/zalo.pending.banner';
 import { OpenPostFromQuery } from '@gitroom/frontend/components/launches/open.post.from.query';
+import { useModals } from '@gitroom/frontend/components/layout/new-modal';
+import { MobileFab } from '@gitroom/frontend/components/new-layout/mobile.fab';
 
 export const SVGLine = () => {
   return (
@@ -109,20 +111,28 @@ export const OpenClose: FC<{
     </svg>
   );
 };
-export const MenuGroupComponent: FC<
-  MenuComponentInterface & {
-    changeItemGroup: (id: string, group: string) => void;
-    group: {
-      id: string;
-      name: string;
-      values: Array<
-        Integration & {
-          identifier: string;
-          changeProfilePicture: boolean;
-          changeNickName: boolean;
-        }
-      >;
-    };
+type MenuGroupInterface = MenuComponentInterface & {
+  changeItemGroup: (id: string, group: string) => void;
+  group: {
+    id: string;
+    name: string;
+    values: Array<
+      Integration & {
+        identifier: string;
+        changeProfilePicture: boolean;
+        changeNickName: boolean;
+      }
+    >;
+  };
+};
+// Thân nhóm kênh — tách khỏi useDrop để sheet mobile dùng lại được: modal nằm
+// ngoài DNDProvider của trang (hook DND sẽ crash), và HTML5Backend vốn không
+// hoạt động trên cảm ứng nên bỏ kéo-thả ở đó không mất gì.
+const MenuGroupInner: FC<
+  MenuGroupInterface & {
+    dropRef?: any;
+    isOver?: boolean;
+    dnd?: boolean;
   }
 > = (props) => {
   const {
@@ -132,8 +142,10 @@ export const MenuGroupComponent: FC<
     continueIntegration,
     totalNonDisabledChannels,
     refreshChannel,
-    changeItemGroup,
     collapsed,
+    dropRef,
+    isOver,
+    dnd,
   } = props;
   const [isOpen, setIsOpen] = useState(
     !!+(localStorage.getItem(group.name + '_isOpen') || '1')
@@ -146,27 +158,10 @@ export const MenuGroupComponent: FC<
     },
     [isOpen]
   );
-  const [collectedProps, drop] = useDrop(() => ({
-    accept: 'menu',
-    drop: (
-      item: {
-        id: string;
-      },
-      monitor
-    ) => {
-      changeItemGroup(item.id, group.id);
-    },
-    collect: (monitor) => ({
-      isOver: !!monitor.isOver(),
-    }),
-  }));
+  const Item = dnd === false ? MenuComponentNoDnd : MenuComponent;
   return (
-    <div
-      className="gap-[16px] flex flex-col relative"
-      // @ts-ignore
-      ref={drop}
-    >
-      {collectedProps.isOver && (
+    <div className="gap-[16px] flex flex-col relative" ref={dropRef}>
+      {isOver && (
         <div className="absolute start-0 top-0 w-full h-full pointer-events-none">
           <div className="w-full h-full start-0 top-0 relative">
             <div className="bg-white/30 w-full h-full p-[8px] box-content rounded-md" />
@@ -201,7 +196,7 @@ export const MenuGroupComponent: FC<
         )}
       >
         {group.values.map((integration) => (
-          <MenuComponent
+          <Item
             collapsed={collapsed}
             key={integration.id}
             integration={integration}
@@ -216,14 +211,41 @@ export const MenuGroupComponent: FC<
     </div>
   );
 };
-export const MenuComponent: FC<
+export const MenuGroupComponent: FC<MenuGroupInterface> = (props) => {
+  const { changeItemGroup, group } = props;
+  const [collectedProps, drop] = useDrop(() => ({
+    accept: 'menu',
+    drop: (
+      item: {
+        id: string;
+      },
+      monitor
+    ) => {
+      changeItemGroup(item.id, group.id);
+    },
+    collect: (monitor) => ({
+      isOver: !!monitor.isOver(),
+    }),
+  }));
+  return (
+    <MenuGroupInner {...props} dropRef={drop} isOver={collectedProps.isOver} />
+  );
+};
+const MenuGroupNoDnd: FC<MenuGroupInterface> = (props) => (
+  <MenuGroupInner {...props} dnd={false} />
+);
+type MenuItemIntegration = Integration & {
+  identifier: string;
+  changeProfilePicture: boolean;
+  changeNickName: boolean;
+  refreshNeeded?: boolean;
+};
+// Thân item kênh — tách khỏi useDrag (cùng lý do với MenuGroupInner).
+const MenuItemInner: FC<
   MenuComponentInterface & {
-    integration: Integration & {
-      identifier: string;
-      changeProfilePicture: boolean;
-      changeNickName: boolean;
-      refreshNeeded?: boolean;
-    };
+    integration: MenuItemIntegration;
+    dragRef?: any;
+    previewRef?: any;
   }
 > = (props) => {
   const {
@@ -234,19 +256,14 @@ export const MenuComponent: FC<
     update,
     integration,
     collapsed,
+    dragRef,
+    previewRef,
   } = props;
   const user = useUser();
   const t = useT();
-  const [collected, drag, dragPreview] = useDrag(() => ({
-    type: 'menu',
-    item: {
-      id: integration.id,
-    },
-  }));
   return (
     <div
-      // @ts-ignore
-      ref={dragPreview}
+      ref={previewRef}
       {...(integration.refreshNeeded && {
         onClick: refreshChannel(integration),
         'data-tooltip-id': 'tooltip',
@@ -315,8 +332,7 @@ export const MenuComponent: FC<
         )}
       </div>
       <div
-        // @ts-ignore
-        ref={drag}
+        ref={dragRef}
         {...(integration.disabled &&
         totalNonDisabledChannels === user?.totalChannels
           ? {
@@ -351,18 +367,31 @@ export const MenuComponent: FC<
     </div>
   );
 };
-export const LaunchesComponent = () => {
+export const MenuComponent: FC<
+  MenuComponentInterface & {
+    integration: MenuItemIntegration;
+  }
+> = (props) => {
+  const [, drag, dragPreview] = useDrag(() => ({
+    type: 'menu',
+    item: {
+      id: props.integration.id,
+    },
+  }));
+  return <MenuItemInner {...props} dragRef={drag} previewRef={dragPreview} />;
+};
+const MenuComponentNoDnd: FC<
+  MenuComponentInterface & {
+    integration: MenuItemIntegration;
+  }
+> = (props) => <MenuItemInner {...props} />;
+// Toàn bộ dữ liệu + hành động của cột kênh, gom thành hook để cả trang lẫn
+// sheet mobile dùng chung — SWR key '/integrations/list' chia sẻ cache nên
+// hai instance luôn thấy cùng dữ liệu tươi.
+const useChannels = () => {
   const fetch = useFetch();
-  const user = useUser();
-  const { billingEnabled } = useVariables();
   const router = useRouter();
-  const search = useSearchParams();
-  const toast = useToaster();
-  const fireEvents = useFireEvents();
-  const t = useT();
   const [reload, setReload] = useState(false);
-  const [collapseMenu, setCollapseMenu] = useCookie('collapseMenu', '0');
-  const [mode] = useCookie('mode', 'dark');
   const { isLoading, data: integrations, mutate } = useIntegrationList();
 
   const totalNonDisabledChannels = useMemo(() => {
@@ -458,6 +487,136 @@ export const LaunchesComponent = () => {
       },
     []
   );
+
+  return {
+    reload,
+    isLoading,
+    integrations,
+    mutate,
+    totalNonDisabledChannels,
+    changeItemGroup,
+    sortedIntegrations,
+    menuIntegrations,
+    update,
+    continueIntegration,
+    refreshChannel,
+  };
+};
+// Danh sách kênh (empty state + các nhóm) — phần thân dùng chung giữa sidebar
+// desktop và sheet mobile.
+const ChannelsList: FC<{
+  channels: ReturnType<typeof useChannels>;
+  collapsed: boolean;
+  dnd?: boolean;
+}> = (props) => {
+  const { channels, collapsed, dnd } = props;
+  const t = useT();
+  const [mode] = useCookie('mode', 'dark');
+  const {
+    sortedIntegrations,
+    menuIntegrations,
+    changeItemGroup,
+    mutate,
+    continueIntegration,
+    update,
+    refreshChannel,
+    totalNonDisabledChannels,
+  } = channels;
+  const Group = dnd === false ? MenuGroupNoDnd : MenuGroupComponent;
+  return (
+    <div className="gap-[32px] flex flex-col select-none flex-1">
+      {sortedIntegrations.length === 0 && !collapsed && (
+        <div className="flex-1 max-h-[500px] justify-center items-center flex">
+          <div className="flex flex-col gap-[12px] text-center">
+            <img
+              src={
+                mode === 'dark' ? '/no-channels.svg' : '/no-channels-colors.svg'
+              }
+              alt="No channels"
+              className="mx-auto min-w-[100%]"
+            />
+            <div className="font-[600] text-[20px]">
+              {t('no_channels', 'No channels yet')}
+            </div>
+            <div className="text-[14px]">{t('connect_your_accounts')}</div>
+          </div>
+        </div>
+      )}
+      {menuIntegrations.map((menu) => (
+        <Group
+          collapsed={collapsed}
+          changeItemGroup={changeItemGroup}
+          key={menu.name}
+          group={menu}
+          mutate={mutate}
+          continueIntegration={continueIntegration}
+          update={update}
+          refreshChannel={refreshChannel}
+          totalNonDisabledChannels={totalNonDisabledChannels}
+        />
+      ))}
+    </div>
+  );
+};
+// Nội dung sheet kênh trên mobile — TỰ đọc dữ liệu (không nhận props) vì JSX
+// truyền vào openModal bị "đóng băng" trong store: nhận props sẽ thành ảnh
+// chụp cũ sau khi thêm/tắt kênh. Hook tự gọi → SWR chung → luôn tươi.
+const MobileChannelsSheet: FC = () => {
+  const channels = useChannels();
+  if (channels.isLoading || channels.reload) {
+    return (
+      <div className="flex justify-center items-center py-[40px]">
+        <LoadingComponent />
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-[15px]">
+      <AddProviderButton update={() => channels.update(true)} />
+      <ChannelsList channels={channels} collapsed={false} dnd={false} />
+    </div>
+  );
+};
+// FAB "＋" đăng bài — component con để useNewPost() đọc được
+// CalendarWeekProvider phía trên nó.
+const NewPostFab: FC = () => {
+  const t = useT();
+  const createAPost = useNewPost();
+  return (
+    <MobileFab label={t('create_new_post', 'Create Post')} onClick={createAPost} />
+  );
+};
+export const LaunchesComponent = () => {
+  const user = useUser();
+  const { billingEnabled } = useVariables();
+  const search = useSearchParams();
+  const toast = useToaster();
+  const fireEvents = useFireEvents();
+  const t = useT();
+  const modal = useModals();
+  const [collapseMenu, setCollapseMenu] = useCookie('collapseMenu', '0');
+  const channels = useChannels();
+  const {
+    reload,
+    isLoading,
+    sortedIntegrations,
+    update,
+  } = channels;
+
+  // Mobile content-first: sidebar kênh ẩn hẳn, mở qua bottom sheet.
+  const openChannelsSheet = useCallback(() => {
+    modal.openModal({
+      id: 'mobile-channels-sheet',
+      title: t('channels', 'Channels'),
+      closeOnClickOutside: true,
+      closeOnEscape: true,
+      withCloseButton: true,
+      classNames: {
+        modal: 'text-textColor',
+      },
+      children: <MobileChannelsSheet />,
+    });
+  }, [modal, t]);
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
@@ -501,16 +660,11 @@ export const LaunchesComponent = () => {
       <CalendarWeekProvider integrations={sortedIntegrations}>
         <div
           className={clsx(
-            'flex relative flex-col mobile:w-full',
-            collapseMenu === '1' ? 'group sidebar w-[100px] mobile:w-full' : 'w-[260px]'
+            'flex relative flex-col mobile:hidden',
+            collapseMenu === '1' ? 'group sidebar w-[100px]' : 'w-[260px]'
           )}
         >
-          <div
-            className={clsx(
-              'bg-newBgColorInner p-[20px] flex flex-col gap-[15px] transition-all absolute start-0 top-0 w-full h-full overflow-x-hidden overflow-y-auto scrollbar scrollbar-thumb-fifth scrollbar-track-newBgColor',
-              'mobile:relative mobile:h-auto mobile:max-h-[38vh] mobile:p-[12px]'
-            )}
-          >
+          <div className="bg-newBgColorInner p-[20px] flex flex-col gap-[15px] transition-all absolute start-0 top-0 w-full h-full overflow-x-hidden overflow-y-auto scrollbar scrollbar-thumb-fifth scrollbar-track-newBgColor">
             <div className="flex items-center">
               <h2 className="group-[.sidebar]:hidden flex-1 text-[20px] font-[500]">
                 {t('channels')}
@@ -547,42 +701,7 @@ export const LaunchesComponent = () => {
                   billingEnabled && <GeneratorComponent />}
               </div>
             </div>
-            <div className="gap-[32px] flex flex-col select-none flex-1">
-              {sortedIntegrations.length === 0 && collapseMenu === '0' && (
-                <div className="flex-1 max-h-[500px] justify-center items-center flex">
-                  <div className="flex flex-col gap-[12px] text-center">
-                    <img
-                      src={
-                        mode === 'dark'
-                          ? '/no-channels.svg'
-                          : '/no-channels-colors.svg'
-                      }
-                      alt="No channels"
-                      className="mx-auto min-w-[100%]"
-                    />
-                    <div className="font-[600] text-[20px]">
-                      {t('no_channels', 'No channels yet')}
-                    </div>
-                    <div className="text-[14px]">
-                      {t('connect_your_accounts')}
-                    </div>
-                  </div>
-                </div>
-              )}
-              {menuIntegrations.map((menu) => (
-                <MenuGroupComponent
-                  collapsed={collapseMenu === '1'}
-                  changeItemGroup={changeItemGroup}
-                  key={menu.name}
-                  group={menu}
-                  mutate={mutate}
-                  continueIntegration={continueIntegration}
-                  update={update}
-                  refreshChannel={refreshChannel}
-                  totalNonDisabledChannels={totalNonDisabledChannels}
-                />
-              ))}
-            </div>
+            <ChannelsList channels={channels} collapsed={collapseMenu === '1'} />
             {/* Nhãn phiên bản build (NEXT_PUBLIC_VERSION) của Postiz gốc —
                 trên VPS hiện chữ "media-hub" thừa thãi ở cuối cột kênh → bỏ. */}
             {billingEnabled && user?.isLifetime && (
@@ -592,14 +711,15 @@ export const LaunchesComponent = () => {
             )}
           </div>
         </div>
-        <div className="bg-newBgColorInner flex-1 flex-col flex p-[20px] gap-[12px]">
+        <div className="bg-newBgColorInner flex-1 flex-col flex p-[20px] gap-[12px] mobile:p-[12px]">
           <ZaloPendingBanner />
           <OpenPostFromQuery />
-          <Filters />
+          <Filters onOpenChannels={openChannelsSheet} />
           <div className="flex-1 flex">
             <Calendar />
           </div>
         </div>
+        {sortedIntegrations?.length > 0 && <NewPostFab />}
       </CalendarWeekProvider>
     </DNDProvider>
   );

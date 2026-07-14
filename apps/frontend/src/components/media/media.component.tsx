@@ -52,6 +52,7 @@ import {
 } from '@gitroom/frontend/components/ui/icons';
 import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
 import { useShallow } from 'zustand/react/shallow';
+import { useIsMobile } from '@gitroom/frontend/components/new-layout/use.is.mobile';
 import { LoadingComponent } from '@gitroom/frontend/components/layout/loading';
 import { useDebounce } from 'use-debounce';
 import { MediaFromUrl } from '@gitroom/frontend/components/new-launch/media.from.url';
@@ -215,6 +216,7 @@ export const MediaBox: FC<{
   const fetch = useFetch();
   const modals = useModals();
   const toaster = useToaster();
+  const isMobile = useIsMobile();
   useEffect(() => {
     setPage(0);
   }, [debouncedSearch]);
@@ -600,7 +602,13 @@ export const MediaBox: FC<{
                         ? 'border-[#1e6fd9]'
                         : 'border-transparent'
                     )}
-                    onClick={addRemoveSelected(media)}
+                    // Standalone (trang /media) trên mobile: không có hover →
+                    // chạm ảnh = mở Xem (thay vì return sớm không làm gì).
+                    onClick={
+                      standalone && isMobile
+                        ? maximize(media)
+                        : addRemoveSelected(media)
+                    }
                   >
                     {!!selected.find((p: any) => p.id === media.id) ? (
                       <div className="text-white flex z-[101] justify-center items-center text-[14px] font-[500] w-[24px] h-[24px] rounded-full bg-[#1e6fd9] absolute -bottom-[10px] -end-[10px]">
@@ -608,18 +616,20 @@ export const MediaBox: FC<{
                       </div>
                     ) : (
                       <DeleteCircleIcon
-                        className="cursor-pointer hidden z-[100] group-hover:block absolute -top-[5px] -end-[5px]"
+                        className="cursor-pointer hidden z-[100] group-hover:block mobile:block absolute -top-[5px] -end-[5px]"
                         onClick={deleteImage(media)}
                       />
                     )}
                     <div className="absolute bottom-[6px] start-[6px] end-[6px] z-[100] truncate text-[11px] text-white bg-black/50 rounded-[4px] px-[6px] py-[2px] pointer-events-none">{media.originalName}</div>
                     <div className="w-full h-full rounded-[6px] overflow-hidden relative">
-                      <div className="absolute z-[20] left-[50%] top-[50%] -translate-x-[50%] -translate-y-[50%] flex items-center gap-[6px]">
+                      {/* Mobile không có hover: nút Xem/Sửa luôn hiện, dời từ
+                          giữa ảnh về góc dưới-phải (trên nhãn tên file) */}
+                      <div className="absolute z-[20] left-[50%] top-[50%] -translate-x-[50%] -translate-y-[50%] flex items-center gap-[6px] mobile:left-auto mobile:top-auto mobile:translate-x-0 mobile:translate-y-0 mobile:end-[4px] mobile:bottom-[30px]">
                         <div
                           onClick={maximize(media)}
                           title={t('view_media', 'View')}
                           aria-label={t('view_media', 'View')}
-                          className="cursor-pointer p-[4px] bg-black/40 hidden group-hover:block hover:scale-125 transition-all"
+                          className="cursor-pointer p-[4px] bg-black/40 hidden group-hover:block hover:scale-125 transition-all mobile:block mobile:p-[6px] mobile:rounded-[8px] mobile:bg-black/60 tap-shrink"
                         >
                           <svg
                             width="26"
@@ -639,7 +649,7 @@ export const MediaBox: FC<{
                             onClick={designMediaLibrary(media)}
                             title={t('edit_design', 'Edit / Design')}
                             aria-label={t('edit_design', 'Edit / Design')}
-                            className="cursor-pointer p-[4px] bg-black/40 hidden group-hover:block hover:scale-125 transition-all"
+                            className="cursor-pointer p-[4px] bg-black/40 hidden group-hover:block hover:scale-125 transition-all mobile:block mobile:p-[6px] mobile:rounded-[8px] mobile:bg-black/60 tap-shrink"
                           >
                             <svg
                               width="26"
@@ -1066,18 +1076,19 @@ export const MultiMediaComponent: FC<{
             </div>
           );
         })()}
-        <div className="flex flex-wrap gap-[8px] px-[12px] border-t border-newColColor w-full b1 text-textColor">
+        {/* Mobile: dãy nút dài → 1 hàng cuộn ngang thay vì gãy 3-4 hàng */}
+        <div className="flex flex-wrap mobile:flex-nowrap mobile-hscroll gap-[8px] px-[12px] border-t border-newColColor w-full b1 text-textColor">
           {!mediaNotAvailable && (
             <div className="flex py-[10px] b2 items-center gap-[4px]">
               <div
                 onClick={showModal}
-                className="cursor-pointer h-[30px] rounded-[6px] justify-center items-center flex bg-newColColor px-[8px]"
+                className="cursor-pointer h-[30px] mobile:h-[40px] mobile:px-[12px] rounded-[6px] justify-center items-center flex bg-newColColor px-[8px] tap-shrink"
               >
                 <div className="flex gap-[8px] items-center">
                   <div>
                     <InsertMediaIcon />
                   </div>
-                  <div className="text-[10px] font-[600] maxMedia:hidden block">
+                  <div className="text-[10px] mobile:text-[12px] font-[600] maxMedia:hidden block">
                     {t('insert_media', 'Insert Media')}
                   </div>
                 </div>
@@ -1093,7 +1104,7 @@ export const MultiMediaComponent: FC<{
                     'design_media_tooltip',
                     'Design media — open image editor'
                   )}
-                  className="cursor-pointer h-[30px] rounded-[6px] justify-center items-center flex bg-newColColor px-[8px]"
+                  className="cursor-pointer h-[30px] mobile:h-[40px] mobile:px-[12px] rounded-[6px] justify-center items-center flex bg-newColColor px-[8px] tap-shrink"
                 >
                   <div className="flex gap-[5px] items-center">
                     <div>
@@ -1117,7 +1128,7 @@ export const MultiMediaComponent: FC<{
                   onClick={() => setFrame(!frame)}
                   title={t('media_frame_toggle', 'Preview post frame & reorder')}
                   className={clsx(
-                    'cursor-pointer h-[30px] rounded-[6px] justify-center items-center flex px-[8px]',
+                    'cursor-pointer h-[30px] mobile:h-[40px] mobile:px-[12px] rounded-[6px] justify-center items-center flex px-[8px] tap-shrink',
                     frame ? 'bg-forth text-white' : 'bg-newColColor'
                   )}
                 >

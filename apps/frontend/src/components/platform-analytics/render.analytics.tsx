@@ -1,4 +1,5 @@
 import { FC, useCallback, useMemo, useRef, useState } from 'react';
+import clsx from 'clsx';
 import { Integration } from '@prisma/client';
 import useSWR from 'swr';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
@@ -458,17 +459,18 @@ const ChannelChat: FC<{ integrationId: string; channelName: string }> = ({ integ
     [msgs, busy, integrationId]
   );
   // Bong bóng chat NỔI góc dưới-phải (thay ô class dưới cùng).
+  // Mobile: FAB neo trên tab bar (--bottom-nav-h); panel = sheet dán đáy màn.
   return (
-    <div className="fixed bottom-[20px] right-[20px] z-[350] flex flex-col items-end gap-[12px] mobile:bottom-[76px]">
+    <div className="fixed bottom-[20px] right-[20px] z-[350] flex flex-col items-end gap-[12px] mobile:bottom-[calc(var(--bottom-nav-h,64px)+16px)] mobile:right-[16px]">
       {open && (
-        <div className="w-[390px] max-w-[calc(100vw-32px)] h-[540px] max-h-[72vh] bg-newBgColorInner border border-newTableBorder rounded-[18px] shadow-[0_12px_48px_rgba(0,0,0,0.4)] flex flex-col overflow-hidden animate-fadeIn">
+        <div className="w-[390px] max-w-[calc(100vw-32px)] h-[540px] max-h-[72vh] bg-newBgColorInner border border-newTableBorder rounded-[18px] shadow-[0_12px_48px_rgba(0,0,0,0.4)] flex flex-col overflow-hidden animate-fadeIn mobile:fixed mobile:inset-x-0 mobile:bottom-0 mobile:w-full mobile:max-w-full mobile:h-[75dvh] mobile:max-h-[75dvh] mobile:rounded-t-[20px] mobile:rounded-b-none mobile:animate-sheetIn mobile:pb-[env(safe-area-inset-bottom,0px)]">
           <div className="shrink-0 flex items-center gap-[10px] px-[16px] py-[12px] border-b border-newTableBorder bg-newTableHeader">
             <span className="w-[30px] h-[30px] rounded-full bg-[#1e6fd9] grid place-items-center text-white text-[15px]">🤖</span>
             <div className="flex-1 min-w-0">
               <div className="text-[13.5px] font-[700] leading-[1.2]">{t('analytics_ask_ai', 'Ask AI about this channel')}</div>
               <div className="text-[11px] text-newTableText/55 truncate">{channelName}</div>
             </div>
-            <button onClick={() => setOpen(false)} aria-label={t('close', 'Close')} className="w-[28px] h-[28px] rounded-[7px] grid place-items-center text-newTableText/60 hover:text-newTableText hover:bg-newTableBorder/40">✕</button>
+            <button onClick={() => setOpen(false)} aria-label={t('close', 'Close')} className="w-[28px] h-[28px] mobile:w-[40px] mobile:h-[40px] rounded-[7px] grid place-items-center text-newTableText/60 hover:text-newTableText hover:bg-newTableBorder/40 tap-shrink">✕</button>
           </div>
           <div ref={scroller} className="flex-1 overflow-auto flex flex-col gap-[10px] p-[14px]">
             {!msgs.length && (
@@ -488,7 +490,7 @@ const ChannelChat: FC<{ integrationId: string; channelName: string }> = ({ integ
           {!msgs.length && (
             <div className="shrink-0 flex gap-[6px] flex-wrap px-[14px] pb-[10px]">
               {suggestions.map((s, i) => (
-                <button key={i} onClick={() => send(s)} className="text-[11.5px] px-[10px] py-[6px] rounded-full border border-newTableBorder text-newTableText/75 hover:border-[#1e6fd9]/60 hover:text-newTableText">
+                <button key={i} onClick={() => send(s)} className="text-[11.5px] px-[10px] py-[6px] mobile:px-[13px] mobile:py-[9px] mobile:text-[12.5px] rounded-full border border-newTableBorder text-newTableText/75 hover:border-[#1e6fd9]/60 hover:text-newTableText tap-shrink">
                   {s}
                 </button>
               ))}
@@ -511,7 +513,11 @@ const ChannelChat: FC<{ integrationId: string; channelName: string }> = ({ integ
       <button
         onClick={() => setOpen((o) => !o)}
         aria-label={t('analytics_ask_ai', 'Ask AI about this channel')}
-        className="w-[56px] h-[56px] rounded-full bg-[#1e6fd9] text-white shadow-[0_6px_20px_rgba(30,111,217,0.5)] grid place-items-center text-[22px] hover:scale-105 transition-transform"
+        className={clsx(
+          'w-[56px] h-[56px] rounded-full bg-[#1e6fd9] text-white shadow-[0_6px_20px_rgba(30,111,217,0.5)] grid place-items-center text-[22px] hover:scale-105 transition-transform tap-shrink',
+          // Mobile: sheet đã chiếm đáy màn + tự có nút ✕ — FAB nổi sẽ đè ô nhập
+          open && 'mobile:hidden'
+        )}
       >
         {open ? '✕' : '💬'}
       </button>

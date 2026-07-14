@@ -125,7 +125,10 @@ export const ZaloComponent: FC = () => {
 
   useEffect(() => {
     loadAll();
-    const i = setInterval(loadAll, 8000);
+    // App nền (mobile hay để tab chạy ngầm) thì bỏ tick — đỡ hao pin/4G
+    const i = setInterval(() => {
+      if (document.visibilityState === 'visible') loadAll();
+    }, 8000);
     return () => clearInterval(i);
   }, []);
 
@@ -392,7 +395,7 @@ export const ZaloComponent: FC = () => {
   ];
 
   return (
-    <div className="bg-newBgColorInner flex-1 flex flex-col p-[20px] gap-[16px] min-w-0">
+    <div className="bg-newBgColorInner flex-1 flex flex-col p-[20px] mobile:p-[12px] gap-[16px] min-w-0">
       {/* --- Thanh trạng thái --- */}
       <div className="flex items-center gap-[8px] flex-wrap">
         <Pill
@@ -421,24 +424,24 @@ export const ZaloComponent: FC = () => {
         <div className="flex-1" />
         {running && (
           <a href="/launches">
-            <SimpleButton className="!h-[32px] text-[13px]">
+            <SimpleButton className="!h-[32px] mobile:!h-[40px] text-[13px]">
               {t('zalo_open_calendar_review', 'Open Calendar to review posts')}
             </SimpleButton>
           </a>
         )}
       </div>
 
-      {/* --- Thanh tab --- */}
-      <div className="flex gap-[4px] border-b border-newTableBorder overflow-x-auto scrollbar scrollbar-thumb-newColColor scrollbar-track-newBgColorInner -mx-[4px] px-[4px]">
+      {/* --- Thanh tab: desktop = gạch chân, mobile = pill 44px dính đỉnh --- */}
+      <div className="flex gap-[4px] border-b border-newTableBorder overflow-x-auto scrollbar scrollbar-thumb-newColColor scrollbar-track-newBgColorInner -mx-[4px] px-[4px] mobile-hscroll mobile:sticky mobile:top-[env(safe-area-inset-top,0px)] mobile:z-[5] mobile:bg-newBgColorInner mobile:border-b-0 mobile:gap-[8px] mobile:-mx-[12px] mobile:px-[12px] mobile:py-[6px]">
         {TABS.map(({ key, label, badge }) => (
           <button
             key={key}
             onClick={() => switchTab(key)}
             className={clsx(
-              'h-[38px] px-[14px] text-[13px] font-[600] whitespace-nowrap cursor-pointer border-b-2 -mb-[1px] flex items-center gap-[6px]',
+              'h-[38px] px-[14px] text-[13px] font-[600] whitespace-nowrap cursor-pointer border-b-2 -mb-[1px] flex items-center gap-[6px] mobile:h-[44px] mobile:px-[16px] mobile:text-[14px] mobile:rounded-full mobile:border-b-0 mobile:mb-0 tap-shrink',
               tab === key
-                ? 'border-btnPrimary text-newTextColor'
-                : 'border-transparent text-textItemBlur hover:text-newTextColor'
+                ? 'border-btnPrimary text-newTextColor mobile:bg-btnPrimary mobile:text-white'
+                : 'border-transparent text-textItemBlur hover:text-newTextColor mobile:bg-boxFocused'
             )}
           >
             {label}
@@ -548,7 +551,7 @@ export const ZaloComponent: FC = () => {
               <a
                 href="/launches"
                 onClick={(e) => e.stopPropagation()}
-                className="text-[13px] font-[600] text-btnPrimary whitespace-nowrap"
+                className="text-[13px] font-[600] text-btnPrimary whitespace-nowrap mobile:min-h-[44px] mobile:inline-flex mobile:items-center"
               >
                 {t('zalo_history_banner_open', 'Open Calendar →')}
               </a>
@@ -561,7 +564,7 @@ export const ZaloComponent: FC = () => {
               <div className="flex items-center w-full gap-[10px]">
                 <span
                   onClick={() => setGroupsOpen((v) => !v)}
-                  className="flex-1 cursor-pointer select-none flex items-center gap-[6px]"
+                  className="flex-1 cursor-pointer select-none flex items-center gap-[6px] mobile:min-h-[36px]"
                 >
                   <span
                     className={clsx(
@@ -576,7 +579,7 @@ export const ZaloComponent: FC = () => {
                 {zaloLogged && groupsOpen && (
                   <span
                     onClick={() => loadGroups(true)}
-                    className="cursor-pointer normal-case tracking-normal font-[600] text-btnPrimary"
+                    className="cursor-pointer normal-case tracking-normal font-[600] text-btnPrimary mobile:min-h-[36px] mobile:inline-flex mobile:items-center"
                   >
                     ↻ {t('zalo_refresh', 'Refresh')}
                   </span>
@@ -617,7 +620,7 @@ export const ZaloComponent: FC = () => {
                   return (
                     <div
                       key={r.threadId}
-                      className="flex items-center gap-[12px] py-[9px] border-b border-newTableBorder last:border-b-0 hover:bg-boxHover px-[8px] -mx-[8px] rounded-[6px] flex-wrap"
+                      className="flex items-center gap-[12px] py-[9px] mobile:py-[12px] border-b border-newTableBorder last:border-b-0 hover:bg-boxHover px-[8px] -mx-[8px] rounded-[6px] flex-wrap"
                     >
                       <div className="w-[34px] h-[34px] rounded-[8px] bg-btnSimple flex items-center justify-center text-[15px] shrink-0">
                         💬
@@ -638,23 +641,26 @@ export const ZaloComponent: FC = () => {
                       {gathering && (
                         <span
                           onClick={() => closeSession(r.threadId, r.label || r.threadId)}
-                          className="cursor-pointer text-[12.5px] font-[600] text-btnPrimary whitespace-nowrap"
+                          className="cursor-pointer text-[12.5px] font-[600] text-btnPrimary whitespace-nowrap mobile:min-h-[36px] mobile:inline-flex mobile:items-center"
                         >
                           {t('zalo_close_now', 'Close now →')}
                         </span>
                       )}
                       {!!channels.length && (
-                        <select
-                          value={r.postizIntegrationId || ''}
-                          onChange={(e) => setGroupChannel(r.threadId, r.label || r.threadId, e.target.value)}
-                          title={t('zalo_channel_select_title', "The Media Hub channel that receives this group's posts")}
-                          className={clsx(
-                            'border rounded-[6px] h-[30px] mobile:h-[36px] px-[6px] text-[12px] outline-none cursor-pointer max-w-[180px] shrink-0 mobile:max-w-none mobile:w-full mobile:order-last',
-                            r.enabled && !r.postizIntegrationId
-                              ? 'bg-amber-400/10 border-amber-400/50 text-amber-400'
-                              : 'bg-newBgColorInner border-newTableBorder'
-                          )}
-                        >
+                        <>
+                          {/* Mobile: ngắt xuống hàng 2 — select kênh + công tắc to, thao tác một tay */}
+                          <div className="hidden mobile:block basis-full h-0" />
+                          <select
+                            value={r.postizIntegrationId || ''}
+                            onChange={(e) => setGroupChannel(r.threadId, r.label || r.threadId, e.target.value)}
+                            title={t('zalo_channel_select_title', "The Media Hub channel that receives this group's posts")}
+                            className={clsx(
+                              'border rounded-[6px] h-[30px] px-[6px] text-[12px] outline-none cursor-pointer max-w-[180px] shrink-0 mobile:h-[44px] mobile:rounded-[8px] mobile:px-[10px] mobile:flex-1 mobile:max-w-none',
+                              r.enabled && !r.postizIntegrationId
+                                ? 'bg-amber-400/10 border-amber-400/50 text-amber-400'
+                                : 'bg-newBgColorInner border-newTableBorder'
+                            )}
+                          >
                           <option value="">
                             {r.enabled
                               ? t('zalo_pick_channel', '⚠ Pick a channel…')
@@ -667,7 +673,8 @@ export const ZaloComponent: FC = () => {
                                 → {ch.name || ch.id}
                               </option>
                             ))}
-                        </select>
+                          </select>
+                        </>
                       )}
                       <Toggle
                         small
@@ -689,7 +696,7 @@ export const ZaloComponent: FC = () => {
                   value={groupSearch}
                   onChange={(e) => setGroupSearch(e.target.value)}
                   placeholder={t('zalo_search_group', 'Search groups…')}
-                  className="bg-newBgColorInner border-newTableBorder border rounded-[8px] h-[38px] px-[12px] text-[13px] outline-none"
+                  className="bg-newBgColorInner border-newTableBorder border rounded-[8px] h-[38px] mobile:h-[44px] px-[12px] text-[13px] outline-none"
                 />
                 <div className="max-h-[220px] overflow-y-auto scrollbar scrollbar-thumb-newColColor scrollbar-track-newBgColorInner flex flex-col">
                   {unlistenedGroups.map((g) => (
@@ -700,7 +707,7 @@ export const ZaloComponent: FC = () => {
                       <div className="flex-1 min-w-0 text-[13.5px] truncate">{g.name}</div>
                       <span
                         onClick={() => toggleGroup(g.threadId, g.name, true)}
-                        className="cursor-pointer text-[13px] font-[600] text-btnPrimary whitespace-nowrap"
+                        className="cursor-pointer text-[13px] font-[600] text-btnPrimary whitespace-nowrap mobile:min-h-[44px] mobile:inline-flex mobile:items-center"
                       >
                         + {t('zalo_listen_this_group', 'Listen to this group')}
                       </span>
@@ -732,7 +739,7 @@ export const ZaloComponent: FC = () => {
                     )
               }
               className={clsx(
-                'flex items-center gap-[8px] select-none',
+                'flex items-center gap-[8px] select-none mobile:min-h-[44px]',
                 cfg.hasKey ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'
               )}
             >
@@ -748,7 +755,7 @@ export const ZaloComponent: FC = () => {
             </div>
             <div className="w-[1px] h-[16px] bg-newTableBorder" />
             {/* Tạm dừng bot */}
-            <div onClick={togglePause} className="flex items-center gap-[8px] cursor-pointer select-none">
+            <div onClick={togglePause} className="flex items-center gap-[8px] cursor-pointer select-none mobile:min-h-[44px]">
               <Toggle small on={!!overview?.paused} onChange={togglePause} />
               <span className={overview?.paused ? 'text-red-500 font-[600]' : ''}>
                 {overview?.paused ? t('zalo_paused', 'Paused') : t('zalo_pause_bot', 'Pause bot')}

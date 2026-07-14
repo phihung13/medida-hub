@@ -836,3 +836,46 @@ html[dir='rtl'] [dir='ltr'] {
   box-shadow: 0 0 0 1px #cbd5e1, 0 6px 24px rgba(15, 23, 42, 0.12);
   background: #ffffff;
 }
+
+/* ============================================================================
+   ĐẠI TU MOBILE (2026-07) — nền tảng cảm giác "app" trên màn cảm ứng.
+   Chỉ ăn ở ≤1025px (khớp breakpoint mobile: của Tailwind) → desktop nguyên vẹn.
+   ========================================================================== */
+@media (max-width: 1025px) {
+  :root {
+    /* Chiều cao bottom tab bar (nội dung 56px) + vùng an toàn thanh home.
+       FAB/sheet/toast NEO THEO BIẾN NÀY thay vì magic-number 76/88/90px. */
+    --bottom-nav-h: calc(56px + env(safe-area-inset-bottom, 0px));
+  }
+  html {
+    -webkit-tap-highlight-color: transparent; /* bỏ chớp xám khi chạm */
+  }
+  body {
+    overscroll-behavior-y: none; /* không kéo-lật cả trang kiểu web */
+    -webkit-text-size-adjust: 100%;
+  }
+  /* iOS Safari tự phóng to trang khi focus input có font <16px — ép tối thiểu
+     16px cho mọi ô nhập trên mobile (điều chỉnh UX chủ đích, không phải bug). */
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+  /* Cuộn ngang kiểu app: có đà, không hiện scrollbar */
+  .mobile-hscroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .mobile-hscroll::-webkit-scrollbar {
+    display: none;
+  }
+  /* Nút/hàng bấm: phản hồi lún nhẹ như native */
+  .tap-shrink {
+    transition: transform 0.12s ease, opacity 0.12s ease;
+  }
+  .tap-shrink:active {
+    transform: scale(0.96);
+    opacity: 0.85;
+  }
+}

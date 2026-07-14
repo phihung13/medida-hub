@@ -757,6 +757,35 @@ export const Editor: FC<{
                 editorRef?.current?.editor?.commands?.focus('end');
               }}
             />
+            {/* Mobile không kéo-thả được → nút mở picker hệ thống, file vẫn đổ vào Uppy như cũ */}
+            {setImages && !(num > 0 && comments === 'no-media') && (
+              <label className="hidden mobile:flex bg-newBgColorInner px-[10px] pb-[8px] cursor-pointer">
+                <span className="w-full h-[44px] rounded-[8px] border border-dashed border-newTableBorder flex items-center justify-center gap-[8px] text-[14px] font-[600] text-textItemBlur tap-shrink">
+                  📎 {t('composer_add_media', 'Thêm ảnh/video')}
+                </span>
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*,video/mp4"
+                  className="hidden"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || []);
+                    e.target.value = '';
+                    if (!files.length) {
+                      return;
+                    }
+                    if (loading) {
+                      toaster.show(
+                        'Upload current in progress, please wait and then try again.',
+                        'warning'
+                      );
+                      return;
+                    }
+                    onDrop(files);
+                  }}
+                />
+              </label>
+            )}
             <div className="flex bg-newBgColorInner rounded-b-[6px] cursor-default">
               {setImages && (
                 <MultiMediaComponent
@@ -778,7 +807,10 @@ export const Editor: FC<{
                     />
                   }
                   toolBar={
-                    <div className="flex flex-wrap gap-[5px]">
+                    // Nút toolbar 30px nằm trong file cấm sửa → phóng 40px từ wrapper
+                    // (:not(.absolute) né panel bay của Heading). Không hscroll:
+                    // overflow-x sẽ cắt dropdown của MediaFromUrl.
+                    <div className="flex flex-wrap gap-[5px] mobile:gap-[8px] mobile:[&>[data-tooltip-id]]:w-[40px] mobile:[&>[data-tooltip-id]]:h-[40px] mobile:[&>div>[data-tooltip-id]:not(.absolute)]:w-[40px] mobile:[&>div>[data-tooltip-id]:not(.absolute)]:h-[40px]">
                       <MagicCaption
                         pictures={pictures || []}
                         context={valueWithoutHtml}
@@ -830,7 +862,8 @@ export const Editor: FC<{
                       <div className="relative">
                         <div
                           className={clsx(
-                            'absolute z-[500] -start-[50px] mobile:fixed mobile:start-[10px] mobile:end-[10px] mobile:bottom-[90px] mobile:top-auto',
+                            // Mobile: neo theo biến tab bar thay vì magic-number 90px
+                            'absolute z-[500] -start-[50px] mobile:fixed mobile:start-[10px] mobile:end-[10px] mobile:bottom-[var(--bottom-nav-h,64px)] mobile:top-auto',
                             num === 0 && allValues?.length > 1
                               ? 'top-[35px]'
                               : 'bottom-[35px]'

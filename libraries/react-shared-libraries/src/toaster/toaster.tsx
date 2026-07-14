@@ -33,7 +33,10 @@ export const Toaster = () => {
   return (
     <div
       className={clsx(
+        // Mobile: snackbar ĐÁY màn (trên tab bar, neo --bottom-nav-h) thay vì
+        // banner đỉnh đè status bar — kiểu iOS. Desktop giữ nguyên top-[32px].
         'animate-fadeDown rounded-[8px] gap-[18px] flex items-center overflow-hidden bg-customColor8 p-[16px] min-w-[319px] fixed start-[50%] text-white z-[900] top-[32px] -translate-x-[50%] h-[56px]',
+        'mobile:top-auto mobile:bottom-[calc(var(--bottom-nav-h,64px)+12px)] mobile:min-w-0 mobile:w-[calc(100vw-24px)] mobile:h-auto mobile:min-h-[52px] mobile:py-[12px] mobile:rounded-[14px]',
         toasterType === 'success' ? 'shadow-greenToast' : 'shadow-yellowToast'
       )}
     >

@@ -243,7 +243,7 @@ export const Card: FC<{ title?: ReactNode; className?: string; children: ReactNo
 }) => (
   <div
     className={clsx(
-      'border border-newTableBorder rounded-[12px] p-[20px] flex flex-col gap-[14px]',
+      'border border-newTableBorder rounded-[12px] p-[20px] mobile:p-[14px] flex flex-col gap-[14px]',
       className
     )}
   >
@@ -316,7 +316,11 @@ export const DangerLink: FC<{
 }> = ({ onClick, className, children }) => (
   <span
     onClick={onClick}
-    className={clsx('cursor-pointer text-[13px] font-[600] text-red-500 whitespace-nowrap', className)}
+    className={clsx(
+      // Mobile: link chữ nhỏ vẫn phải đạt vùng chạm 44px
+      'cursor-pointer text-[13px] font-[600] text-red-500 whitespace-nowrap mobile:min-h-[44px] mobile:inline-flex mobile:items-center',
+      className
+    )}
   >
     {children}
   </span>
@@ -335,7 +339,8 @@ export const Toggle: FC<{
     aria-disabled={disabled || undefined}
     className={clsx(
       'rounded-full relative transition-all border shrink-0',
-      small ? 'w-[38px] h-[22px]' : 'w-[46px] h-[26px]',
+      // Mobile: bản small phóng to bằng bản thường cho dễ gạt bằng ngón cái
+      small ? 'w-[38px] h-[22px] mobile:w-[46px] mobile:h-[26px]' : 'w-[46px] h-[26px]',
       disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
       on ? 'bg-btnPrimary border-btnPrimary' : 'bg-btnSimple border-newTableBorder'
     )}
@@ -343,20 +348,29 @@ export const Toggle: FC<{
     <div
       className={clsx(
         'rounded-full bg-white absolute transition-all shadow',
-        small ? 'w-[16px] h-[16px] top-[2px]' : 'w-[19px] h-[19px] top-[3px]',
-        on ? (small ? 'start-[18px]' : 'start-[23px]') : small ? 'start-[2px]' : 'start-[3px]'
+        small
+          ? 'w-[16px] h-[16px] top-[2px] mobile:w-[19px] mobile:h-[19px] mobile:top-[3px]'
+          : 'w-[19px] h-[19px] top-[3px]',
+        on
+          ? small
+            ? 'start-[18px] mobile:start-[23px]'
+            : 'start-[23px]'
+          : small
+          ? 'start-[2px] mobile:start-[3px]'
+          : 'start-[3px]'
       )}
     />
   </div>
 );
 
 // Ô nhập/textarea/select cùng token — dùng lại khắp các tab.
+// Mobile ép font 16px toàn cục (chống iOS zoom) → control phải cao 44px mới thoáng.
 export const inputCls =
-  'bg-newBgColorInner border-newTableBorder border rounded-[8px] h-[38px] px-[12px] text-[13px] outline-none w-full';
+  'bg-newBgColorInner border-newTableBorder border rounded-[8px] h-[38px] mobile:h-[44px] px-[12px] text-[13px] outline-none w-full';
 export const textareaCls =
   'bg-newBgColorInner border-newTableBorder border rounded-[8px] p-[12px] text-[13px] leading-[1.6] outline-none resize-y w-full';
 export const selectCls =
-  'bg-newBgColorInner border-newTableBorder border rounded-[8px] h-[38px] px-[8px] text-[13px] outline-none cursor-pointer w-full';
+  'bg-newBgColorInner border-newTableBorder border rounded-[8px] h-[38px] mobile:h-[44px] px-[8px] text-[13px] outline-none cursor-pointer w-full';
 
 export const FieldLabel: FC<{ children: ReactNode; hint?: ReactNode }> = ({
   children,

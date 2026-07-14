@@ -20,7 +20,7 @@ export const OnboardingModal: FC<OnboardingModalProps> = ({ onClose }) => {
   const t = useT();
 
   return (
-    <div className="w-full min-h-full flex-1 p-[40px] flex relative">
+    <div className="w-full min-h-full flex-1 p-[40px] mobile:p-[16px] flex relative">
       <style>
         {`#support-discord {display: none}`}
       </style>
@@ -45,10 +45,10 @@ export const OnboardingModal: FC<OnboardingModalProps> = ({ onClose }) => {
             ></path>
           </svg>
         </button>
-        <div className="flex-1 flex p-[40px]">
+        <div className="flex-1 flex p-[40px] mobile:p-[16px]">
           <div className="flex flex-col gap-[24px] flex-1">
-            {/* Step indicators */}
-            <div className="flex items-center justify-center gap-[16px]">
+            {/* Step indicators — mobile chỉ hiện nhãn của bước đang đứng cho khỏi tràn 375px */}
+            <div className="flex items-center justify-center gap-[16px] mobile:gap-[10px]">
               <div className="flex items-center gap-[8px]">
                 <div
                   className={clsx(
@@ -63,13 +63,13 @@ export const OnboardingModal: FC<OnboardingModalProps> = ({ onClose }) => {
                 <span
                   className={clsx(
                     'text-[14px]',
-                    step === 1 ? 'font-medium' : 'text-textColor'
+                    step === 1 ? 'font-medium' : 'text-textColor mobile:hidden'
                   )}
                 >
                   {t('connect_channels', 'Connect Channels')}
                 </span>
               </div>
-              <div className="w-[40px] h-[2px] bg-boxFocused" />
+              <div className="w-[40px] h-[2px] bg-boxFocused mobile:w-[24px]" />
               <div className="flex items-center gap-[8px]">
                 <div
                   className={clsx(
@@ -84,7 +84,7 @@ export const OnboardingModal: FC<OnboardingModalProps> = ({ onClose }) => {
                 <span
                   className={clsx(
                     'text-[14px]',
-                    step === 2 ? 'font-medium' : 'text-textColor'
+                    step === 2 ? 'font-medium' : 'text-textColor mobile:hidden'
                   )}
                 >
                   {t('watch_tutorial', 'Watch Tutorial')}
@@ -214,7 +214,7 @@ const OnboardingStep1: FC<{ onNext: () => void; onSkip: () => void }> = ({
       <div className="flex justify-end pt-[24px] mt-[8px]">
         <button
           onClick={onNext}
-          className="group flex items-center gap-[12px] bg-gradient-to-r from-[#622aff] to-[#8b5cf6] hover:from-[#7c3aff] hover:to-[#9d6eff] text-white font-semibold px-[32px] py-[14px] rounded-[12px] text-[16px] transition-all shadow-lg shadow-purple-500/25 hover:shadow-purple-500/40"
+          className="group flex items-center gap-[12px] bg-gradient-to-r from-[#622aff] to-[#8b5cf6] hover:from-[#7c3aff] hover:to-[#9d6eff] text-white font-semibold px-[32px] py-[14px] rounded-[12px] text-[16px] transition-all shadow-lg shadow-purple-500/25 hover:shadow-purple-500/40 mobile:w-full mobile:justify-center mobile:px-[16px] tap-shrink"
         >
           {sortedIntegrations.length > 0
             ? t('continue', 'Continue')
@@ -260,8 +260,8 @@ const OnboardingStep2: FC<{ onBack: () => void; onFinish: () => void }> = ({
         </div>
       </div>
 
-      {/* YouTube Video Embed */}
-      <div className="relative flex-1 rounded-[12px] overflow-hidden">
+      {/* YouTube Video Embed — mobile chốt tỉ lệ 16:9 vì flex-1 trong bottom sheet có thể xẹp về 0 */}
+      <div className="relative flex-1 rounded-[12px] overflow-hidden mobile:flex-none mobile:aspect-video">
         <div className="absolute left-0 top-0 w-full h-full flex justify-center">
           <iframe
             className="h-full aspect-video"
@@ -274,10 +274,10 @@ const OnboardingStep2: FC<{ onBack: () => void; onFinish: () => void }> = ({
       </div>
 
       {/* Action buttons */}
-      <div className="flex justify-between pt-[24px] mt-[8px]">
+      <div className="flex justify-between pt-[24px] mt-[8px] mobile:gap-[10px]">
         <button
           onClick={onBack}
-          className="group flex items-center gap-[8px] bg-transparent border-2 border-boxFocused font-medium px-[24px] py-[12px] rounded-[12px] text-[15px] transition-all"
+          className="group flex items-center gap-[8px] bg-transparent border-2 border-boxFocused font-medium px-[24px] py-[12px] rounded-[12px] text-[15px] transition-all mobile:px-[16px] tap-shrink"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -298,7 +298,7 @@ const OnboardingStep2: FC<{ onBack: () => void; onFinish: () => void }> = ({
         </button>
         <button
           onClick={onFinish}
-          className="group flex items-center gap-[12px] bg-gradient-to-r from-[#10b981] to-[#059669] hover:from-[#34d399] hover:to-[#10b981] text-white font-semibold px-[32px] py-[14px] rounded-[12px] text-[16px] transition-all shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40"
+          className="group flex items-center gap-[12px] bg-gradient-to-r from-[#10b981] to-[#059669] hover:from-[#34d399] hover:to-[#10b981] text-white font-semibold px-[32px] py-[14px] rounded-[12px] text-[16px] transition-all shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 mobile:flex-1 mobile:justify-center mobile:px-[16px] tap-shrink"
         >
           {t('get_started', 'Get Started')}
           <svg

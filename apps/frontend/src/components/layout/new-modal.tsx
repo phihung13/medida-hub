@@ -10,6 +10,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
 } from 'react';
 import { Button } from '@gitroom/react/form/button';
 import { useHotkeys } from 'react-hotkeys-hook';
@@ -21,6 +22,10 @@ interface OpenModalInterface {
   closeOnClickOutside?: boolean;
   removeLayout?: boolean;
   fullScreen?: boolean;
+  /** Mobile (≤1025px): mặc định modal thường render thành BOTTOM SHEET trượt
+   *  từ đáy (đại tu mobile 2026-07). Truyền sheet: false để giữ dialog giữa
+   *  màn cả trên mobile. Desktop không bị ảnh hưởng bởi cờ này. */
+  sheet?: boolean;
   top?: string | number;
   closeOnEscape?: boolean;
   withCloseButton?: boolean;
@@ -113,6 +118,56 @@ export const Component: FC<{
     closeModal(modal.id);
   }, [modal.id, closeModal]);
 
+  // ---- Bottom sheet mobile: vuốt tay cầm xuống để đóng (đại tu 2026-07) ----
+  // Chỉ modal thường (không fullScreen/removeLayout, không sheet:false).
+  const asSheet = modal.sheet !== false && !modal.fullScreen;
+  const panelRef = useRef<HTMLDivElement>(null);
+  const dragStartY = useRef<number | null>(null);
+  const dragDelta = useRef(0);
+  const onDragStart = useCallback((e: React.TouchEvent) => {
+    dragStartY.current = e.touches[0].clientY;
+    dragDelta.current = 0;
+    if (panelRef.current) {
+      // Gỡ animation mở (sheetIn) trước khi ghi transform inline — nếu không,
+      // tầng animation-origin của cascade sẽ THẮNG inline style, panel không
+      // bám theo ngón tay.
+      panelRef.current.style.animation = 'none';
+      panelRef.current.style.transition = 'none';
+    }
+  }, []);
+  const onDragMove = useCallback((e: React.TouchEvent) => {
+    if (dragStartY.current === null || !panelRef.current) return;
+    const dy = Math.max(0, e.touches[0].clientY - dragStartY.current);
+    dragDelta.current = dy;
+    panelRef.current.style.transform = `translateY(${dy}px)`;
+  }, []);
+  const resetPanel = useCallback(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    panel.style.transition = 'transform 0.22s cubic-bezier(0.32,0.72,0,1)';
+    panel.style.transform = '';
+  }, []);
+  const onDragEnd = useCallback(() => {
+    const panel = panelRef.current;
+    const delta = dragDelta.current;
+    dragStartY.current = null;
+    if (!panel) return;
+    if (delta > 90) {
+      if (modal.askClose) {
+        // Có hộp xác nhận: KHÔNG trượt mù ra ngoài (bấm "No" sẽ kẹt panel).
+        // Trả panel về chỗ rồi để closeModalFunction tự hỏi.
+        resetPanel();
+        closeModalFunction();
+      } else {
+        panel.style.transition = 'transform 0.2s ease-in';
+        panel.style.transform = 'translateY(105%)';
+        setTimeout(() => closeModalFunction(), 160);
+      }
+    } else {
+      resetPanel();
+    }
+  }, [closeModalFunction, resetPanel, modal.askClose]);
+
   const RenderComponent = useMemo(() => {
     return typeof modal.children === 'function'
       ? modal.children(closeModalFunction)
@@ -172,7 +227,10 @@ export const Component: FC<{
         style={{ zIndex }}
         className={clsx(
           'fixed flex left-0 top-0 min-w-full min-h-full bg-popup transition-all animate-fadeIn overflow-y-auto text-newTextColor',
-          !modal.fullScreen && 'pb-[50px]'
+          !modal.fullScreen && 'pb-[50px]',
+          // Sheet mobile phải dán sát ĐÁY màn — bỏ pb-[50px] để không hở dải
+          // backdrop dưới đáy sheet (desktop giữ pb-[50px]).
+          asSheet && 'mobile:!pb-0'
         )}
       >
         <div className="relative flex-1">
@@ -191,15 +249,23 @@ export const Component: FC<{
                 : 'h-screen',
               modal.size && modal.height
                 ? 'flex justify-center items-center'
-                : 'top-0 left-0'
+                : 'top-0 left-0',
+              // Sheet mobile: neo nội dung xuống ĐÁY màn (desktop giữ nguyên).
+              asSheet &&
+                'mobile:min-h-full mobile:flex mobile:flex-col mobile:!justify-end mobile:!items-stretch mobile:!pt-[40px] mobile:!pb-0'
             )}
           >
             <div
+              ref={panelRef}
               className={clsx(
                 !modal.removeLayout && 'gap-[40px] p-[32px]',
                 'bg-newBgColorInner mx-auto flex flex-col w-fit rounded-[24px] relative',
                 modal.size ? '' : 'min-w-[600px] mobile:min-w-0 mobile:w-[calc(100vw-24px)] mobile:max-w-full',
-                modal.fullScreen && 'h-full'
+                modal.fullScreen && 'h-full',
+                // Sheet mobile: full-width dán đáy, bo góc trên, trượt lên,
+                // tự cuộn bên trong, chừa vùng an toàn thanh home.
+                asSheet &&
+                  'mobile:!w-full mobile:!min-w-0 mobile:!max-w-full mobile:mx-0 mobile:rounded-b-none mobile:rounded-t-[20px] mobile:!p-[16px] mobile:!pt-[6px] mobile:!gap-[14px] mobile:!pb-[calc(16px+env(safe-area-inset-bottom,0px))] mobile:animate-sheetIn mobile:max-h-[90dvh] mobile:overflow-y-auto'
               )}
               {...((!!modal.size || !!modal.height || !!modal.maxSize) && {
                 style: {
@@ -210,15 +276,25 @@ export const Component: FC<{
               })}
               onClick={(e) => e.stopPropagation()}
             >
+              {asSheet && (
+                <div
+                  className="hidden mobile:flex justify-center py-[8px] -mx-[16px] touch-none cursor-grab"
+                  onTouchStart={onDragStart}
+                  onTouchMove={onDragMove}
+                  onTouchEnd={onDragEnd}
+                >
+                  <div className="w-[36px] h-[5px] rounded-full bg-newTextColor/20" />
+                </div>
+              )}
               <div className="flex items-center">
-                <div className="text-[24px] font-[600] flex-1">
+                <div className="text-[24px] font-[600] flex-1 mobile:text-[17px]">
                   {modal.title}
                 </div>
                 {typeof modal.withCloseButton === 'undefined' ||
                 modal.withCloseButton ? (
                   <div className="cursor-pointer">
                     <button
-                      className="outline-none absolute end-[20px] top-[20px] mantine-UnstyledButton-root mantine-ActionIcon-root hover:bg-tableBorder cursor-pointer mantine-Modal-close mantine-1dcetaa"
+                      className="outline-none absolute end-[20px] top-[20px] mantine-UnstyledButton-root mantine-ActionIcon-root hover:bg-tableBorder cursor-pointer mantine-Modal-close mantine-1dcetaa mobile:end-[10px] mobile:top-[8px] mobile:w-[44px] mobile:h-[44px] mobile:rounded-full mobile:flex mobile:items-center mobile:justify-center"
                       type="button"
                       onClick={closeModalFunction}
                     >

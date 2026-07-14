@@ -27,6 +27,7 @@ import VkProvider from '@gitroom/frontend/components/new-launch/providers/vk/vk.
 import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
 import { useShallow } from 'zustand/react/shallow';
 import React, { FC, forwardRef, useEffect, useImperativeHandle } from 'react';
+import clsx from 'clsx';
 import { GeneralPreviewComponent } from '@gitroom/frontend/components/launches/general.preview.component';
 import { IntegrationContext } from '@gitroom/frontend/components/launches/helpers/use.integration';
 import { Button } from '@gitroom/react/form/button';
@@ -235,9 +236,24 @@ export const ShowAllProviders = forwardRef((props, ref) => {
               )}
             </div>
           ) : (
-            <div className="border border-borderPreview rounded-[12px] shadow-previewShadow">
-              <GeneralPreviewComponent maximumCharacters={100000000} />
-            </div>
+            <>
+              {/* Mobile: nhãn kênh dính đỉnh — định hướng khi cuộn preview dài */}
+              {!!selectedIntegrations?.[0] && (
+                <div className="hidden mobile:flex sticky top-0 z-[60] items-center gap-[8px] py-[6px] mb-[8px] bg-newBgColorInner">
+                  <img
+                    src={`/icons/platforms/${selectedIntegrations[0].integration.identifier}.png`}
+                    className="w-[16px] h-[16px] rounded-[4px]"
+                    alt={selectedIntegrations[0].integration.identifier}
+                  />
+                  <span className="text-[12px] font-[600] text-textItemBlur truncate">
+                    {selectedIntegrations[0].integration.name}
+                  </span>
+                </div>
+              )}
+              <div className="border border-borderPreview rounded-[12px] shadow-previewShadow">
+                <GeneralPreviewComponent maximumCharacters={100000000} />
+              </div>
+            </>
           )}
         </IntegrationContext.Provider>
       )}
@@ -249,12 +265,32 @@ export const ShowAllProviders = forwardRef((props, ref) => {
           component: Empty,
         };
 
+        // Provider tự ẩn khi không phải kênh đang xem (current) → nhãn cũng
+        // chỉ vẽ cho kênh đang hiện, tránh chuỗi nhãn mồ côi
+        const isShown = current === integration.integration.id;
+
         return (
-          <ProviderComponent
-            ref={integration.ref}
+          <div
             key={integration.integration.id}
-            id={integration.integration.id}
-          />
+            className={clsx(isShown && 'mobile:mb-[16px]')}
+          >
+            {isShown && (
+              <div className="hidden mobile:flex sticky top-0 z-[60] items-center gap-[8px] py-[6px] mb-[8px] bg-newBgColorInner">
+                <img
+                  src={`/icons/platforms/${integration.integration.identifier}.png`}
+                  className="w-[16px] h-[16px] rounded-[4px]"
+                  alt={integration.integration.identifier}
+                />
+                <span className="text-[12px] font-[600] text-textItemBlur truncate">
+                  {integration.integration.name}
+                </span>
+              </div>
+            )}
+            <ProviderComponent
+              ref={integration.ref}
+              id={integration.integration.id}
+            />
+          </div>
         );
       })}
     </div>

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import clsx from 'clsx';
 import { useToaster } from '@gitroom/react/toaster/toaster';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
+import { useIsMobile } from '@gitroom/frontend/components/new-layout/use.is.mobile';
 import {
   bot,
   BotPost,
@@ -34,6 +35,7 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
   const t = useT();
   const toast = useToaster();
   const router = useRouter();
+  const isMobile = useIsMobile();
 
   const [botUrl, setBotUrl] = useState('/botapi');
   useEffect(() => setBotUrl(getBotUrl()), []);
@@ -56,7 +58,13 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
     if (!lightbox) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setLightbox(null);
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // Khóa scroll nền khi lightbox mở — trên mobile vuốt ảnh không kéo cả trang
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
   }, [lightbox]);
 
   const load = useCallback(async () => {
@@ -74,7 +82,10 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
 
   useEffect(() => {
     load();
-    const i = setInterval(load, 10000);
+    // App nền thì bỏ tick — đỡ hao pin/4G
+    const i = setInterval(() => {
+      if (document.visibilityState === 'visible') load();
+    }, 10000);
     return () => clearInterval(i);
   }, [load]);
 
@@ -263,7 +274,7 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
             {longCaption && (
               <span
                 onClick={() => toggleExpanded(d.id)}
-                className="text-[12px] font-[600] text-textItemBlur hover:text-newTextColor cursor-pointer transition-colors duration-150"
+                className="text-[12px] font-[600] text-textItemBlur hover:text-newTextColor cursor-pointer transition-colors duration-150 mobile:min-h-[36px] mobile:inline-flex mobile:items-center"
               >
                 {isOpen ? t('zalo_posts_collapse', 'collapse') : `… ${t('zalo_posts_see_more', 'see more')}`}
               </span>
@@ -273,7 +284,7 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
 
         {/* ---- Media strip (bấm xem lớn) ---------------------------------------- */}
         {(!!imgs.length || !!vids.length) && (
-          <div className="flex gap-[6px] overflow-x-auto scrollbar scrollbar-thumb-newColColor scrollbar-track-newBgColorInner px-[14px] py-[8px]">
+          <div className="flex gap-[6px] overflow-x-auto scrollbar scrollbar-thumb-newColColor scrollbar-track-newBgColorInner px-[14px] py-[8px] mobile-hscroll mobile:gap-[8px]">
             {tiles.map((u, i) => (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -284,14 +295,22 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
                 onClick={() =>
                   openLightbox({ url: `${botUrl}${u}`, caption: d.imageCaptions?.[i] })
                 }
-                className="h-[72px] w-[72px] object-cover rounded-[8px] border border-newTableBorder shrink-0 cursor-pointer hover:opacity-80 transition-opacity duration-150"
+                className="h-[72px] w-[72px] mobile:h-[96px] mobile:w-[96px] object-cover rounded-[8px] border border-newTableBorder shrink-0 cursor-pointer hover:opacity-80 transition-opacity duration-150"
                 loading="lazy"
               />
             ))}
             {moreTiles > 0 && (
               <div
-                onClick={() => toggleDetail(d.id)}
-                className="h-[72px] w-[72px] rounded-[8px] bg-btnSimple flex items-center justify-center text-[12.5px] font-[700] shrink-0 cursor-pointer hover:bg-boxHover transition-colors duration-150"
+                // Mobile: +N mở luôn ảnh kế tiếp trong lightbox (Details là món desktop)
+                onClick={() =>
+                  isMobile
+                    ? openLightbox({
+                        url: `${botUrl}${imgs[MAX_TILES]}`,
+                        caption: d.imageCaptions?.[MAX_TILES],
+                      })
+                    : toggleDetail(d.id)
+                }
+                className="h-[72px] w-[72px] mobile:h-[96px] mobile:w-[96px] rounded-[8px] bg-btnSimple flex items-center justify-center text-[12.5px] font-[700] shrink-0 cursor-pointer hover:bg-boxHover transition-colors duration-150"
                 title={t('zalo_posts_detail', 'Details')}
               >
                 +{moreTiles}
@@ -309,7 +328,7 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
                   })
                 }
                 title={d.videoCaptions?.[i] || t('zalo_posts_play_video', 'Play video')}
-                className="relative h-[72px] w-[72px] rounded-[8px] border border-newTableBorder shrink-0 cursor-pointer overflow-hidden bg-black/70 hover:opacity-80 transition-opacity duration-150"
+                className="relative h-[72px] w-[72px] mobile:h-[96px] mobile:w-[96px] rounded-[8px] border border-newTableBorder shrink-0 cursor-pointer overflow-hidden bg-black/70 hover:opacity-80 transition-opacity duration-150"
               >
                 <video
                   src={`${botUrl}${u}#t=0.1`}
@@ -333,7 +352,7 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
           <div className="px-[14px] pb-[6px]">
             <span
               onClick={() => toggleDetail(d.id)}
-              className="text-[12px] font-[600] text-textItemBlur hover:text-newTextColor cursor-pointer transition-colors duration-150"
+              className="text-[12px] font-[600] text-textItemBlur hover:text-newTextColor cursor-pointer transition-colors duration-150 mobile:min-h-[36px] mobile:inline-flex mobile:items-center"
             >
               {detail.has(d.id) ? '▾' : '▸'} {t('zalo_posts_detail', 'Details')}
             </span>
@@ -384,7 +403,7 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
                 href={l}
                 target="_blank"
                 rel="noreferrer"
-                className="text-[12px] font-[600] text-btnPrimary border border-newTableBorder rounded-full px-[10px] h-[26px] inline-flex items-center hover:bg-boxHover transition-colors duration-150"
+                className="text-[12px] font-[600] text-btnPrimary border border-newTableBorder rounded-full px-[10px] h-[26px] mobile:h-[36px] mobile:px-[14px] inline-flex items-center hover:bg-boxHover transition-colors duration-150"
               >
                 Facebook ↗
               </a>
@@ -395,7 +414,7 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
                 href={l}
                 target="_blank"
                 rel="noreferrer"
-                className="text-[12px] font-[600] text-btnPrimary border border-newTableBorder rounded-full px-[10px] h-[26px] inline-flex items-center hover:bg-boxHover transition-colors duration-150"
+                className="text-[12px] font-[600] text-btnPrimary border border-newTableBorder rounded-full px-[10px] h-[26px] mobile:h-[36px] mobile:px-[14px] inline-flex items-center hover:bg-boxHover transition-colors duration-150"
               >
                 Google ↗
               </a>
@@ -413,7 +432,7 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
           </DangerLink>
           <div className="flex-1" />
           <SimpleButton
-            className="!h-[32px] !px-[14px] text-[12.5px]"
+            className="!h-[32px] !px-[14px] text-[12.5px] mobile:!h-[40px] mobile:!px-[16px]"
             disabled={thisBusy}
             title={t(
               'zalo_open_calendar_hint',
@@ -453,7 +472,7 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
           <select
             value={folder}
             onChange={(e) => setFolder(e.target.value)}
-            className={clsx(selectCls, '!w-auto min-w-[170px] !h-[34px]')}
+            className={clsx(selectCls, '!w-auto min-w-[170px] !h-[34px] mobile:!h-[44px]')}
             title={t('zalo_posts_folder_title', 'Filter posts by the person/section in charge')}
           >
             <option value="">{t('zalo_posts_all_folders', '— All sections —')}</option>
@@ -465,7 +484,10 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
           </select>
         )}
         <div className="flex-1" />
-        <span onClick={refresh} className="cursor-pointer text-[12.5px] font-[600] text-btnPrimary">
+        <span
+          onClick={refresh}
+          className="cursor-pointer text-[12.5px] font-[600] text-btnPrimary mobile:min-h-[44px] mobile:inline-flex mobile:items-center"
+        >
           ↻ {t('zalo_refresh', 'Refresh')}
         </span>
       </div>
@@ -485,12 +507,14 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
       {/* ---- Lightbox xem ảnh/video lớn (đóng: bấm nền / ✕ / Esc) ---------- */}
       {lightbox && (
         <div
-          className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-[20px]"
+          className="fixed inset-0 z-[180] bg-black/85 flex items-center justify-center p-[20px]"
           onClick={() => setLightbox(null)}
         >
           <button
             aria-label={t('zalo_close', 'Close')}
-            className="absolute top-[14px] end-[20px] w-[36px] h-[36px] rounded-full bg-white/10 hover:bg-white/25 text-white text-[17px] leading-none cursor-pointer transition-colors duration-150"
+            onClick={() => setLightbox(null)}
+            // Mobile: né notch/dynamic island + vùng chạm 44px
+            className="absolute top-[14px] end-[20px] w-[36px] h-[36px] rounded-full bg-white/10 hover:bg-white/25 text-white text-[17px] leading-none cursor-pointer transition-colors duration-150 mobile:top-[calc(env(safe-area-inset-top,0px)_+_10px)] mobile:end-[12px] mobile:w-[44px] mobile:h-[44px] mobile:text-[20px]"
           >
             ✕
           </button>

@@ -164,11 +164,18 @@ export const ZaloGbpTab: FC = () => {
               <iframe
                 src={vncSrc}
                 title="Google login virtual screen"
-                className="w-full h-[520px] block"
+                className="w-full h-[520px] mobile:h-[70dvh] block"
               />
             </div>
+            <div className="hidden mobile:block text-[11.5px] text-textItemBlur leading-[1.5]">
+              💻{' '}
+              {t(
+                'zalo_gbp_easier_desktop',
+                'Mẹo: thao tác đăng nhập trên màn hình ảo này dễ hơn trên máy tính.'
+              )}
+            </div>
             <div className="flex items-center gap-[10px] flex-wrap">
-              <PrimaryButton className="!h-[36px] text-[13px]" disabled={busy} onClick={() => call('/api/gbp/login/save', t('zalo_gbp_session_saved', 'Đã lưu session Google'))}>
+              <PrimaryButton className="!h-[36px] mobile:!h-[44px] text-[13px]" disabled={busy} onClick={() => call('/api/gbp/login/save', t('zalo_gbp_session_saved', 'Đã lưu session Google'))}>
                 ✓ {t('zalo_gbp_done_login', 'Đã đăng nhập xong — Lưu')}
               </PrimaryButton>
               <DangerLink onClick={() => { setVncSrc(null); call('/api/gbp/login/cancel', t('zalo_gbp_login_cancelled', 'Đã hủy')); }}>
@@ -178,17 +185,17 @@ export const ZaloGbpTab: FC = () => {
           </div>
         ) : (
           <div className="flex items-center gap-[10px] flex-wrap">
-            <PrimaryButton className="!h-[36px] text-[13px]" disabled={vncBusy} onClick={openVirtualScreen}>
+            <PrimaryButton className="!h-[36px] mobile:!h-[44px] text-[13px]" disabled={vncBusy} onClick={openVirtualScreen}>
               {vncBusy
                 ? t('zalo_gbp_opening_screen', 'Đang mở màn hình…')
                 : sess.hasSession
                 ? t('zalo_gbp_update_session', 'Đăng nhập lại Google')
                 : t('zalo_gbp_open_screen', '🖥 Đăng nhập Google ngay trên web')}
             </PrimaryButton>
-            <span onClick={load} className="cursor-pointer text-[12.5px] font-[600] text-btnPrimary">
+            <span onClick={load} className="cursor-pointer text-[12.5px] font-[600] text-btnPrimary mobile:min-h-[40px] mobile:inline-flex mobile:items-center">
               ↻ {t('zalo_refresh', 'Làm mới')}
             </span>
-            <span onClick={() => setShowUpload((v) => !v)} className="cursor-pointer text-[12px] text-textItemBlur hover:text-newTextColor">
+            <span onClick={() => setShowUpload((v) => !v)} className="cursor-pointer text-[12px] text-textItemBlur hover:text-newTextColor mobile:min-h-[40px] mobile:inline-flex mobile:items-center">
               {t('zalo_gbp_other_way', 'Cách khác: tải file session…')}
             </span>
           </div>
@@ -196,7 +203,7 @@ export const ZaloGbpTab: FC = () => {
 
         {/* Fallback: upload session file (thu gọn) */}
         {showUpload && !vncSrc && (
-          <label className="inline-flex items-center gap-[6px] cursor-pointer text-[12.5px] font-[600] text-btnPrimary w-fit">
+          <label className="inline-flex items-center gap-[6px] cursor-pointer text-[12.5px] font-[600] text-btnPrimary w-fit mobile:min-h-[44px]">
             <input
               type="file"
               accept="application/json,.json"
@@ -221,7 +228,7 @@ export const ZaloGbpTab: FC = () => {
                 if (editing) setRows(status.businesses || []);
                 setEditing((v) => !v);
               }}
-              className="cursor-pointer normal-case tracking-normal font-[600] text-btnPrimary text-[12.5px]"
+              className="cursor-pointer normal-case tracking-normal font-[600] text-btnPrimary text-[12.5px] mobile:min-h-[40px] mobile:inline-flex mobile:items-center"
             >
               {editing ? t('zalo_gbp_close_edit', 'Close editing') : `✏️ ${t('zalo_gbp_edit', 'Edit')}`}
             </span>
@@ -250,14 +257,14 @@ export const ZaloGbpTab: FC = () => {
                   placeholder="Business/Profile ID"
                   className={inputCls + ' flex-1 min-w-[160px] !w-auto'}
                 />
-                <DangerLink onClick={() => setRows((cur) => cur.filter((_, j) => j !== i))}>✕</DangerLink>
+                <DangerLink className="mobile:min-w-[40px] mobile:justify-center" onClick={() => setRows((cur) => cur.filter((_, j) => j !== i))}>✕</DangerLink>
               </div>
             ))}
             <div className="flex items-center gap-[10px]">
-              <SimpleButton className="!h-[34px] text-[13px]" onClick={() => setRows((cur) => [...cur, { name: '', id: '' }])}>
+              <SimpleButton className="!h-[34px] mobile:!h-[44px] text-[13px]" onClick={() => setRows((cur) => [...cur, { name: '', id: '' }])}>
                 + {t('zalo_gbp_add_profile', 'Add profile')}
               </SimpleButton>
-              <PrimaryButton className="!h-[34px] text-[13px]" disabled={busy} onClick={saveBiz}>
+              <PrimaryButton className="!h-[34px] mobile:!h-[44px] text-[13px]" disabled={busy} onClick={saveBiz}>
                 {t('zalo_gbp_save_list', 'Save list')}
               </PrimaryButton>
             </div>

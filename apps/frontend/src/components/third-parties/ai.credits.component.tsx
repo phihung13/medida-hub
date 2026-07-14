@@ -104,7 +104,7 @@ const CreditForm: FC<{ data?: any; onSaved: () => void }> = ({
               key={p.value}
               onClick={() => setProvider(p.value)}
               className={clsx(
-                'cursor-pointer rounded-[6px] px-[12px] h-[34px] flex items-center text-[13px] border',
+                'cursor-pointer rounded-[6px] px-[12px] h-[34px] flex items-center text-[13px] border mobile:h-[40px] mobile:px-[14px] tap-shrink',
                 provider === p.value
                   ? 'bg-[#1e6fd9] border-[#1e6fd9] text-white'
                   : 'bg-newColColor border-newBgLineColor'
@@ -289,25 +289,26 @@ const CreditCard: FC<{ item: any; reload: () => void }> = ({ item, reload }) => 
         <div className="text-[11px] text-red-400">⚠ {item.lastError}</div>
       )}
 
-      <div className="flex items-center gap-[6px] mt-[4px]">
+      {/* Mobile: nút chia đều hàng, chạm ≥40px */}
+      <div className="flex items-center gap-[6px] mt-[4px] mobile:gap-[8px]">
         {item.supportsAuto && (
           <button
             onClick={refresh}
             disabled={refreshing}
-            className="text-[12px] rounded-[6px] px-[10px] py-[5px] bg-btnPrimary text-white disabled:opacity-50"
+            className="text-[12px] rounded-[6px] px-[10px] py-[5px] bg-btnPrimary text-white disabled:opacity-50 mobile:flex-1 mobile:min-h-[40px] mobile:px-[14px] tap-shrink"
           >
             {refreshing ? '...' : t('refresh', 'Refresh')}
           </button>
         )}
         <button
           onClick={edit}
-          className="text-[12px] rounded-[6px] px-[10px] py-[5px] bg-newColColor border border-newBgLineColor"
+          className="text-[12px] rounded-[6px] px-[10px] py-[5px] bg-newColColor border border-newBgLineColor mobile:flex-1 mobile:min-h-[40px] mobile:px-[14px] tap-shrink"
         >
           {t('edit', 'Edit')}
         </button>
         <button
           onClick={remove}
-          className="text-[12px] rounded-[6px] px-[10px] py-[5px] text-red-500 hover:bg-red-500/10"
+          className="text-[12px] rounded-[6px] px-[10px] py-[5px] text-red-500 hover:bg-red-500/10 mobile:flex-1 mobile:min-h-[40px] mobile:px-[14px] mobile:border mobile:border-red-500/30 tap-shrink"
         >
           {t('delete', 'Delete')}
         </button>
