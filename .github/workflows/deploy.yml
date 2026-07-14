@@ -1,74 +1,87 @@
 ---
 name: Deploy
 
-# CD cho VPS Coolify — "merge vào main là tự deploy" NHƯNG chỉ deploy code đã
-# qua CI: chạy sau khi workflow "Build" (pnpm install + build 3 app) kết thúc
-# XANH trên main, rồi gọi Deploy Webhook của resource trong Coolify.
+# ============================================================================
+# CD KIỂU MỚI (2026-07-14): BUILD TRÊN GITHUB — VPS CHỈ KÉO IMAGE VỀ CHẠY
 #
-# QUAN TRỌNG (sửa 2026-07-09): workflow này giờ theo dõi build THẬT trên VPS
-# tới khi finished/failed — trước đây gọi webhook xong là báo xanh ngay dù
-# Coolify build fail (4/5 lần deploy gần nhất fail mà GitHub vẫn xanh).
+# Trước đây: push main → Build (CI, vứt kết quả) → webhook → VPS tự docker
+# build từ source 60-75 phút (đĩa VPS yếu, treo I/O, đụng trần timeout, web
+# chậm trong lúc build). Giờ: máy GitHub (4 CPU/16GB, miễn phí vì repo public)
+# build image bằng CHÍNH Dockerfile.dev cũ rồi đẩy lên GitHub Container
+# Registry; Coolify chỉ `docker compose pull` (~vài phút).
 #
-# Cần đặt secret trong GitHub (Settings → Secrets and variables → Actions):
-#   COOLIFY_WEBHOOK — URL "Deploy Webhook" của resource, dạng
-#                     https://<coolify>/api/v1/deploy?uuid=...
-#                     KHÔNG kèm force=true — force bỏ toàn bộ cache khiến mỗi
-#                     deploy build lại từ đầu (~38 phút) và dễ chết giữa chừng.
-#   COOLIFY_TOKEN   — API token (Coolify → Keys & Tokens → API tokens). Cần để
-#                     xác thực webhook VÀ theo dõi trạng thái deployment.
-# CHƯA đặt secret → job tự bỏ qua (không báo đỏ) — repo dùng được ngay cả khi
-# chưa dựng Coolify.
+#   push main ──► job build-image ──► ghcr.io/phihung13/medida-hub:latest
+#                                          │
+#                                          ▼ (job deploy — thêm ở bước 2,
+#                                             sau khi package được mở public)
+#                                     webhook Coolify → VPS pull + up -d
+#
+# Cache: layer image đẩy kèm vào tag :buildcache (mode=max). Lockfile không
+# đổi → layer pnpm install (~13') được tái dùng nguyên con, build chỉ còn
+# phần code + next/nest build (~10-15'). Các RUN --mount=type=cache trong
+# Dockerfile vô tác dụng trên runner GitHub (máy dùng xong vứt) — không sao,
+# cache layer qua registry thay thế vai trò đó.
+#
+# LƯU Ý: package ghcr lần đầu tạo ra sẽ ở chế độ PRIVATE — phải mở Public
+# (Package settings → Change visibility) thì VPS mới pull được không cần
+# đăng nhập. Repo vốn public nên image public không lộ thêm gì (.env, key
+# không nằm trong image — xem .dockerignore).
+# ============================================================================
 
 on:
-  workflow_run:
-    workflows: [Build]
-    types: [completed]
+  push:
     branches: [main]
-  # Cho phép kích deploy tay (GitHub UI / gh CLI) không cần push commit mới —
-  # dùng khi chỉ đổi Environment Variables trong Coolify.
+  # Kích tay (gh workflow run Deploy) — dùng khi chỉ đổi env trong Coolify.
   workflow_dispatch:
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
-    steps:
-      - name: Gọi Deploy Webhook của Coolify và chờ kết quả THẬT
-        env:
-          WEBHOOK: ${{ secrets.COOLIFY_WEBHOOK }}
-          TOKEN: ${{ secrets.COOLIFY_TOKEN }}
-        run: |
-          if [ -z "$WEBHOOK" ]; then
-            echo "Chưa đặt secret COOLIFY_WEBHOOK — bỏ qua bước deploy."
-            exit 0
-          fi
-          RESP=$(curl --fail -sS "$WEBHOOK" ${TOKEN:+-H "Authorization: Bearer $TOKEN"})
-          echo "Phản hồi webhook: $RESP"
-          echo "✅ Đã kích hoạt deploy trên Coolify."
+permissions:
+  contents: read
+  packages: write
 
-          # ---- Theo dõi build thật trên VPS (canary) -------------------------
-          DEP=$(echo "$RESP" | jq -r '.deployments[0].deployment_uuid // empty' 2>/dev/null || true)
-          if [ -z "$DEP" ] || [ -z "$TOKEN" ]; then
-            echo "⚠️ Không lấy được deployment_uuid (hoặc thiếu COOLIFY_TOKEN) — không theo dõi được kết quả build. Kiểm tra tay trong Coolify UI."
-            exit 0
-          fi
-          BASE=$(echo "$WEBHOOK" | sed -E 's#(https?://[^/]+).*#\1#')
-          echo "Theo dõi deployment $DEP trên $BASE (poll 30s, tối đa ~75 phút)..."
-          for i in $(seq 1 150); do
-            sleep 30
-            ST=$(curl -sS -m 20 "$BASE/api/v1/deployments/$DEP" -H "Authorization: Bearer $TOKEN" | jq -r '.status // "unknown"' 2>/dev/null || echo unknown)
-            echo "[$i] status=$ST"
-            case "$ST" in
-              finished)
-                echo "✅ Deploy THẬT đã hoàn tất trên VPS."
-                exit 0
-                ;;
-              failed|cancelled|cancelled-by-user)
-                echo "❌ Build trên VPS thất bại (status=$ST) — xem log trong Coolify UI → media-hub → Deployments."
-                exit 1
-                ;;
-            esac
-          done
-          echo "⏰ Quá ~75 phút chưa xong — coi như FAIL để không báo xanh giả."
-          exit 1
+# Push dồn dập thì xếp hàng chứ không hủy lẫn nhau (bài học Coolify cũ).
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  build-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      # Image ~6-8GB + cache export — dọn ~20GB rác có sẵn trên runner cho chắc.
+      - name: Giải phóng đĩa runner
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build và đẩy image lên GHCR
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.dev
+          push: true
+          platforms: linux/amd64
+          # provenance/sbom tạo manifest-list lạ dễ làm docker cũ trên VPS khó
+          # chịu khi pull — tắt cho manifest đơn giản, một kiến trúc.
+          provenance: false
+          sbom: false
+          tags: |
+            ghcr.io/phihung13/medida-hub:latest
+            ghcr.io/phihung13/medida-hub:${{ github.sha }}
+          # GIỮ NGUYÊN giá trị cố định như compose cũ — đổi giá trị này là bust
+          # toàn bộ cache layer (ENV nằm đầu Dockerfile).
+          build-args: |
+            NEXT_PUBLIC_VERSION=media-hub
+          # Gắn package vào repo (hiện trên trang repo, kế thừa quyền Actions).
+          labels: |
+            org.opencontainers.image.source=https://github.com/phihung13/medida-hub
+          cache-from: type=registry,ref=ghcr.io/phihung13/medida-hub:buildcache
+          cache-to: type=registry,ref=ghcr.io/phihung13/medida-hub:buildcache,mode=max

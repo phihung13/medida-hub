@@ -1,8 +1,12 @@
 ---
 name: Build
 
+# CI kiểm tra compile cho nhánh phụ/PR. Nhánh main KHÔNG chạy nữa: push main
+# đã build thật qua workflow Deploy (docker build → GHCR) — code hỏng thì
+# Deploy đỏ, khỏi build trùng 2 lần.
 on:
   push:
+    branches-ignore: [main]
   merge_group:
   pull_request:
 
