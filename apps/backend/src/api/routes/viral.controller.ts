@@ -441,8 +441,14 @@ export class ViralController {
     const res = await this._service.postProduct(org.id, id, integrationId);
     if (!res) throw new HttpException('Không tìm thấy sản phẩm (hoặc chưa xong).', 404);
     if ((res as any).needRetry) {
+      // Trả OBJECT (không phải string) để frontend đọc cờ needRetry → hiện nút
+      // "↻ Tạo lại bộ ảnh" ngay trong modal đăng (thẻ 'done' cũ vốn không có nút).
       throw new HttpException(
-        'Bộ ảnh này tạo bằng bản cũ (chưa lưu id media) — bấm ↻ Thử lại để tạo lại rồi mới đăng được.',
+        {
+          message:
+            'Bộ ảnh này tạo bằng bản cũ (chưa lưu id media) — bấm ↻ Tạo lại bộ ảnh trong cửa sổ này rồi đăng lại.',
+          needRetry: true,
+        },
         400
       );
     }

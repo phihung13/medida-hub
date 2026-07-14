@@ -1294,6 +1294,26 @@ const PostProductModal: FC<{ product: any; onDone: () => void }> = ({ product, o
   const { data: integrations } = useIntegrationList();
   const [integrationId, setIntegrationId] = useState('');
   const [busy, setBusy] = useState(false);
+  // Bộ ảnh tạo bằng bản CŨ (chưa lưu media id) không đăng được — backend trả cờ
+  // needRetry, ta hiện nút "Tạo lại" NGAY trong modal này (đúng chỗ cảnh báo trỏ
+  // tới) thay vì bắt user đi tìm nút ↻ ngoài thẻ (thẻ 'done' vốn không có nút đó).
+  const [needRetry, setNeedRetry] = useState(false);
+  const doRetry = useCallback(async () => {
+    setBusy(true);
+    try {
+      await fetch(`/viral/products/${product.id}/retry`, { method: 'POST' });
+      toast.show(
+        t('viral_prod_retrying', 'Retrying — check back in a few minutes.'),
+        'success'
+      );
+      onDone();
+      modal.closeCurrent();
+    } catch {
+      toast.show(t('viral_regen_failed', 'Could not regenerate.'), 'warning');
+    } finally {
+      setBusy(false);
+    }
+  }, [product.id, onDone]);
   const submit = useCallback(async () => {
     if (!integrationId) {
       toast.show(t('viral_pick_channel_first', 'Pick a target channel first.'), 'warning');
@@ -1306,7 +1326,17 @@ const PostProductModal: FC<{ product: any; onDone: () => void }> = ({ product, o
         body: JSON.stringify({ integrationId }),
       });
       const d = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(d?.message || '');
+      if (!res.ok) {
+        if (d?.needRetry) {
+          setNeedRetry(true);
+          toast.show(
+            d.message || t('viral_post_failed', 'Could not post, try again.'),
+            'warning'
+          );
+          return;
+        }
+        throw new Error(d?.message || '');
+      }
       toast.show(
         `📤 ${t('viral_product_posted', 'Added as a draft on the Calendar with')} ${d?.images ?? ''} ${t('viral_product_posted_suffix', 'image(s) — review & schedule there.')}`,
         'success'
@@ -1337,7 +1367,21 @@ const PostProductModal: FC<{ product: any; onDone: () => void }> = ({ product, o
           <option key={i.id} value={i.id}>{i.name} ({i.identifier})</option>
         ))}
       </select>
-      <Button onClick={submit} loading={busy}>📤 {t('viral_post_to_calendar', 'Add to Calendar as draft')}</Button>
+      {needRetry ? (
+        <div className="flex flex-col gap-[8px]">
+          <div className="text-[12px] text-[#FFC53D] leading-[1.5]">
+            {t(
+              'viral_product_need_retry_hint',
+              'Bộ ảnh này tạo bằng bản cũ nên chưa đăng được. Tạo lại rồi đăng.'
+            )}
+          </div>
+          <Button onClick={doRetry} loading={busy}>
+            ↻ {t('viral_product_regenerate', 'Tạo lại bộ ảnh')}
+          </Button>
+        </div>
+      ) : (
+        <Button onClick={submit} loading={busy}>📤 {t('viral_post_to_calendar', 'Add to Calendar as draft')}</Button>
+      )}
     </div>
   );
 };
