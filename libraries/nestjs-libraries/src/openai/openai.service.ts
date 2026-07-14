@@ -835,7 +835,11 @@ CHI tra JSON array: [{"profile_id","moi_quan_tam","tam_ly","hanh_vi","insights"}
       `ĐỘNG TĨNH ĐỐI THỦ ĐANG THEO DÕI (KOL + trường — số bài đăng tuần qua, chủ đề):\n${input.competitorText || '(chưa có dữ liệu — cần bật Apify cào FB/TikTok đối thủ)'}\n\n` +
       `SỐ LIỆU VẬN HÀNH:\n${input.statsText}\n\n` +
       `Trong "market", HÃY nêu rõ đối thủ nào đang đẩy mạnh chủ đề gì và chủ đề nào đối thủ đánh mà ta chưa làm; "todos" gợi ý cách ta phản ứng.`;
-    return claudeJson(system, user, 3000);
+    // 8000 token (was 3000): prompt tuỳ chỉnh của user đòi nhiều mục (5-10 tin +
+    // 7-10 thị trường + 5-7 việc, tiếng Việt tốn token) → 3000 TRÀN, JSON bị cắt.
+    // claudeJsonStrict: cắt trần/parse hỏng → NÉM lỗi chẩn đoán (thay claudeJson
+    // trả null IM LẶNG khiến bản tin rớt sạch phần AI, user tưởng AI bỏ prompt).
+    return claudeJsonStrict(system, user, 8000);
   }
 
   // Mở rộng TỪ KHOÁ thành 6-7 truy vấn tìm tin cùng chủ đề (nguồn Google News)

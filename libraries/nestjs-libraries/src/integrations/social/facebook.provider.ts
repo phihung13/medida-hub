@@ -304,10 +304,17 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
       )
     ).json();
 
-    const permissions = data
+    const permissions = (data || [])
       .filter((d: any) => d.status === 'granted')
       .map((p: any) => p.permission);
-    this.checkScopes(this.scopes, permissions);
+    // CHỈ bắt buộc quyền LÕI để đăng bài. read_insights + pages_read_user_content
+    // (+ đôi khi pages_read_engagement) khi app Live cần App Review → tài khoản
+    // KHÔNG cấp được → nếu để trong danh sách bắt buộc, checkScopes ném
+    // NotEnoughScopes làm NỐI KÊNH văng 500 ("Không thể thêm nhà cung cấp") dù
+    // kênh thừa sức đăng bài. Vẫn XIN ĐỦ quyền ở generateAuthUrl (this.scopes):
+    // cấp được → trang Phân tích chạy; không → kênh VẪN nối/đăng được, chỉ
+    // analytics trống (xem [[facebook-app-live-analytics]] để mở lại quyền).
+    this.checkScopes(['pages_show_list', 'pages_manage_posts'], permissions);
 
     const { id, name, picture } = await (
       await fetch(

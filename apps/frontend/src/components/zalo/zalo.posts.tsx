@@ -9,6 +9,7 @@ import {
   bot,
   BotPost,
   Card,
+  DangerLink,
   fmtFull,
   getBotUrl,
   selectCls,
@@ -148,6 +149,34 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
       }
     },
     [router, refresh, t]
+  );
+
+  // ---- Xóa hẳn 1 thẻ khỏi lịch sử (nút 🗑) -----------------------------------
+  // Bài "Đã vào Media Hub" đáng lẽ tự rời danh sách; nút này để user chủ động
+  // dọn. Không đụng bản nháp/bài đã lên Calendar — chỉ xóa thẻ lịch sử ở bot.
+  const deletePost = useCallback(
+    async (d: BotPost) => {
+      if (
+        !window.confirm(
+          t(
+            'zalo_posts_delete_confirm',
+            'Xóa bài này khỏi danh sách? Bản nháp đã lên Calendar và bài đã đăng KHÔNG bị ảnh hưởng.'
+          )
+        )
+      )
+        return;
+      setBusy(d.id);
+      try {
+        await bot(`/api/posts/${d.id}/delete`, { method: 'POST', body: '{}' }, 20000);
+        setPosts((cur) => (cur || []).filter((p) => p.id !== d.id));
+        onChanged?.();
+      } catch {
+        toast.show(t('zalo_bot_unreachable', 'Cannot reach the Zalo bot'), 'warning');
+      } finally {
+        setBusy(null);
+      }
+    },
+    [t, toast, onChanged]
   );
 
   const toggleIn = (setter: typeof setDetail) => (id: string) =>
@@ -374,8 +403,14 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
           </div>
         )}
 
-        {/* ---- MỘT nút: mở bản nháp của bài trong Calendar ------------------------ */}
+        {/* ---- Chân thẻ: xóa (trái) + mở nháp trong Calendar (phải) --------------- */}
         <div className="flex items-center px-[14px] py-[10px] border-t border-newTableBorder">
+          <DangerLink
+            className={thisBusy ? 'opacity-50 pointer-events-none' : ''}
+            onClick={() => !thisBusy && deletePost(d)}
+          >
+            🗑 {t('zalo_posts_delete', 'Xóa')}
+          </DangerLink>
           <div className="flex-1" />
           <SimpleButton
             className="!h-[32px] !px-[14px] text-[12.5px]"

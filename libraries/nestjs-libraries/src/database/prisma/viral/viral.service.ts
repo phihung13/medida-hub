@@ -2649,9 +2649,22 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
       .join('\n')
       .slice(0, 4000);
     const statsText = `7 ngày qua: cào ${d.crawled} bài mới · duyệt ${d.approved} · sản xuất ${d.produced} sản phẩm · đang chờ duyệt ${counts.pending} bài.`;
-    const brief = await this._openai
-      .viralWeeklyBrief({ trendText, winningText, statsText, competitorText })
-      .catch(() => null);
+    // Trước đây .catch(() => null) NUỐT mọi lỗi AI → bản tin lặng lẽ rớt sạch
+    // phần AI (summary/tin nóng/thị trường/việc), chỉ còn số liệu thô → user
+    // tưởng "AI không theo prompt". Giờ bắt lỗi + GIỮ thông điệp để hiện ra bản
+    // tin (vd "AI viết vượt trần 8000 token…") thay vì degrade âm thầm.
+    let brief: Awaited<ReturnType<typeof this._openai.viralWeeklyBrief>> = null;
+    let briefError = '';
+    try {
+      brief = await this._openai.viralWeeklyBrief({
+        trendText,
+        winningText,
+        statsText,
+        competitorText,
+      });
+    } catch (e: any) {
+      briefError = e?.message || String(e);
+    }
 
     const dateVn = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
     const head =
@@ -2661,15 +2674,21 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
         ? `📰 BẢN TIN TUẦN — Phát hiện (${dateVn})`
         : `📰 BẢN TIN SAU CÀO — Phát hiện (${dateVn})`;
     const lines: string[] = [head, ''];
+    // Hiện lỗi AI NGAY đầu bản tin (nếu có) — user thấy đúng lý do phần phân
+    // tích trống thay vì tưởng AI phớt lờ prompt.
+    if (briefError)
+      lines.push(`⚠️ Phần phân tích AI chưa tạo được: ${briefError}`, '');
     if (brief?.summary) lines.push(brief.summary, '');
     if (brief?.highlights?.length) {
       lines.push('🔥 TIN NÓNG TUẦN:');
-      brief.highlights.slice(0, 6).forEach((h, i) => lines.push(`${i + 1}. ${h}`));
+      // cắt 10 (was 6): prompt user đòi 5-10 tin — cap 6 làm rớt bớt dù AI viết đủ.
+      brief.highlights.slice(0, 10).forEach((h, i) => lines.push(`${i + 1}. ${h}`));
       lines.push('');
     }
     if (brief?.market?.length) {
       lines.push('📈 DIỄN BIẾN THỊ TRƯỜNG:');
-      brief.market.slice(0, 5).forEach((m) => lines.push(`• ${m}`));
+      // cắt 10 (was 5): prompt user đòi 7-10 diễn biến.
+      brief.market.slice(0, 10).forEach((m) => lines.push(`• ${m}`));
       lines.push('');
     }
     if (competitorText) {
