@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { getGeminiKey, hasGeminiKey } from '@gitroom/nestjs-libraries/openai/gemini.key';
+import {
+  getGeminiKey,
+  hasGeminiKey,
+  getGeminiImageModel,
+} from '@gitroom/nestjs-libraries/openai/gemini.key';
 
 // ============================================================================
 //  Gemini (Google AI Studio) — REST thuần, không cần SDK.
@@ -14,8 +18,9 @@ import { getGeminiKey, hasGeminiKey } from '@gitroom/nestjs-libraries/openai/gem
 
 const BASE = 'https://generativelanguage.googleapis.com';
 const TEXT_MODEL = () => process.env.GEMINI_TEXT_MODEL || 'gemini-2.5-flash';
-const IMAGE_MODEL = () =>
-  process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image';
+// Model ảnh: đọc từ config (đổi được trong UI Settings) — mặc định Nano Banana
+// Pro (gemini-3-pro-image), render chữ tiếng Việt tốt nhất.
+const IMAGE_MODEL = () => getGeminiImageModel();
 
 // Trần dung lượng video nạp vào bộ nhớ để upload (tránh OOM). Video lớn hơn →
 // khuyên dùng engine "khung hình".
@@ -66,6 +71,9 @@ export class GeminiService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: reqParts }],
+          // Ép trả ẢNH (khớp node "Gen ảnh" của n8n) — một số model image cần
+          // khai rõ modality mới trả ảnh thay vì mô tả bằng chữ.
+          generationConfig: { responseModalities: ['IMAGE'] },
         }),
       }
     );

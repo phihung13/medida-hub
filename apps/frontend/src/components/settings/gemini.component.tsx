@@ -16,10 +16,15 @@ export const GeminiComponent: FC = () => {
   const fetch = useFetch();
   const toast = useToaster();
   const [key, setKey] = useState('');
-  const [status, setStatus] = useState<{ hasKey: boolean; masked: string }>({
+  const [status, setStatus] = useState<{
+    hasKey: boolean;
+    masked: string;
+    imageModel?: string;
+  }>({
     hasKey: false,
     masked: '',
   });
+  const [savingModel, setSavingModel] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -27,6 +32,31 @@ export const GeminiComponent: FC = () => {
       setStatus(res);
     } catch {
       /* ignore */
+    }
+  }, []);
+
+  // Model tạo ảnh (nano banana) — đổi ngay, không cần nhập lại key.
+  const IMAGE_MODELS = [
+    { id: 'gemini-3-pro-image', label: 'Nano Banana Pro — chữ tốt nhất (~$0.13/ảnh)' },
+    { id: 'gemini-3.1-flash-image', label: 'Nano Banana 2 — cân bằng (~$0.067/ảnh)' },
+    { id: 'gemini-3.1-flash-lite-image', label: 'Nano Banana 2 Lite — rẻ nhất (~$0.034/ảnh)' },
+    { id: 'gemini-2.5-flash-image', label: 'Nano Banana (2.5) — đời cũ' },
+  ];
+  const saveModel = useCallback(async (imageModel: string) => {
+    setSavingModel(true);
+    try {
+      const res = await fetch('/copilot/gemini-key', {
+        method: 'POST',
+        body: JSON.stringify({ imageModel }),
+      });
+      if (res.status >= 400) {
+        toast.show(t('gemini_model_error', 'Không đổi được model'), 'warning');
+        return;
+      }
+      toast.show(t('gemini_model_saved', 'Đã đổi model tạo ảnh'), 'success');
+      load();
+    } finally {
+      setSavingModel(false);
     }
   }, []);
 
@@ -83,6 +113,31 @@ export const GeminiComponent: FC = () => {
         <Button className="h-[44px]" onClick={save} disabled={!key.trim()}>
           {t('gemini_save', 'Lưu')}
         </Button>
+      </div>
+
+      {/* Chọn model tạo ảnh (infographic/thumbnail) — đổi ngay, lưu bền qua restart */}
+      <div className="mt-[16px] pt-[16px] border-t border-fifth">
+        <div className="text-[14px] font-[600] mb-[4px]">
+          {t('gemini_image_model', 'Model tạo ảnh (infographic / thumbnail)')}
+        </div>
+        <div className="text-[13px] opacity-70 mb-[8px]">
+          {t(
+            'gemini_image_model_desc',
+            'Model càng mới render chữ tiếng Việt có dấu càng ít lỗi. Nano Banana Pro đúng chính tả nhất; bản Lite/2.5 rẻ hơn nhưng dễ sai chữ hơn. Tất cả đều tính phí theo Google.'
+          )}
+        </div>
+        <select
+          value={status.imageModel || 'gemini-3-pro-image'}
+          disabled={savingModel}
+          onChange={(e) => saveModel(e.target.value)}
+          className="bg-input border-fifth border rounded-[4px] h-[44px] px-[12px] text-inputText outline-none w-full max-w-[420px] disabled:opacity-50"
+        >
+          {IMAGE_MODELS.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+            </option>
+          ))}
+        </select>
       </div>
     </div>
   );

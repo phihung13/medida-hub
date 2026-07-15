@@ -193,6 +193,17 @@ export class IntegrationRepository {
     });
   }
 
+  // Chỉ cập nhật CHÂN BÀI — update thẳng theo id. KHÔNG dùng updateIntegration:
+  // hàm đó là luồng RECONNECT (cần internalId để tìm organizationId_internalId,
+  // và có tác dụng phụ disabled/deletedAt) — truyền mỗi {postFooter} sẽ làm
+  // findUnique lỗi vì internalId=undefined → footer không bao giờ lưu được.
+  updatePostFooter(id: string, footer: string | null) {
+    return this._integration.model.integration.update({
+      where: { id },
+      data: { postFooter: footer } as any,
+    });
+  }
+
   disconnectChannel(org: string, id: string) {
     return this._integration.model.integration.update({
       where: {

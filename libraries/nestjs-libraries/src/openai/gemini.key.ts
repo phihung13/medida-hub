@@ -10,15 +10,28 @@ const FILE = configPath('gemini-key.json');
 
 interface GeminiConfig {
   key: string;
+  imageModel: string; // model tạo ảnh (nano banana) — đổi được trong UI Settings
 }
 
-const config: GeminiConfig = { key: '' };
+// Mặc định Nano Banana Pro — render chữ tiếng Việt có dấu tốt nhất (infographic
+// ít lỗi chính tả nhất). Đổi sang bản rẻ hơn trong Cài đặt nếu muốn tiết kiệm.
+const DEFAULT_IMAGE_MODEL = 'gemini-3-pro-image';
+
+const config: GeminiConfig = { key: '', imageModel: '' };
 
 try {
   const raw = JSON.parse(fs.readFileSync(FILE, 'utf8'));
   config.key = typeof raw?.key === 'string' ? raw.key : '';
+  config.imageModel =
+    typeof raw?.imageModel === 'string' ? raw.imageModel : '';
 } catch {
   /* chưa có file — dùng mặc định */
+}
+
+// Model ảnh: file override → env GEMINI_IMAGE_MODEL → mặc định Pro.
+if (!config.imageModel) {
+  config.imageModel =
+    (process.env.GEMINI_IMAGE_MODEL || '').trim() || DEFAULT_IMAGE_MODEL;
 }
 
 // Lấy từ .env nếu có (GEMINI_API_KEY hoặc GOOGLE_AI_API_KEY).
@@ -44,11 +57,26 @@ export function hasGeminiKey(): boolean {
   return !!config.key && config.key.trim().length > 20;
 }
 
-// Trạng thái cho UI — KHÔNG trả key thật, chỉ masked.
+// Model tạo ảnh hiện dùng (config → env → mặc định Pro).
+export function getGeminiImageModel(): string {
+  return config.imageModel || DEFAULT_IMAGE_MODEL;
+}
+
+export function setGeminiImageModel(model: string): void {
+  config.imageModel = (model || '').trim() || DEFAULT_IMAGE_MODEL;
+  try {
+    fs.writeFileSync(FILE, JSON.stringify(config));
+  } catch {
+    /* ghi file lỗi — vẫn giữ trong bộ nhớ phiên hiện tại */
+  }
+}
+
+// Trạng thái cho UI — KHÔNG trả key thật, chỉ masked. Kèm model ảnh đang dùng.
 export function getGeminiStatus() {
   return {
     hasKey: hasGeminiKey(),
     masked: config.key ? config.key.slice(0, 6) + '…' : '',
+    imageModel: getGeminiImageModel(),
   };
 }
 

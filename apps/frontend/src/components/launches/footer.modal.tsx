@@ -21,10 +21,18 @@ export const FooterModal: FC<{
   const save = useCallback(async () => {
     setSaving(true);
     try {
-      await fetch(`/integrations/${integration.id}/footer`, {
+      const res = await fetch(`/integrations/${integration.id}/footer`, {
         method: 'POST',
         body: JSON.stringify({ footer }),
       });
+      // Trước đây KHÔNG kiểm res.ok → backend lỗi vẫn báo "đã lưu" (footer mất).
+      if (!res.ok) {
+        toast.show(
+          t('footer_save_failed', 'Không lưu được chân bài — thử lại.'),
+          'warning'
+        );
+        return;
+      }
       toast.show(t('footer_saved', 'Post footer saved'), 'success');
       onClose();
     } finally {

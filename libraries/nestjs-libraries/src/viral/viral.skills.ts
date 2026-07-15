@@ -226,6 +226,15 @@ const SKILL_BAN_TIN_TUAN = `Bạn là trợ lý chiến lược nội dung của
 - "todos": 4-7 việc CỤ THỂ tuần này cho đội content (mỗi việc: "title" ngắn + "action" 1 câu làm gì — vd viết blog chủ đề X cho nhóm THPT, sản xuất podcast Y, bám sự kiện Z). Ưu tiên việc ăn theo tin nóng + lỗ hổng đối thủ chưa làm.
 KHÔNG bịa số liệu, KHÔNG nhắc tên trường đối thủ trong todos (chỉ trong market).`;
 
+// Prompt VẼ 1 SLIDE gửi cho Gemini (node "Tách slide" của n8n). Đây là thứ quyết
+// định ẢNH trông thế nào + chữ render ra sao. Dạng TEMPLATE — code thay các
+// placeholder trong ngoặc nhọn bằng giá trị thật của từng slide:
+//   {IDX} {TOTAL} {ROLE} {STYLE} {COVER_NOTE} {HEADING} {BODY}
+// Sửa thoải mái nhưng GIỮ các placeholder cần dùng (xoá {HEADING}/{BODY} thì
+// slide sẽ thiếu nội dung). {STYLE} = mô tả phong cách chung do B1 tự chọn cho
+// cả bộ; {COVER_NOTE} = ghi chú riêng cho trang bìa / trang đồng bộ với bìa.
+const CONG_THUC_VE_SLIDE = `Thiết kế slide {IDX}/{TOTAL} ({ROLE}) của MỘT bộ carousel infographic giáo dục. PHONG CÁCH CHUNG (BẮT BUỘC giống hệt cả bộ để ĐỒNG BỘ: cùng tông màu, cùng font, cùng kiểu bố cục): {STYLE}. Ảnh VUÔNG 1:1 (1080x1080) cho bài đăng Facebook, là INFOGRAPHIC ĐẸP có hình minh hoạ (KHÔNG dùng ảnh chụp người/cảnh thật). Chữ TIẾNG VIỆT có dấu, rõ ràng, đúng chính tả. Ở góc dưới để TÊN THƯƠNG HIỆU dạng CHỮ "Trường Việt Anh" (chữ có dấu, gọn) — RIÊNG tên thương hiệu này KHÔNG kèm logo/icon/biểu tượng/emblem, chỉ là CHỮ; các phần khác VẪN có hình minh hoạ.{COVER_NOTE} NỘI DUNG: tiêu đề "{HEADING}". Ý chính: "{BODY}". Đây là INFOGRAPHIC CÓ HÌNH: phải CÂN BẰNG giữa HÌNH MINH HOẠ/icon sáng tạo và CHỮ. Chữ VỪA ĐỦ làm rõ ý (rõ nét, đủ lớn, đúng chính tả), KHÔNG nhồi chữ, KHÔNG để chữ lấp kín làm mất hình. Viết SÚC TÍCH hơn một chút: giảm khoảng 10-20% lượng chữ trên ảnh so với mức thông thường (cắt từ thừa, bỏ ý lặp, gọn câu lại) nhưng VẪN giữ đủ ý; bớt chữ vừa phải để giảm lỗi chính tả khi render, KHÔNG làm ảnh trống trải hay cụt ý. Mỗi chữ phải đúng chính tả tiếng Việt có dấu. Nếu ý nhiều phần thì dùng ICON + cụm từ ngắn / gạch đầu dòng gọn thay vì viết cả đoạn. Ưu tiên TRỰC QUAN, đẹp, hiểu được trong 3 giây.`;
+
 // ── REGISTRY ────────────────────────────────────────────────────────────────
 
 export const VIRAL_SKILL_DEFS: ViralSkillDef[] = [
@@ -243,6 +252,7 @@ export const VIRAL_SKILL_DEFS: ViralSkillDef[] = [
   { key: 'cong-thuc-podcast', label: 'Công thức Podcast', group: 'Sản xuất', description: 'Kể chuyện Twist/Reveal + cấu trúc tập + value-first — sản xuất podcast', content: CONG_THUC_PODCAST },
   { key: 'cong-thuc-infographic', label: 'Công thức Infographic', group: 'Sản xuất', description: 'Khung thiết kế ảnh Gemini (code tự thêm tỉ lệ + nội dung bài)', content: CONG_THUC_INFOGRAPHIC },
   { key: 'cong-thuc-carousel', label: 'Công thức Carousel (fb-value-sharing)', group: 'Sản xuất', description: 'HOOK→REWARD→SHARE + ❌/✅ + tự chấm ≥80 — bộ slide infographic, port từ n8n', content: CONG_THUC_CAROUSEL },
+  { key: 'cong-thuc-ve-slide', label: 'Công thức vẽ slide Carousel (ảnh Gemini)', group: 'Sản xuất', description: 'Prompt gửi Gemini vẽ TỪNG slide (1:1, có hình, chữ vừa đủ). Template — giữ placeholder {STYLE}/{HEADING}/{BODY}/{IDX}/{TOTAL}/{ROLE}/{COVER_NOTE}', content: CONG_THUC_VE_SLIDE },
   // Chấm điểm & phân loại
   { key: 'nguyen-tac-chon-nhom', label: 'Nguyên tắc chọn nhóm (cấp học)', group: 'Chấm & phân loại', description: 'Dấu hiệu MN/TH/THCS/THPT — routing khi chấm điểm', content: NGUYEN_TAC_CHON_NHOM },
   { key: 'skill-phan-loai-viet-lai', label: 'Phân loại + viết lại (4 bước)', group: 'Chấm & phân loại', description: 'Nhiệm vụ A/B/C/D: chọn nhóm, viết lại, chấm, gán loại SX + podcast_score', content: SKILL_PHAN_LOAI_VIET_LAI },

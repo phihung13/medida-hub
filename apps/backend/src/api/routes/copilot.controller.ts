@@ -25,6 +25,7 @@ import {
 import {
   getGeminiStatus,
   setGeminiKey,
+  setGeminiImageModel,
 } from '@gitroom/nestjs-libraries/openai/gemini.key';
 import {
   CopilotRuntime,
@@ -218,14 +219,21 @@ export class CopilotController {
   @Post('/gemini-key')
   saveGeminiKey(
     @GetUserFromRequest() user: User,
-    @Body() body: { key?: string; clear?: boolean }
+    @Body() body: { key?: string; clear?: boolean; imageModel?: string }
   ) {
     this.assertSuperAdmin(user);
     if (body?.clear) {
       setGeminiKey('');
       return { ok: true, cleared: true };
     }
-    setGeminiKey((body?.key || '').trim());
+    // Đổi model ảnh (độc lập với key — dropdown trong Cài đặt gửi mình field này).
+    if (typeof body?.imageModel === 'string' && body.imageModel.trim()) {
+      setGeminiImageModel(body.imageModel.trim());
+    }
+    // Chỉ ghi đè key khi có nhập (đổi model không cần nhập lại key).
+    if (typeof body?.key === 'string' && body.key.trim()) {
+      setGeminiKey(body.key.trim());
+    }
     return { ok: true, ...getGeminiStatus() };
   }
 

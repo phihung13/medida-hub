@@ -144,31 +144,34 @@ export function buildCarouselPrompt(r: ProduceInput): {
   return { system: sys, user };
 }
 
-// Prompt vẽ 1 slide (Gemini) — port nguyên tinh thần node "Tách slide" n8n:
-// vuông 1:1, footer CHỈ chữ "Trường Việt Anh" không logo, infographic CÓ HÌNH,
-// chữ vừa đủ (giảm 10-20% so với thông thường để đỡ lỗi chính tả khi render).
+// Prompt vẽ 1 slide (Gemini) — nạp từ skill 'cong-thuc-ve-slide' (sửa được trong
+// Công thức AI); code chỉ thay các placeholder bằng giá trị thật của slide.
+// Dùng hàm thay-thế (không phải chuỗi) để nội dung chứa ký tự '$' không bị hiểu
+// nhầm thành pattern của String.replace.
 export function carouselSlidePrompt(
   s: { role?: string; heading?: string; body?: string },
   idx: number,
   total: number,
   style: string
 ): string {
-  const baseRules =
-    'Ảnh VUÔNG 1:1 (1080x1080) cho bài đăng Facebook, là INFOGRAPHIC ĐẸP có hình minh hoạ (KHÔNG dùng ảnh chụp người/cảnh thật). Chữ TIẾNG VIỆT có dấu, rõ ràng, đúng chính tả. Ở góc dưới để TÊN THƯƠNG HIỆU dạng CHỮ "Trường Việt Anh" (chữ có dấu, gọn) — RIÊNG tên thương hiệu này KHÔNG kèm logo/icon/biểu tượng/emblem, chỉ là CHỮ; các phần khác VẪN có hình minh hoạ.';
   const role = s.role || (idx === 1 ? 'cover' : 'body');
-  let p =
-    'Thiết kế slide ' + idx + '/' + total + ' (' + role + ') của MỘT bộ carousel infographic giáo dục. ' +
-    'PHONG CÁCH CHUNG (BẮT BUỘC giống hệt cả bộ để ĐỒNG BỘ: cùng tông màu, cùng font, cùng kiểu bố cục): ' + style + '. ' +
-    baseRules;
-  if (idx === 1) {
-    p += ' Đây là trang BÌA: hook mạnh nhất, ấn tượng, tiêu đề lớn nổi bật.';
-  } else {
-    p += ' ĐÍNH KÈM là ảnh BÌA của bộ — thiết kế slide này ĐỒNG BỘ hoàn toàn với bìa (màu, font, phong cách đồ hoạ).';
-  }
-  p +=
-    ' NỘI DUNG: tiêu đề "' + String(s.heading || '') + '". Ý chính: "' + String(s.body || '') + '". ' +
-    'Đây là INFOGRAPHIC CÓ HÌNH: phải CÂN BẰNG giữa HÌNH MINH HOẠ/icon sáng tạo và CHỮ. Chữ VỪA ĐỦ làm rõ ý (rõ nét, đủ lớn, đúng chính tả), KHÔNG nhồi chữ, KHÔNG để chữ lấp kín làm mất hình. Viết SÚC TÍCH hơn một chút: giảm khoảng 10-20% lượng chữ trên ảnh so với mức thông thường (cắt từ thừa, bỏ ý lặp, gọn câu lại) nhưng VẪN giữ đủ ý; bớt chữ vừa phải để giảm lỗi chính tả khi render, KHÔNG làm ảnh trống trải hay cụt ý. Mỗi chữ phải đúng chính tả tiếng Việt có dấu. Nếu ý nhiều phần thì dùng ICON + cụm từ ngắn / gạch đầu dòng gọn thay vì viết cả đoạn. Ưu tiên TRỰC QUAN, đẹp, hiểu được trong 3 giây.';
-  return p;
+  const coverNote =
+    idx === 1
+      ? ' Đây là trang BÌA: hook mạnh nhất, ấn tượng, tiêu đề lớn nổi bật.'
+      : ' ĐÍNH KÈM là ảnh BÌA của bộ — thiết kế slide này ĐỒNG BỘ hoàn toàn với bìa (màu, font, phong cách đồ hoạ).';
+  const vars: Record<string, string> = {
+    IDX: String(idx),
+    TOTAL: String(total),
+    ROLE: role,
+    STYLE: style || '',
+    COVER_NOTE: coverNote,
+    HEADING: String(s.heading || ''),
+    BODY: String(s.body || ''),
+  };
+  return getSkill('cong-thuc-ve-slide').replace(
+    /\{(IDX|TOTAL|ROLE|STYLE|COVER_NOTE|HEADING|BODY)\}/g,
+    (_m, k) => vars[k] ?? ''
+  );
 }
 
 export function buildInfographicPrompt(r: ProduceInput): {

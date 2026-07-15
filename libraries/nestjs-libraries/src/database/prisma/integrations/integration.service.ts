@@ -199,9 +199,10 @@ export class IntegrationService {
     if (!integration) {
       return null;
     }
-    await this._integrationRepository.updateIntegration(id, {
-      postFooter: (footer || '').trim() || null,
-    } as any);
+    await this._integrationRepository.updatePostFooter(
+      id,
+      (footer || '').trim() || null
+    );
     return { ok: true };
   }
 
