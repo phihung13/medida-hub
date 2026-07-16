@@ -32,6 +32,20 @@ import {
 export class ViralController {
   constructor(private _service: ViralService) {}
 
+  // Duyệt / sản xuất / xoá / cấu hình nguồn là việc của QUẢN TRỊ VIÊN tổ chức —
+  // thành viên thường (role USER) chỉ XEM. org.users[0] là membership của chính
+  // user đang gọi (auth.middleware chỉ include đúng user đó). Thiếu role thì
+  // chặn luôn (fail-closed).
+  private assertCanModerate(org: Organization) {
+    const role = (org as any)?.users?.[0]?.role;
+    if (role !== 'ADMIN' && role !== 'SUPERADMIN') {
+      throw new HttpException(
+        'Chỉ quản trị viên của tổ chức mới làm được thao tác này — bạn vẫn xem được mọi nội dung.',
+        403
+      );
+    }
+  }
+
   @Get('/')
   async list(
     @GetOrgFromRequest() org: Organization,
@@ -81,6 +95,7 @@ export class ViralController {
     @GetOrgFromRequest() org: Organization,
     @Body() body: { ids?: string[]; action?: string }
   ) {
+    this.assertCanModerate(org);
     const ids = (body.ids || []).filter(Boolean).slice(0, 300);
     if (!ids.length) throw new HttpException('Chưa chọn chủ đề nào.', 400);
     const map: Record<string, string> = {
@@ -102,6 +117,7 @@ export class ViralController {
     @GetOrgFromRequest() org: Organization,
     @Param('id') id: string
   ) {
+    this.assertCanModerate(org);
     const res = await this._service.cloneTopic(org.id, id);
     if (!res) throw new HttpException('Không viết lại được — thử lại.', 400);
     return res;
@@ -119,6 +135,7 @@ export class ViralController {
     @GetOrgFromRequest() org: Organization,
     @Body() body: { ids?: string[]; action?: string }
   ) {
+    this.assertCanModerate(org);
     const ids = (body.ids || []).filter(Boolean).slice(0, 300);
     if (!ids.length) throw new HttpException('Chưa chọn thẻ nào.', 400);
     switch (body.action) {
@@ -151,6 +168,7 @@ export class ViralController {
     @Param('id') id: string,
     @Body('integrationId') integrationId: string
   ) {
+    this.assertCanModerate(org);
     if (!integrationId) throw new HttpException('Chọn kênh đích.', 400);
     const res = await this._service.postClone(org.id, id, integrationId);
     if (!res) throw new HttpException('Không đăng được — thử lại.', 400);
@@ -163,6 +181,7 @@ export class ViralController {
     @GetOrgFromRequest() org: Organization,
     @Param('id') id: string
   ) {
+    this.assertCanModerate(org);
     const res = await this._service.regenerateClone(org.id, id);
     if (!res) throw new HttpException('Không tạo lại được — thử lại.', 400);
     return { ok: true };
@@ -173,6 +192,7 @@ export class ViralController {
     @GetOrgFromRequest() org: Organization,
     @Param('id') id: string
   ) {
+    this.assertCanModerate(org);
     await this._service.deleteClone(org.id, id);
     return { ok: true };
   }
@@ -180,6 +200,7 @@ export class ViralController {
   // Xóa TOÀN BỘ Lưu trữ khỏi DB (bỏ qua + đã xóa).
   @Post('/archive/purge')
   async purgeArchive(@GetOrgFromRequest() org: Organization) {
+    this.assertCanModerate(org);
     const r = await this._service.hardDeleteArchive(org.id);
     return { deleted: (r as any)?.count ?? 0 };
   }
@@ -187,6 +208,7 @@ export class ViralController {
   // Thêm bài viral (link / text / ảnh chụp base64) — AI tự phân tích.
   @Post('/')
   async capture(@GetOrgFromRequest() org: Organization, @Body() body: any) {
+    this.assertCanModerate(org);
     if (!body?.url && !body?.text && !body?.images?.length) {
       throw new HttpException('Cần link, text hoặc ảnh chụp bài viral.', 400);
     }
@@ -198,6 +220,7 @@ export class ViralController {
     @GetOrgFromRequest() org: Organization,
     @Param('id') id: string
   ) {
+    this.assertCanModerate(org);
     const res = await this._service.formula(org.id, id);
     if (!res) throw new HttpException('Không tìm thấy bài.', 404);
     if (!res.formula)
@@ -211,6 +234,7 @@ export class ViralController {
     @Param('id') id: string,
     @Body('integrationId') integrationId: string
   ) {
+    this.assertCanModerate(org);
     if (!integrationId) throw new HttpException('Chọn kênh đích.', 400);
     const res = await this._service.clone(org.id, id, integrationId);
     if (!res) throw new HttpException('Không nhân bản được — thử lại.', 400);
@@ -219,6 +243,7 @@ export class ViralController {
 
   @Delete('/:id')
   async remove(@GetOrgFromRequest() org: Organization, @Param('id') id: string) {
+    this.assertCanModerate(org);
     await this._service.delete(org.id, id);
     return { ok: true };
   }
@@ -226,6 +251,7 @@ export class ViralController {
   // Cào NGAY (nút "Cào ngay") — quét TẤT CẢ nguồn, kể cả nguồn chưa bật lịch.
   @Post('/crawl')
   async crawl(@GetOrgFromRequest() org: Organization) {
+    this.assertCanModerate(org);
     return this._service.crawlAll(org.id, true);
   }
 
@@ -236,6 +262,7 @@ export class ViralController {
     @Param('id') id: string,
     @Body('status') status: string
   ) {
+    this.assertCanModerate(org);
     await this._service.setStatus(org.id, id, status);
     return { ok: true };
   }
@@ -243,15 +270,16 @@ export class ViralController {
   // Chấm lại các bài chưa có điểm (nút "Chấm điểm AI").
   @Post('/score')
   async score(@GetOrgFromRequest() org: Organization) {
+    this.assertCanModerate(org);
     const scored = await this._service.scoreUnscored(org.id);
     return { scored };
   }
 
-  // Cấu hình instance (token Apify trả phí, key YouTube free, chu kỳ cào) —
-  // biến toàn cục → chỉ quản trị hệ thống.
+  // Trạng thái cấu hình (masked key, model, cờ tạm dừng...) — chỉ ĐỌC, mọi
+  // thành viên xem được (UI cần cho băng rôn tạm dừng + cảnh báo thiếu key).
+  // Đổi cấu hình mới cần quyền: POST /config bên dưới chặn isSuperAdmin.
   @Get('/config')
-  getConfig(@GetUserFromRequest() user: User) {
-    if (!user?.isSuperAdmin) return getViralStatus();
+  getConfig() {
     return getViralStatus();
   }
 
@@ -335,6 +363,7 @@ export class ViralController {
   // Tạo bản tin tuần NGAY (không đợi lịch T2-4-6/CN) — lưu tab 📰 + gửi 3 kênh.
   @Post('/report/test')
   async testReport(@GetOrgFromRequest() org: Organization) {
+    this.assertCanModerate(org);
     return this._service.sendWeeklyReport(org.id, 'manual');
   }
 
@@ -349,6 +378,7 @@ export class ViralController {
     @GetOrgFromRequest() org: Organization,
     @Param('id') id: string
   ) {
+    this.assertCanModerate(org);
     await this._service.deleteReport(org.id, id);
     return { ok: true };
   }
@@ -359,6 +389,7 @@ export class ViralController {
     @GetOrgFromRequest() org: Organization,
     @Param('id') id: string
   ) {
+    this.assertCanModerate(org);
     const res = await this._service.sendReportZalo(org.id, id);
     if (!res) throw new HttpException('Không tìm thấy bản tin.', 404);
     if (!res.sent && !res.failed) {
@@ -404,6 +435,7 @@ export class ViralController {
     @GetOrgFromRequest() org: Organization,
     @Body() body: { ids?: string[]; source?: string; formats?: string[]; bgm?: boolean }
   ) {
+    this.assertCanModerate(org);
     const res = await this._service
       .produce(org.id, body)
       .catch((e) => {
@@ -428,6 +460,7 @@ export class ViralController {
     @Param('id') id: string,
     @Query('fresh') fresh?: string
   ) {
+    this.assertCanModerate(org);
     const ok = await this._service.retryProduct(org.id, id, fresh === '1');
     if (!ok) throw new HttpException('Không tìm thấy sản phẩm.', 404);
     return { ok: true };
@@ -440,6 +473,7 @@ export class ViralController {
     @Param('id') id: string,
     @Body('integrationId') integrationId: string
   ) {
+    this.assertCanModerate(org);
     if (!integrationId) throw new HttpException('Chọn kênh đích.', 400);
     const res = await this._service.postProduct(org.id, id, integrationId);
     if (!res) throw new HttpException('Không tìm thấy sản phẩm (hoặc chưa xong).', 404);
@@ -474,6 +508,7 @@ export class ViralController {
     @GetOrgFromRequest() org: Organization,
     @Param('id') id: string
   ) {
+    this.assertCanModerate(org);
     await this._service.deleteProduct(org.id, id);
     return { ok: true };
   }
@@ -523,6 +558,7 @@ export class ViralController {
   // nguồn theo dõi
   @Post('/sources')
   createSource(@GetOrgFromRequest() org: Organization, @Body() body: any) {
+    this.assertCanModerate(org);
     return this._service.createSource(org.id, body);
   }
 
@@ -530,6 +566,7 @@ export class ViralController {
   // Google News) — bỏ qua nguồn trùng.
   @Post('/sources/import-defaults')
   async importDefaultSources(@GetOrgFromRequest() org: Organization) {
+    this.assertCanModerate(org);
     const added = await this._service.importDefaultSources(org.id);
     return { added };
   }
@@ -538,6 +575,7 @@ export class ViralController {
   // tắt AUTO nguồn FB (đối tác cào — chỉ giữ làm danh bạ đối thủ).
   @Post('/sources/cleanup')
   async cleanupSources(@GetOrgFromRequest() org: Organization) {
+    this.assertCanModerate(org);
     return this._service.cleanupSources(org.id);
   }
 
@@ -546,6 +584,7 @@ export class ViralController {
     @GetOrgFromRequest() org: Organization,
     @Param('id') id: string
   ) {
+    this.assertCanModerate(org);
     await this._service.deleteSource(org.id, id);
     return { ok: true };
   }
@@ -558,6 +597,7 @@ export class ViralController {
     @Param('id') id: string,
     @Body('type') type: string
   ) {
+    this.assertCanModerate(org);
     await this._service.setSourceType(org.id, id, type);
     return { ok: true };
   }
@@ -569,6 +609,7 @@ export class ViralController {
     @Param('id') id: string,
     @Body('auto') auto: boolean
   ) {
+    this.assertCanModerate(org);
     await this._service.setSourceAuto(org.id, id, !!auto);
     return { ok: true };
   }

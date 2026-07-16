@@ -398,6 +398,7 @@ export const TeamsComponent = () => {
     return (await (await fetch('/settings/team')).json()).users as Array<{
       id: string;
       role: 'SUPERADMIN' | 'ADMIN' | 'USER';
+      disabled?: boolean;
       user: { email: string; id: string };
     }>;
   }, []);
@@ -463,6 +464,104 @@ export const TeamsComponent = () => {
     },
     [t]
   );
+
+  // Đổi vai Member ↔ Admin — chỉ CHỦ tổ chức (backend cũng chặn).
+  const changeRole = useCallback(
+    (p: { role: string; user: { id: string; email: string } }) => async () => {
+      const next = p.role === 'USER' ? 'ADMIN' : 'USER';
+      if (
+        !(await deleteDialog(
+          next === 'ADMIN'
+            ? t('confirm_promote', 'Nâng {{email}} lên Admin? Họ sẽ duyệt/sản xuất/xoá được nội dung.').replace('{{email}}', p.user.email)
+            : t('confirm_demote', 'Hạ {{email}} xuống Member? Họ chỉ còn xem, không duyệt được nữa.').replace('{{email}}', p.user.email),
+          t('change_role', 'Đổi vai')
+        ))
+      ) {
+        return;
+      }
+      const res = await fetch(`/settings/team/${p.user.id}/role`, {
+        method: 'POST',
+        body: JSON.stringify({ role: next }),
+      });
+      if (!res.ok) {
+        toast.show(t('change_role_failed', 'Không đổi được vai — thử lại.'), 'warning');
+        return;
+      }
+      toast.show(
+        t('change_role_done', 'Đã đổi vai — người đó cần tải lại trang để thấy thay đổi.'),
+        'success'
+      );
+      await mutate();
+    },
+    [t, mutate]
+  );
+
+  // Chuyển vai CHỦ tổ chức cho người khác — mình xuống Admin. Đổi cả quyền của
+  // CHÍNH mình nên xong thì tải lại trang cho context sạch.
+  const transferOwner = useCallback(
+    (p: { user: { id: string; email: string } }) => async () => {
+      if (
+        !(await deleteDialog(
+          t(
+            'confirm_transfer',
+            'Trao vai CHỦ tổ chức cho {{email}}? BẠN sẽ xuống Admin (vẫn duyệt được, thôi quản thành viên). Lưu ý: quyền quản trị HỆ THỐNG (key AI, cấu hình) là cờ riêng, không đổi theo.'
+          ).replace('{{email}}', p.user.email),
+          t('transfer_owner', 'Chuyển chủ')
+        ))
+      ) {
+        return;
+      }
+      const res = await fetch(`/settings/team/${p.user.id}/transfer-superadmin`, {
+        method: 'POST',
+      });
+      if (!res.ok) {
+        toast.show(t('transfer_failed', 'Không chuyển được — thử lại.'), 'warning');
+        return;
+      }
+      toast.show(t('transfer_done', 'Đã chuyển chủ — đang tải lại trang…'), 'success');
+      setTimeout(() => window.location.reload(), 1200);
+    },
+    [t]
+  );
+
+  // Gộp MỌI tài khoản của hệ thống về tổ chức này (chỉ super admin thấy nút).
+  // Chữa cảnh tài khoản tự đăng ký sinh tổ chức riêng → vào /viral thấy kho
+  // rỗng. Người được gộp vào với vai Member (chỉ xem); muốn ai duyệt được thì
+  // xoá khỏi team rồi mời lại làm Admin.
+  const mergeAll = useCallback(async () => {
+    if (
+      !(await deleteDialog(
+        t(
+          'confirm_merge_all',
+          'Gộp TẤT CẢ tài khoản hiện có về tổ chức này? Ai chưa thuộc tổ chức sẽ được thêm làm Member (chỉ xem); tài khoản của họ ở tổ chức khác sẽ bị tắt để đăng nhập vào thẳng đây.'
+        ),
+        t('merge_all_confirm', 'Gộp tất cả')
+      ))
+    ) {
+      return;
+    }
+    const res = await (
+      await fetch('/settings/team/merge-all', { method: 'POST' })
+    ).json();
+    if (typeof res?.totalUsers !== 'number') {
+      toast.show(t('merge_all_failed', 'Không gộp được — thử lại.'), 'warning');
+      return;
+    }
+    const parts = [
+      `${res.totalUsers} tài khoản`,
+      `thêm mới ${res.added?.length || 0}`,
+      ...(res.reEnabled?.length ? [`bật lại ${res.reEnabled.length}`] : []),
+      `tắt ${res.disabledElsewhere || 0} org cá nhân`,
+      ...(res.skippedMultiMemberOrgs
+        ? [`chừa ${res.skippedMultiMemberOrgs} tổ chức thật`]
+        : []),
+    ];
+    toast.show(
+      t('merge_all_done', 'Đã gộp xong: ') + parts.join(' · '),
+      'success'
+    );
+    await mutate();
+  }, [t, mutate]);
 
   const name = (email: string) =>
     capitalize(email.split('@')[0]).split('.')[0];
@@ -599,8 +698,46 @@ export const TeamsComponent = () => {
                     ? t('admin', 'Admin')
                     : t('super_admin', 'Super Admin')}
                 </div>
-                {isAdmin && canManage ? (
-                  <div className="flex gap-[6px] mobile:w-full mobile:gap-[8px]">
+                {p.disabled && (
+                  <span className="text-[10.5px] font-[700] rounded-[6px] px-[7px] py-[2px] bg-amber-400/15 text-amber-400" title={t('member_disabled_hint', 'Tài khoản này chưa thuộc tổ chức (đang tắt) — không đổi vai được cho tới khi họ tham gia')}>
+                    {t('member_disabled', 'đang tắt')}
+                  </span>
+                )}
+                {/* Đổi vai/chuyển chủ vô nghĩa với membership đang tắt (backend
+                    cũng chặn) → chỉ hiện nút quản trị khi thành viên đang bật */}
+                {isAdmin && canManage && !p.disabled ? (
+                  <div className="flex gap-[6px] flex-wrap mobile:w-full mobile:gap-[8px]">
+                    {/* Đổi vai + chuyển chủ: chỉ CHỦ tổ chức (myLevel 2) — khớp
+                        luật backend changeMemberRole/transferSuperAdmin */}
+                    {myLevel >= 2 && (
+                      <button
+                        type="button"
+                        onClick={changeRole(p)}
+                        title={
+                          p.role === 'USER'
+                            ? t('promote_hint', 'Nâng lên Admin — duyệt/sản xuất được trên trang Phát hiện')
+                            : t('demote_hint', 'Hạ xuống Member — chỉ xem')
+                        }
+                        className="text-[12px] rounded-[6px] px-[10px] py-[6px] bg-btnPrimary/10 text-btnPrimary border border-btnPrimary/30 hover:bg-btnPrimary/20 mobile:flex-1 mobile:min-h-[40px] mobile:px-[14px] tap-shrink"
+                      >
+                        {p.role === 'USER'
+                          ? `↑ ${t('promote_admin', 'Nâng Admin')}`
+                          : `↓ ${t('demote_member', 'Hạ Member')}`}
+                      </button>
+                    )}
+                    {myLevel >= 2 && (
+                      <button
+                        type="button"
+                        onClick={transferOwner(p)}
+                        title={t(
+                          'transfer_hint',
+                          'Trao vai CHỦ tổ chức cho người này — bạn xuống Admin'
+                        )}
+                        className="text-[12px] rounded-[6px] px-[10px] py-[6px] bg-newColColor border border-fifth hover:bg-boxHover mobile:flex-1 mobile:min-h-[40px] mobile:px-[14px] tap-shrink"
+                      >
+                        👑 {t('transfer_owner', 'Chuyển chủ')}
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={resetPassword(p)}
@@ -623,11 +760,28 @@ export const TeamsComponent = () => {
             );
           })}
         </div>
-        {isAdmin && (
-          <div>
-            <Button onClick={addMember}>
-              {t('add_account', 'Add new account')}
-            </Button>
+        {/* Gộp = quyền HỆ THỐNG (cờ isSuperAdmin), KHÔNG phải role tổ chức —
+            phải khớp backend assertSuperAdmin, nên đặt NGOÀI khối isAdmin, không
+            thì cựu chủ vừa chuyển giao (xuống Admin/Member) mất luôn nút Gộp. */}
+        {(isAdmin || !!user?.isSuperAdmin) && (
+          <div className="flex gap-[8px] flex-wrap items-center">
+            {isAdmin && (
+              <Button onClick={addMember}>
+                {t('add_account', 'Add new account')}
+              </Button>
+            )}
+            {!!user?.isSuperAdmin && (
+              <button
+                onClick={mergeAll}
+                className="text-[12px] rounded-[6px] px-[10px] py-[6px] bg-newColColor border border-fifth hover:bg-boxHover"
+                title={t(
+                  'merge_all_hint',
+                  'Đưa mọi tài khoản tự đăng ký (đang kẹt ở tổ chức riêng, thấy kho rỗng) về tổ chức này làm Member'
+                )}
+              >
+                🧲 {t('merge_all', 'Gộp tất cả tài khoản về tổ chức này')}
+              </button>
+            )}
           </div>
         )}
       </div>

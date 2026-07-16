@@ -219,6 +219,17 @@ export class OrganizationRepository {
       return false;
     }
 
+    // Đã là thành viên org này thì thôi — create bên dưới sẽ đâm vào
+    // unique(userId, organizationId) thành 500, và link mời role ADMIN không
+    // được trở thành đường tự nâng cấp cho membership sẵn có.
+    const alreadyMember =
+      await this._userOrg.model.userOrganization.findFirst({
+        where: { userId, organizationId: orgId },
+      });
+    if (alreadyMember) {
+      return false;
+    }
+
     const checkForSubscription =
       await this._organization.model.organization.findFirst({
         where: {
@@ -336,6 +347,7 @@ export class OrganizationRepository {
         users: {
           select: {
             role: true,
+            disabled: true, // để UI đánh dấu + khoá nút với thành viên đang tắt
             user: {
               select: {
                 email: true,
@@ -370,6 +382,164 @@ export class OrganizationRepository {
           },
         },
       },
+    });
+  }
+
+  // Gộp MỌI tài khoản của instance về MỘT tổ chức (org đích = org của super
+  // admin đang bấm). Vì sao cần: tự đăng ký là sinh org riêng → đồng nghiệp
+  // nhìn kho /viral rỗng của chính họ thay vì kho chung.
+  //   • Chưa có membership ở org đích → thêm với role USER (chỉ xem — muốn cho
+  //     duyệt thì mời lại làm ADMIN qua Settings → Team).
+  //   • Membership ở org đích đang disabled → bật lại (không thì bước dưới
+  //     tắt nốt các org khác sẽ khoá người này khỏi toàn hệ thống).
+  //   • TẮT (disabled=true) membership ở mọi org khác — getOrgsByUserId không
+  //     orderBy nên còn membership khác là đăng nhập vẫn rơi nhầm org cá nhân.
+  // KHÔNG xoá gì (org cá nhân rỗng vẫn nằm trong DB) → idempotent + đảo ngược
+  // được; tài khoản lạc phát sinh sau này chỉ cần bấm lại nút gộp.
+  async mergeAllUsersIntoOrg(targetOrgId: string) {
+    const users = await this._user.model.user.findMany({
+      select: { id: true, email: true },
+    });
+    const existing = await this._userOrg.model.userOrganization.findMany({
+      where: { organizationId: targetOrgId },
+    });
+    const byUser = new Map(existing.map((m) => [m.userId, m]));
+    const added: string[] = [];
+    const reEnabled: string[] = [];
+    for (const u of users) {
+      const membership = byUser.get(u.id);
+      if (!membership) {
+        try {
+          await this._userOrg.model.userOrganization.create({
+            data: { userId: u.id, organizationId: targetOrgId, role: Role.USER },
+          });
+          added.push(u.email);
+        } catch (e: any) {
+          // P2002 = unique(userId, organizationId) — ai đó vừa thêm song song
+          // (vd join-org qua link mời) trong lúc merge chạy → coi như đã có.
+          if (e?.code !== 'P2002') throw e;
+        }
+      } else if (membership.disabled) {
+        await this._userOrg.model.userOrganization.update({
+          where: { id: membership.id },
+          data: { disabled: false },
+        });
+        reEnabled.push(u.email);
+      }
+    }
+    // Tắt membership ở org khác để lần đăng nhập sau rơi thẳng vào org đích —
+    // nhưng CHỈ với org SOLO (đúng 1 thành viên = org cá nhân tự sinh khi đăng
+    // ký). KHÔNG đụng org ĐA THÀNH VIÊN: nếu ai đó đang làm chủ một tổ chức
+    // thật thì một nút "Gộp" không được khoá họ khỏi tổ chức của họ.
+    // (Chỉ xét đúng các user trong snapshot — tài khoản đăng ký GIỮA lúc gộp
+    // giữ nguyên org riêng, bấm Gộp lần sau mới vào.)
+    const candidates = await this._userOrg.model.userOrganization.findMany({
+      where: {
+        userId: { in: users.map((u) => u.id) },
+        organizationId: { not: targetOrgId },
+        disabled: false,
+      },
+      select: { id: true, organizationId: true },
+    });
+    const sizeCache = new Map<string, number>();
+    const soloIds: string[] = [];
+    const skippedOrgs = new Set<string>();
+    for (const m of candidates) {
+      let size = sizeCache.get(m.organizationId);
+      if (size == null) {
+        size = await this._userOrg.model.userOrganization.count({
+          where: { organizationId: m.organizationId },
+        });
+        sizeCache.set(m.organizationId, size);
+      }
+      if (size <= 1) soloIds.push(m.id);
+      else skippedOrgs.add(m.organizationId);
+    }
+    const off = soloIds.length
+      ? await this._userOrg.model.userOrganization.updateMany({
+          where: { id: { in: soloIds } },
+          data: { disabled: true },
+        })
+      : { count: 0 };
+    return {
+      totalUsers: users.length,
+      added,
+      reEnabled,
+      disabledElsewhere: off.count,
+      // org đa thành viên bị bỏ qua (không gộp cưỡng bức) — super admin biết
+      // còn tổ chức thật chưa đưa về.
+      skippedMultiMemberOrgs: skippedOrgs.size,
+    };
+  }
+
+  getMembership(orgId: string, userId: string) {
+    return this._userOrg.model.userOrganization.findFirst({
+      where: { organizationId: orgId, userId },
+    });
+  }
+
+  // Nếu user không còn membership nào ENABLED (vd vừa bị xoá khỏi org chung sau
+  // khi gộp), bật lại một membership bất kỳ để họ không bị 403 toàn app. Ưu
+  // tiên org "một mình" (org cá nhân tự sinh) để không lẻn vào org người khác.
+  async ensureAnyEnabledMembership(userId: string) {
+    const enabled = await this._userOrg.model.userOrganization.count({
+      where: { userId, disabled: false },
+    });
+    if (enabled > 0) return;
+    const all = await this._userOrg.model.userOrganization.findMany({
+      where: { userId },
+      select: { id: true, organizationId: true },
+    });
+    if (!all.length) return;
+    let pick = all[0];
+    for (const m of all) {
+      const members = await this._userOrg.model.userOrganization.count({
+        where: { organizationId: m.organizationId },
+      });
+      if (members === 1) {
+        pick = m;
+        break;
+      }
+    }
+    await this._userOrg.model.userOrganization.update({
+      where: { id: pick.id },
+      data: { disabled: false },
+    });
+  }
+
+  // Đổi vai một thành viên trong org (Member ↔ Admin).
+  updateMemberRole(orgId: string, userId: string, role: 'USER' | 'ADMIN') {
+    return this._userOrg.model.userOrganization.update({
+      where: { userId_organizationId: { userId, organizationId: orgId } },
+      data: { role: role === 'ADMIN' ? Role.ADMIN : Role.USER },
+    });
+  }
+
+  // Chuyển "chủ tổ chức": người nhận lên SUPERADMIN, người trao xuống ADMIN —
+  // trong MỘT transaction để không bao giờ kẹt ở trạng thái 2 chủ / 0 chủ.
+  // (model của PrismaRepository chính là PrismaClient — xem prisma.service.)
+  // Hạ người trao bằng updateMany CÓ ĐIỀU KIỆN role=SUPERADMIN: đây là chốt
+  // chống race — nếu chủ mở 2 tab bấm chuyển cho 2 người, request thứ hai chờ
+  // row-lock của request đầu, thấy người trao đã thành ADMIN → count 0 → ném
+  // lỗi rollback, nên chỉ MỘT lần chuyển thắng (không bao giờ ra 2 chủ).
+  transferSuperAdmin(orgId: string, fromUserId: string, toUserId: string) {
+    const client = this._userOrg.model as any;
+    return client.$transaction(async (tx: any) => {
+      const demoted = await tx.userOrganization.updateMany({
+        where: {
+          userId: fromUserId,
+          organizationId: orgId,
+          role: Role.SUPERADMIN,
+        },
+        data: { role: Role.ADMIN },
+      });
+      if (demoted.count !== 1) {
+        throw new Error('Người trao không còn là chủ tổ chức.');
+      }
+      return tx.userOrganization.update({
+        where: { userId_organizationId: { userId: toUserId, organizationId: orgId } },
+        data: { role: Role.SUPERADMIN, disabled: false },
+      });
     });
   }
 

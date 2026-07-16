@@ -29,6 +29,20 @@ export class SettingsController {
     private _organizationService: OrganizationService
   ) {}
 
+  // @CheckPolicies KHÔNG chặn gì trên self-host thiếu Stripe (permissions
+  // .service cấp mọi quyền khi !STRIPE_PUBLISHABLE_KEY) → các thao tác quản
+  // lý thành viên phải chốt role tường minh. org.users[0] = membership của
+  // CHÍNH user đang gọi (auth.middleware chỉ include đúng user đó).
+  private assertOrgAdmin(org: Organization) {
+    const role = (org as any)?.users?.[0]?.role;
+    if (role !== 'ADMIN' && role !== 'SUPERADMIN') {
+      throw new HttpException(
+        'Chỉ quản trị viên của tổ chức mới quản lý được thành viên.',
+        403
+      );
+    }
+  }
+
   @Get('/team')
   @CheckPolicies(
     [AuthorizationActions.Create, Sections.TEAM_MEMBERS],
@@ -48,6 +62,7 @@ export class SettingsController {
     @Body() body: AddTeamMemberDto,
     @Body('origin') origin: string
   ) {
+    this.assertOrgAdmin(org);
     return this._organizationService.inviteTeamMember(org.id, body, origin);
   }
 
@@ -62,6 +77,7 @@ export class SettingsController {
     @Param('id') id: string,
     @Body('origin') origin: string
   ) {
+    this.assertOrgAdmin(org);
     const res = await this._organizationService.generateMemberResetLink(
       org,
       id,
@@ -82,7 +98,80 @@ export class SettingsController {
     @GetOrgFromRequest() org: Organization,
     @Param('id') id: string
   ) {
+    this.assertOrgAdmin(org);
     return this._organizationService.deleteTeamMember(org, id);
+  }
+
+  // Đổi vai Member ↔ Admin cho một thành viên. Luật ở organization.service
+  // .changeMemberRole (chỉ CHỦ tổ chức — role SUPERADMIN — đổi được).
+  @Post('/team/:id/role')
+  @CheckPolicies(
+    [AuthorizationActions.Create, Sections.TEAM_MEMBERS],
+    [AuthorizationActions.Create, Sections.ADMIN]
+  )
+  async changeMemberRole(
+    @GetOrgFromRequest() org: Organization,
+    @GetUserFromRequest() user: User,
+    @Param('id') id: string,
+    @Body('role') role: string
+  ) {
+    if (role !== 'USER' && role !== 'ADMIN') {
+      throw new HttpException('Vai không hợp lệ.', 400);
+    }
+    const res = await this._organizationService.changeMemberRole(
+      org,
+      user.id,
+      id,
+      role
+    );
+    if (!res) {
+      throw new HttpException(
+        'Không đổi được vai — chỉ CHỦ tổ chức đổi được, không tự đổi mình, không đụng chủ khác.',
+        400
+      );
+    }
+    return { ok: true };
+  }
+
+  // Chuyển giao CHỦ tổ chức (SUPERADMIN) cho một thành viên khác; người trao
+  // xuống ADMIN. Cờ quản trị HỆ THỐNG (isSuperAdmin — key AI, cấu hình) không
+  // đổi theo. Luật ở organization.service.transferSuperAdmin.
+  @Post('/team/:id/transfer-superadmin')
+  @CheckPolicies(
+    [AuthorizationActions.Create, Sections.TEAM_MEMBERS],
+    [AuthorizationActions.Create, Sections.ADMIN]
+  )
+  async transferSuperAdmin(
+    @GetOrgFromRequest() org: Organization,
+    @GetUserFromRequest() user: User,
+    @Param('id') id: string
+  ) {
+    const res = await this._organizationService.transferSuperAdmin(
+      org,
+      user.id,
+      id
+    );
+    if (!res) {
+      throw new HttpException(
+        'Không chuyển được — chỉ CHỦ tổ chức chuyển được, người nhận phải là thành viên đang hoạt động.',
+        400
+      );
+    }
+    return { ok: true };
+  }
+
+  // Gộp MỌI tài khoản của instance về tổ chức của super admin đang bấm — chữa
+  // cảnh "tự đăng ký sinh org riêng, vào /viral thấy kho rỗng". Chi tiết thuật
+  // toán ở organization.repository.mergeAllUsersIntoOrg. Chỉ super admin: đây
+  // là thao tác TOÀN INSTANCE (đụng membership của mọi org), không phải việc
+  // của admin một tổ chức.
+  @Post('/team/merge-all')
+  async mergeAllUsers(
+    @GetOrgFromRequest() org: Organization,
+    @GetUserFromRequest() user: User
+  ) {
+    this.assertSuperAdmin(user);
+    return this._organizationService.mergeAllUsersIntoOrg(org.id);
   }
 
   @Get('/shortlink')

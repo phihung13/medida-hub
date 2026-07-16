@@ -12,9 +12,20 @@ import { useIntegrationList } from '@gitroom/frontend/components/launches/helper
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { MobileFab } from '@gitroom/frontend/components/new-layout/mobile.fab';
 import { useIsMobile } from '@gitroom/frontend/components/new-layout/use.is.mobile';
+import { useUser } from '@gitroom/frontend/components/layout/user.context';
 
 // ── Lò Bài Thắng: tường bài viral giáo dục → mổ công thức → nhân bản ───────
 // Thước đo chính: LƯỢT SHARE.
+
+// Cả tổ chức XEM được mọi thứ; DUYỆT/sản xuất/xoá/cấu hình nguồn là việc của
+// quản trị viên. Điều kiện phải KHỚP HỆT assertCanModerate ở backend (chỉ nhìn
+// role trong tổ chức, KHÔNG nhìn cờ isSuperAdmin) — lệch là ra cảnh nút hiện
+// đủ mà bấm phát nào 403 phát đó (vd superadmin đang impersonate một Member:
+// isSuperAdmin bị ép true nhưng org.users[0].role vẫn là USER).
+const useCanModerate = () => {
+  const user = useUser();
+  return !!user && user.role !== 'USER';
+};
 
 const PLATFORMS = [
   { key: 'all', label: 'All', dot: '' },
@@ -221,6 +232,7 @@ const DetailModal: FC<{ post: any; onDone: () => void }> = ({ post, onDone }) =>
   const fetch = useFetch();
   const toast = useToaster();
   const modal = useModals();
+  const canModerate = useCanModerate();
   const [cloning, setCloning] = useState(false);
   const [open, setOpen] = useState(false);
 
@@ -229,10 +241,20 @@ const DetailModal: FC<{ post: any; onDone: () => void }> = ({ post, onDone }) =>
     if (!res.ok) throw new Error();
     return res.json();
   }, [post.id]);
-  const { data, isLoading } = useSWR(open ? `vf-${post.id}` : null, loadFormula, {
+  // Member mở xem: KHÔNG bắn POST (backend sẽ 403) — đọc thẳng bản đã lưu.
+  const { data, isLoading } = useSWR(open && canModerate ? `vf-${post.id}` : null, loadFormula, {
     revalidateOnFocus: false,
   });
-  const f = data?.formula;
+  // Công thức ĐÃ MỔ nằm sẵn trong payload list (post.formula) — Member không
+  // gọi được POST /formula (mổ mới tốn AI, chỉ quản trị) nhưng vẫn xem bản có.
+  const storedFormula = (() => {
+    try {
+      return post.formula ? JSON.parse(post.formula) : null;
+    } catch {
+      return null;
+    }
+  })();
+  const f = data?.formula || storedFormula;
 
   // Clone → "Bài của mình": AI viết lại tốt hơn + chấm lại (chạy nền).
   const cloneToMine = useCallback(async () => {
@@ -390,6 +412,7 @@ const DetailModal: FC<{ post: any; onDone: () => void }> = ({ post, onDone }) =>
               {(detail.podcast_score ?? 0) >= 75 && <b className="text-textColor"> + 🎧 Podcast ({detail.podcast_score})</b>}
             </div>
           )}
+          {canModerate && (
           <div className="flex gap-[8px] mt-[2px]">
             {post.status !== 'approved' && (
               <button onClick={setStatus('approved')} className="flex-1 py-[8px] rounded-[8px] text-[12.5px] font-[700] bg-[#57D9A3]/15 text-[#57D9A3] border border-[#57D9A3]/35 hover:bg-[#57D9A3]/25">
@@ -407,6 +430,7 @@ const DetailModal: FC<{ post: any; onDone: () => void }> = ({ post, onDone }) =>
               </button>
             )}
           </div>
+          )}
         </div>
       )}
 
@@ -417,9 +441,16 @@ const DetailModal: FC<{ post: any; onDone: () => void }> = ({ post, onDone }) =>
               {t('viral_view_original', 'View original post')}
             </a>
           )}
-          <Button onClick={() => setOpen(true)} className="flex-[1.4]">
-            {t('viral_dissect_and_clone', 'Dissect the formula & clone')}
-          </Button>
+          {/* Mổ công thức = gọi AI (tốn tiền) + ghi vào record → chỉ quản trị.
+              Ẩn nút là SWR loadFormula không bao giờ bắn (open giữ false).
+              Member: nếu bài ĐÃ mổ sẵn thì vẫn mở xem được (không tốn AI). */}
+          {(canModerate || !!storedFormula) && (
+            <Button onClick={() => setOpen(true)} className="flex-[1.4]">
+              {canModerate
+                ? t('viral_dissect_and_clone', 'Dissect the formula & clone')
+                : t('viral_view_formula', 'Xem công thức đã mổ')}
+            </Button>
+          )}
         </div>
       ) : (
         <div className="flex flex-col gap-[10px] border-t border-newBgLineColor pt-[14px]">
@@ -431,7 +462,7 @@ const DetailModal: FC<{ post: any; onDone: () => void }> = ({ post, onDone }) =>
                 <p className="text-[12.5px] leading-[1.55]">{f[k]}</p>
               </div>
             ))}
-          {!!f && (
+          {!!f && canModerate && (
             <div className="flex flex-col gap-[8px] mt-[2px]">
               <Button onClick={cloneToMine} loading={cloning}>
                 {cloning ? t('viral_claude_writing', 'Claude is writing…') : t('viral_make_mine', 'Rewrite into my post →')}
@@ -894,6 +925,7 @@ const MineCard: FC<{
   const fetch = useFetch();
   const toast = useToaster();
   const modal = useModals();
+  const canModerate = useCanModerate();
   const [busy, setBusy] = useState<false | 'regen' | 'del'>(false);
   const detail = (() => {
     try {
@@ -959,18 +991,20 @@ const MineCard: FC<{
       )}
       <div className="text-[13px] leading-[1.6] whitespace-pre-line max-h-[220px] overflow-auto">{clone.content}</div>
       {detail?.reason && <div className="text-[11.5px] text-textItemBlur">🎯 {detail.reason}</div>}
-      <div className="flex gap-[6px] mt-auto pt-[8px] border-t border-newBgLineColor/60">
-        <button onClick={openPost} className="flex-1 py-[7px] rounded-[8px] text-[12px] font-[700] bg-btnPrimary/15 text-btnPrimary hover:bg-btnPrimary/25">
-          📤 {t('viral_post_mine', 'Post')}
-        </button>
-        <button onClick={openProduceMine} className="px-[11px] py-[7px] rounded-[8px] text-[12px] font-[700] bg-[#57D9A3]/15 text-[#57D9A3] hover:bg-[#57D9A3]/25" title={t('viral_produce_bulk', 'Produce')}>
-          🏭
-        </button>
-        <button onClick={regen} disabled={!!busy} className="px-[11px] py-[7px] rounded-[8px] text-[12px] text-textItemBlur border border-newBgLineColor hover:text-textColor disabled:opacity-50" title={t('viral_regenerate', 'Regenerate a better version')}>
-          {busy === 'regen' ? '…' : '↻'}
-        </button>
-        <button onClick={del} disabled={!!busy} className="px-[11px] py-[7px] rounded-[8px] text-[12px] text-[#FF5A52] hover:bg-[#FF5A52]/10 disabled:opacity-50">✕</button>
-      </div>
+      {canModerate && (
+        <div className="flex gap-[6px] mt-auto pt-[8px] border-t border-newBgLineColor/60">
+          <button onClick={openPost} className="flex-1 py-[7px] rounded-[8px] text-[12px] font-[700] bg-btnPrimary/15 text-btnPrimary hover:bg-btnPrimary/25">
+            📤 {t('viral_post_mine', 'Post')}
+          </button>
+          <button onClick={openProduceMine} className="px-[11px] py-[7px] rounded-[8px] text-[12px] font-[700] bg-[#57D9A3]/15 text-[#57D9A3] hover:bg-[#57D9A3]/25" title={t('viral_produce_bulk', 'Produce')}>
+            🏭
+          </button>
+          <button onClick={regen} disabled={!!busy} className="px-[11px] py-[7px] rounded-[8px] text-[12px] text-textItemBlur border border-newBgLineColor hover:text-textColor disabled:opacity-50" title={t('viral_regenerate', 'Regenerate a better version')}>
+            {busy === 'regen' ? '…' : '↻'}
+          </button>
+          <button onClick={del} disabled={!!busy} className="px-[11px] py-[7px] rounded-[8px] text-[12px] text-[#FF5A52] hover:bg-[#FF5A52]/10 disabled:opacity-50">✕</button>
+        </div>
+      )}
     </div>
   );
 };
@@ -1015,6 +1049,7 @@ const TopicDetailModal: FC<{ topicId: string; onDone: () => void }> = ({ topicId
   const fetch = useFetch();
   const toast = useToaster();
   const modal = useModals();
+  const canModerate = useCanModerate();
   const [busy, setBusy] = useState(false);
   const { data, mutate } = useSWR(`/viral/topics/${topicId}`, async (u: string) => (await fetch(u)).json());
   const topic = data?.topic;
@@ -1098,16 +1133,18 @@ const TopicDetailModal: FC<{ topicId: string; onDone: () => void }> = ({ topicId
               {pr.status === 'error' && (
                 <>
                   <span className="text-[#FF5A52] flex-1 truncate" title={pr.error || ''}>❌ {pr.error || t('viral_prod_failed', 'Production failed')}</span>
-                  <button
-                    onClick={async () => {
-                      await fetch(`/viral/products/${pr.id}/retry`, { method: 'POST' });
-                      toast.show(t('viral_prod_retrying', 'Retrying — check back in a few minutes.'), 'success');
-                      mutate();
-                    }}
-                    className="shrink-0 text-[11.5px] font-[700] text-btnPrimary hover:underline"
-                  >
-                    ↻ {t('viral_prod_retry', 'Retry')}
-                  </button>
+                  {canModerate && (
+                    <button
+                      onClick={async () => {
+                        await fetch(`/viral/products/${pr.id}/retry`, { method: 'POST' });
+                        toast.show(t('viral_prod_retrying', 'Retrying — check back in a few minutes.'), 'success');
+                        mutate();
+                      }}
+                      className="shrink-0 text-[11.5px] font-[700] text-btnPrimary hover:underline"
+                    >
+                      ↻ {t('viral_prod_retry', 'Retry')}
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -1133,7 +1170,8 @@ const TopicDetailModal: FC<{ topicId: string; onDone: () => void }> = ({ topicId
           ))}
         </div>
       </div>
-      {/* hành động */}
+      {/* hành động — chỉ quản trị viên; Member xem nội dung + bằng chứng */}
+      {canModerate && (
       <div className="flex gap-[8px] flex-wrap">
         {topic.status === 'pending' ? (
           <>
@@ -1148,6 +1186,7 @@ const TopicDetailModal: FC<{ topicId: string; onDone: () => void }> = ({ topicId
         </button>
         <button onClick={produce} className="h-[38px] px-[14px] rounded-[9px] text-[13px] font-[700] bg-[#57D9A3]/15 text-[#57D9A3] hover:bg-[#57D9A3]/25">🏭 {t('viral_produce_bulk', 'Produce')}</button>
       </div>
+      )}
     </div>
   );
 };
@@ -1483,6 +1522,7 @@ const ProductCard: FC<{
   const fetch = useFetch();
   const toast = useToaster();
   const modal = useModals();
+  const canModerate = useCanModerate();
   const [busy, setBusy] = useState(false);
   const fm = FORMAT_META[product.format] || { icon: '📦', label: product.format };
   const openDetail = () =>
@@ -1623,7 +1663,8 @@ const ProductCard: FC<{
               ⬇ {t('viral_download_docx', 'Download .docx')}
             </button>
           )}
-          {product.status === 'done' && product.format === 'infographic' && (
+          {/* Member giữ được các nút XEM/TẢI; Đăng/Thử lại/Tạo lại/Xoá = quản trị */}
+          {canModerate && product.status === 'done' && product.format === 'infographic' && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -1644,12 +1685,12 @@ const ProductCard: FC<{
               ⬇ {t('viral_download', 'Download')}
             </a>
           )}
-          {product.status === 'error' && (
+          {canModerate && product.status === 'error' && (
             <button onClick={retry} disabled={busy} className="flex-1 py-[6px] rounded-[7px] text-[11.5px] font-[700] text-[#FFC53D] border border-[#FFC53D]/40 hover:bg-[#FFC53D]/10 disabled:opacity-50">
               ↻ {t('viral_retry', 'Retry')}
             </button>
           )}
-          {product.status === 'done' && (
+          {canModerate && product.status === 'done' && (
             <button
               onClick={regenConfirm}
               disabled={busy}
@@ -1659,7 +1700,9 @@ const ProductCard: FC<{
               {busy ? '…' : '↻'}
             </button>
           )}
-          <button onClick={del} className="px-[10px] py-[6px] rounded-[7px] text-[11.5px] text-[#FF5A52] hover:bg-[#FF5A52]/10 mobile:min-h-[40px]">✕</button>
+          {canModerate && (
+            <button onClick={del} className="px-[10px] py-[6px] rounded-[7px] text-[11.5px] text-[#FF5A52] hover:bg-[#FF5A52]/10 mobile:min-h-[40px]">✕</button>
+          )}
         </div>
       </div>
     </div>
@@ -1678,6 +1721,9 @@ const SkillsPanel: FC = () => {
   const t = useT();
   const fetch = useFetch();
   const toast = useToaster();
+  // Công thức AI ghi vào CONFIG_DIR toàn instance → backend chỉ cho super
+  // admin sửa (POST/DELETE /viral/skills). Người khác vẫn ĐỌC + tải về.
+  const isSuperAdmin = !!useUser()?.isSuperAdmin;
   const { data, mutate } = useSkills(true);
   const items: any[] = data?.items || [];
   const [sel, setSel] = useState<string>('');
@@ -1798,21 +1844,26 @@ const SkillsPanel: FC = () => {
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
+              readOnly={!isSuperAdmin}
               spellCheck={false}
               className="bg-input border border-fifth rounded-[10px] p-[13px] min-h-[46vh] text-[12.5px] leading-[1.6] text-inputText outline-none font-mono resize-y"
             />
             <div className="flex gap-[8px] flex-wrap">
-              <Button onClick={save} loading={busy} disabled={!dirty}>
-                💾 {t('viral_skill_save', 'Save skill')}
-              </Button>
-              <input ref={fileRef} type="file" accept=".md,.txt,text/markdown,text/plain" className="hidden" onChange={(e) => importFile(e.target.files?.[0])} />
-              <button onClick={() => fileRef.current?.click()} className="px-[13px] rounded-[8px] text-[12.5px] font-[700] border border-newBgLineColor text-textItemBlur hover:text-textColor">
-                📥 {t('viral_skill_import', 'Import .md')}
-              </button>
+              {isSuperAdmin && (
+                <>
+                  <Button onClick={save} loading={busy} disabled={!dirty}>
+                    💾 {t('viral_skill_save', 'Save skill')}
+                  </Button>
+                  <input ref={fileRef} type="file" accept=".md,.txt,text/markdown,text/plain" className="hidden" onChange={(e) => importFile(e.target.files?.[0])} />
+                  <button onClick={() => fileRef.current?.click()} className="px-[13px] rounded-[8px] text-[12.5px] font-[700] border border-newBgLineColor text-textItemBlur hover:text-textColor">
+                    📥 {t('viral_skill_import', 'Import .md')}
+                  </button>
+                </>
+              )}
               <button onClick={download} className="px-[13px] rounded-[8px] text-[12.5px] font-[700] border border-newBgLineColor text-textItemBlur hover:text-textColor">
                 ⬇ {t('viral_skill_export', 'Download')}
               </button>
-              {current.isCustom && (
+              {isSuperAdmin && current.isCustom && (
                 <button onClick={reset} disabled={busy} className="ms-auto px-[13px] rounded-[8px] text-[12.5px] font-[700] text-[#FF5A52] border border-[#FF5A52]/35 hover:bg-[#FF5A52]/10">
                   ↩ {t('viral_skill_reset', 'Reset')}
                 </button>
@@ -1840,6 +1891,10 @@ const ZaloSendPanel: FC<{ latestId?: string }> = ({ latestId }) => {
   const t = useT();
   const fetch = useFetch();
   const toast = useToaster();
+  const canModerate = useCanModerate();
+  // checkbox auto + ✏️ Sửa ghi vào /viral/config → backend đòi isSuperAdmin;
+  // để ADMIN thường thấy chúng là bấm phát nào 403 phát đó.
+  const isSuperAdmin = !!useUser()?.isSuperAdmin;
   const { data: cfg, mutate: mutateCfg } = useSWR('viral-config', async () => (await fetch('/viral/config')).json());
   const [editing, setEditing] = useState(false);
   const [recipients, setRecipients] = useState<{ threadId: string; type: string; name: string }[]>([]);
@@ -1937,15 +1992,21 @@ const ZaloSendPanel: FC<{ latestId?: string }> = ({ latestId }) => {
     <div className="bg-newColColor border border-newBgLineColor rounded-[12px] p-[14px] flex flex-col gap-[10px]">
       <div className="flex items-center gap-[10px] flex-wrap">
         <span className="text-[13px] font-[800]">📤 {t('viral_zalo_panel', 'Send briefs via Zalo (bot)')}</span>
-        <label className="flex items-center gap-[6px] text-[12px] text-textItemBlur cursor-pointer">
-          <input type="checkbox" checked={auto} onChange={async (e) => { await save({ reportAutoSend: e.target.checked }); }} />
-          {t('viral_zalo_auto', 'Auto-send every new brief')}
-        </label>
+        {/* checkbox auto + ✏️ Sửa ghi /viral/config → chỉ superadmin;
+            📨 Gửi ngay là mutation thường → quản trị viên tổ chức. */}
+        {isSuperAdmin && (
+          <label className="flex items-center gap-[6px] text-[12px] text-textItemBlur cursor-pointer">
+            <input type="checkbox" checked={auto} onChange={async (e) => { await save({ reportAutoSend: e.target.checked }); }} />
+            {t('viral_zalo_auto', 'Auto-send every new brief')}
+          </label>
+        )}
         <div className="flex-1" />
-        <button onClick={sendNow} disabled={busy} className="h-[32px] px-[12px] rounded-[8px] text-[12px] font-[700] bg-btnPrimary/15 text-btnPrimary hover:bg-btnPrimary/25 disabled:opacity-50">
-          {busy ? t('viral_zalo_sending', 'Sending…') : `📨 ${t('viral_zalo_send_now', 'Send latest brief now')}`}
-        </button>
-        {!editing && (
+        {canModerate && (
+          <button onClick={sendNow} disabled={busy} className="h-[32px] px-[12px] rounded-[8px] text-[12px] font-[700] bg-btnPrimary/15 text-btnPrimary hover:bg-btnPrimary/25 disabled:opacity-50">
+            {busy ? t('viral_zalo_sending', 'Sending…') : `📨 ${t('viral_zalo_send_now', 'Send latest brief now')}`}
+          </button>
+        )}
+        {isSuperAdmin && !editing && (
           <button onClick={() => setEditing(true)} className="h-[32px] px-[12px] rounded-[8px] text-[12px] font-[700] border border-newBgLineColor text-textItemBlur hover:text-textColor">
             ✏️ {t('viral_zalo_edit', 'Edit')}
           </button>
@@ -2036,6 +2097,7 @@ const ReportCard: FC<{ report: any; onDone: () => void }> = ({ report, onDone })
   const t = useT();
   const fetch = useFetch();
   const toast = useToaster();
+  const canModerate = useCanModerate();
   const [open, setOpen] = useState(false);
   const [sending, setSending] = useState(false);
   // Gửi bản tin NÀY qua Zalo tới danh sách người nhận đã lưu (panel phía trên)
@@ -2117,15 +2179,19 @@ const ReportCard: FC<{ report: any; onDone: () => void }> = ({ report, onDone })
           </span>
         </span>
         <span className="text-textItemBlur text-[12px]">{open ? '▲' : '▼'}</span>
-        <button
-          onClick={sendZalo}
-          disabled={sending}
-          title={t('viral_zalo_send_this', 'Send this brief via Zalo to the saved recipients')}
-          className="px-[8px] py-[4px] mobile:min-h-[36px] mobile:min-w-[36px] rounded-[6px] text-[11.5px] text-btnPrimary hover:bg-btnPrimary/10 disabled:opacity-50"
-        >
-          {sending ? '…' : '📤'}
-        </button>
-        <button onClick={del} className="px-[8px] py-[4px] mobile:min-h-[36px] mobile:min-w-[36px] rounded-[6px] text-[11.5px] text-[#FF5A52] hover:bg-[#FF5A52]/10">✕</button>
+        {canModerate && (
+          <>
+            <button
+              onClick={sendZalo}
+              disabled={sending}
+              title={t('viral_zalo_send_this', 'Send this brief via Zalo to the saved recipients')}
+              className="px-[8px] py-[4px] mobile:min-h-[36px] mobile:min-w-[36px] rounded-[6px] text-[11.5px] text-btnPrimary hover:bg-btnPrimary/10 disabled:opacity-50"
+            >
+              {sending ? '…' : '📤'}
+            </button>
+            <button onClick={del} className="px-[8px] py-[4px] mobile:min-h-[36px] mobile:min-w-[36px] rounded-[6px] text-[11.5px] text-[#FF5A52] hover:bg-[#FF5A52]/10">✕</button>
+          </>
+        )}
       </div>
       {open && (
         <div className="px-[16px] pb-[16px] flex flex-col gap-[12px] border-t border-newBgLineColor/60 pt-[12px]">
@@ -2174,6 +2240,8 @@ export const ViralComponent: FC = () => {
   const fetch = useFetch();
   const modal = useModals();
   const toast = useToaster();
+  const canModerate = useCanModerate();
+  const isSuperAdmin = !!useUser()?.isSuperAdmin;
   const [platform, setPlatform] = useState('all');
   const [level, setLevel] = useState('all');
   const [sort, setSort] = useState('shares');
@@ -2254,12 +2322,18 @@ export const ViralComponent: FC = () => {
     });
   }, []);
 
-  const onGridMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-    if ((e.target as HTMLElement).closest('button, input, a, select, textarea')) return;
-    dragStart.current = { x: e.clientX, y: e.clientY };
-    didDrag.current = false;
-  }, []);
+  const onGridMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      // Member không có hành động hàng loạt → chặn lasso từ gốc, không thì
+      // kéo-quét vẫn chọn được thẻ mà chẳng có thanh bulk nào để bỏ chọn.
+      if (!canModerate) return;
+      if (e.button !== 0) return;
+      if ((e.target as HTMLElement).closest('button, input, a, select, textarea')) return;
+      dragStart.current = { x: e.clientX, y: e.clientY };
+      didDrag.current = false;
+    },
+    [canModerate]
+  );
 
   useEffect(() => {
     const move = (e: MouseEvent) => {
@@ -2564,7 +2638,8 @@ export const ViralComponent: FC = () => {
 
   // Nút "Chọn / Xong" — mobile-only (desktop có hover-tick + lasso chuột):
   // bật thì tick hiện trên mọi thẻ và TAP thẻ = chọn thay vì mở chi tiết.
-  const selectModeBtn = (
+  // Member không có hành động hàng loạt nào → khỏi hiện nút chọn.
+  const selectModeBtn = !canModerate ? null : (
     <button
       onClick={toggleSelectMode}
       className={clsx(
@@ -2609,18 +2684,25 @@ export const ViralComponent: FC = () => {
           <button onClick={openPersonas} title={t('viral_modal_personas', '8 customer personas')} className="h-[40px] px-[12px] rounded-[9px] border border-newBgLineColor text-textItemBlur hover:text-textColor text-[13px] mobile:shrink-0 mobile:whitespace-nowrap tap-shrink">
             🧬 {t('viral_personas_button', 'Personas')}
           </button>
-          <button onClick={openConfig} title={t('viral_modal_config', 'Auto-crawl configuration')} className="h-[40px] px-[12px] rounded-[9px] border border-newBgLineColor text-textItemBlur hover:text-textColor text-[13px] mobile:shrink-0 mobile:whitespace-nowrap tap-shrink">
-            {t('viral_config_button', 'Settings')}
-          </button>
-          <button onClick={crawlNow} disabled={crawling} className="h-[40px] px-[14px] rounded-[9px] border border-newBgLineColor bg-newColColor text-[13px] font-[600] disabled:opacity-50 mobile:shrink-0 mobile:whitespace-nowrap tap-shrink">
-            {crawling ? t('viral_crawling', 'Crawling…') : t('viral_crawl_now', 'Crawl now')}
-          </button>
-          <Button className="mobile:hidden" onClick={openCapture}>{t('viral_add_post_button', 'Add viral post')}</Button>
+          {/* Cài đặt ghi key/config toàn instance → chỉ superadmin thấy nút */}
+          {isSuperAdmin && (
+            <button onClick={openConfig} title={t('viral_modal_config', 'Auto-crawl configuration')} className="h-[40px] px-[12px] rounded-[9px] border border-newBgLineColor text-textItemBlur hover:text-textColor text-[13px] mobile:shrink-0 mobile:whitespace-nowrap tap-shrink">
+              {t('viral_config_button', 'Settings')}
+            </button>
+          )}
+          {canModerate && (
+            <>
+              <button onClick={crawlNow} disabled={crawling} className="h-[40px] px-[14px] rounded-[9px] border border-newBgLineColor bg-newColColor text-[13px] font-[600] disabled:opacity-50 mobile:shrink-0 mobile:whitespace-nowrap tap-shrink">
+                {crawling ? t('viral_crawling', 'Crawling…') : t('viral_crawl_now', 'Crawl now')}
+              </button>
+              <Button className="mobile:hidden" onClick={openCapture}>{t('viral_add_post_button', 'Add viral post')}</Button>
+            </>
+          )}
         </div>
       </div>
       {/* FAB mobile = hành động chính "Thêm bài viral"; nhường chỗ khi đang chọn
           (thanh bulk fixed đáy) và ở tab ngoài luồng content */}
-      {(isTopicTab || isReady) && !showTicks && selected.size === 0 && (
+      {canModerate && (isTopicTab || isReady) && !showTicks && selected.size === 0 && (
         <MobileFab label={t('viral_add_post_button', 'Add viral post')} onClick={openCapture} />
       )}
 
@@ -2718,19 +2800,22 @@ export const ViralComponent: FC = () => {
           <span className="text-[12.5px] font-[700] text-amber-400">
             ⏸ {t('viral_paused_banner', 'PRODUCTION PAUSED — every content stops at "To review" no matter the score; no rewriting, and approving does not auto-produce.')}
           </span>
-          <button
-            onClick={resumeProduction}
-            className="ms-auto h-[30px] px-[12px] rounded-[8px] text-[12px] font-[700] bg-[#57D9A3]/15 text-[#57D9A3] hover:bg-[#57D9A3]/25"
-          >
-            ▶ {t('viral_resume_production_btn', 'Resume production')}
-          </button>
+          {/* resume ghi /viral/config (superadmin) — người khác chỉ cần biết trạng thái */}
+          {isSuperAdmin && (
+            <button
+              onClick={resumeProduction}
+              className="ms-auto h-[30px] px-[12px] rounded-[8px] text-[12px] font-[700] bg-[#57D9A3]/15 text-[#57D9A3] hover:bg-[#57D9A3]/25"
+            >
+              ▶ {t('viral_resume_production_btn', 'Resume production')}
+            </button>
+          )}
         </div>
       )}
 
       {/* thanh thao tác hàng loạt + điều khiển Lưu trữ.
           Mobile khi CÓ chọn: ghim đáy ngay trên tab bar, 1 hàng nút 44px cuộn
           ngang (ngón cái với tới); không chọn (ghi chú Lưu trữ) thì nằm in-flow. */}
-      {(selected.size > 0 || isArchive) && (
+      {((selected.size > 0 && canModerate) || isArchive) && (
         <div
           className={clsx(
             'flex items-center gap-[8px] flex-wrap bg-newColColor border border-newBgLineColor rounded-[10px] px-[14px] py-[9px]',
@@ -2767,7 +2852,9 @@ export const ViralComponent: FC = () => {
           ) : (
             <>
               <span className="text-[12px] text-textItemBlur">🗄 {t('viral_archive_note', 'Skipped + deleted posts. Everything here is auto-deleted after 7 days.')}</span>
-              <button onClick={purgeArchive} className="ms-auto h-[32px] mobile:h-[44px] mobile:shrink-0 px-[12px] rounded-[8px] text-[12px] font-[700] text-[#FF5A52] border border-[#FF5A52]/40 hover:bg-[#FF5A52]/10">🗑 {t('viral_delete_all', 'Delete all from database')}</button>
+              {canModerate && (
+                <button onClick={purgeArchive} className="ms-auto h-[32px] mobile:h-[44px] mobile:shrink-0 px-[12px] rounded-[8px] text-[12px] font-[700] text-[#FF5A52] border border-[#FF5A52]/40 hover:bg-[#FF5A52]/10">🗑 {t('viral_delete_all', 'Delete all from database')}</button>
+              )}
             </>
           )}
         </div>
@@ -2793,7 +2880,7 @@ export const ViralComponent: FC = () => {
       {isReports ? (
         <div className="flex flex-col gap-[12px]">
           <ZaloSendPanel latestId={(reportsData?.items || [])[0]?.id} />
-          <div className="flex">
+          <div className={clsx('flex', !canModerate && 'hidden')}>
             <button
               onClick={async () => {
                 setMakingReport(true);
@@ -2939,7 +3026,8 @@ export const ViralComponent: FC = () => {
                 sel ? 'border-btnPrimary ring-2 ring-btnPrimary/40' : 'border-newBgLineColor hover:border-newTableBorder'
               )}
             >
-              {/* ô tích chọn */}
+              {/* ô tích chọn — chọn chỉ để làm hàng loạt, Member khỏi thấy */}
+              {canModerate && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -2960,6 +3048,7 @@ export const ViralComponent: FC = () => {
               >
                 ✓
               </button>
+              )}
               {/* hàng đầu: điểm + persona + vòng viết lại + độ hội tụ (bài·nguồn) */}
               <div className="flex items-center gap-[6px] flex-wrap pl-[30px] min-h-[22px]">
                 {p.score != null && (
@@ -3008,9 +3097,9 @@ export const ViralComponent: FC = () => {
                   {topicDefaults(sd).map((f) => FORMAT_META[f]?.icon).join(' ')}
                 </span>
               </div>
-              {/* hành động nhanh theo tab */}
+              {/* hành động nhanh theo tab — Member chỉ còn nút ⧉ mở chi tiết */}
               <div className="flex gap-[6px] pt-[8px] border-t border-newBgLineColor/60">
-                {isArchive ? (
+                {!canModerate ? null : isArchive ? (
                   <>
                     <button onClick={topicQuick(p.id, 'pending')} className="flex-1 py-[6px] rounded-[7px] text-[11.5px] font-[700] text-btnPrimary hover:bg-btnPrimary/10">
                       ↩ {t('viral_restore', 'Restore')}
@@ -3094,51 +3183,66 @@ export const ViralComponent: FC = () => {
             <div key={s.id} className="flex items-center gap-[7px] bg-newColColor border border-newBgLineColor rounded-full px-[13px] py-[6px] text-[12px]">
               <i className="w-[8px] h-[8px] rounded-full inline-block" style={{ background: platMeta(s.platform)?.dot || '#888' }} />
               <span className="font-[600]">{s.name}</span>
-              {/* Loại nguồn — đối thủ (trường) + KOL vào mục "động tĩnh đối thủ" của bản tin */}
-              <select
-                value={s.type || 'other'}
-                onChange={setSourceType(s)}
-                title={t('viral_source_type', 'Source type — schools & KOLs count as competitors in the weekly brief')}
-                className="text-[10px] bg-transparent border border-newBgLineColor rounded-[5px] px-[3px] py-[1px] text-textItemBlur mobile:min-h-[36px] mobile:px-[8px] mobile:rounded-[7px]"
-              >
-                <option value="school">{t('viral_type_school', 'Competitor')}</option>
-                <option value="kol">KOL</option>
-                <option value="group">Group</option>
-                <option value="news">{t('viral_type_news', 'News')}</option>
-                <option value="other">{t('viral_type_other', 'Other')}</option>
-              </select>
-              <button
-                onClick={toggleSourceAuto(s)}
-                title={t('viral_toggle_auto', 'Toggle scheduled auto-crawl for this source')}
-                className={clsx(
-                  'text-[9.5px] font-[700] px-[6px] py-[1px] rounded-[5px] border mobile:min-h-[36px] mobile:min-w-[48px] mobile:text-[12.5px] mobile:px-[10px] mobile:rounded-[7px]',
-                  s.auto
-                    ? 'text-[#57D9A3] border-[#57D9A3]/40 bg-[#57D9A3]/10'
-                    : 'text-textItemBlur border-newBgLineColor hover:text-textColor'
-                )}
-              >
-                {s.auto ? 'AUTO' : 'OFF'}
-              </button>
-              <button onClick={removeSource(s.id)} className="text-textItemBlur hover:text-red-400 text-[11px] ms-[2px] mobile:min-h-[36px] mobile:min-w-[36px] mobile:text-[14px]">✕</button>
+              {/* Loại nguồn — đối thủ (trường) + KOL vào mục "động tĩnh đối thủ" của bản tin.
+                  Member thấy danh bạ nguồn nhưng không sửa/xoá/bật tắt được. */}
+              {canModerate ? (
+                <select
+                  value={s.type || 'other'}
+                  onChange={setSourceType(s)}
+                  title={t('viral_source_type', 'Source type — schools & KOLs count as competitors in the weekly brief')}
+                  className="text-[10px] bg-transparent border border-newBgLineColor rounded-[5px] px-[3px] py-[1px] text-textItemBlur mobile:min-h-[36px] mobile:px-[8px] mobile:rounded-[7px]"
+                >
+                  <option value="school">{t('viral_type_school', 'Competitor')}</option>
+                  <option value="kol">KOL</option>
+                  <option value="group">Group</option>
+                  <option value="news">{t('viral_type_news', 'News')}</option>
+                  <option value="other">{t('viral_type_other', 'Other')}</option>
+                </select>
+              ) : (
+                <span className="text-[10px] text-textItemBlur">
+                  {s.type === 'school' ? t('viral_type_school', 'Competitor') : s.type === 'news' ? t('viral_type_news', 'News') : s.type === 'kol' ? 'KOL' : s.type === 'group' ? 'Group' : t('viral_type_other', 'Other')}
+                </span>
+              )}
+              {canModerate && (
+                <>
+                  <button
+                    onClick={toggleSourceAuto(s)}
+                    title={t('viral_toggle_auto', 'Toggle scheduled auto-crawl for this source')}
+                    className={clsx(
+                      'text-[9.5px] font-[700] px-[6px] py-[1px] rounded-[5px] border mobile:min-h-[36px] mobile:min-w-[48px] mobile:text-[12.5px] mobile:px-[10px] mobile:rounded-[7px]',
+                      s.auto
+                        ? 'text-[#57D9A3] border-[#57D9A3]/40 bg-[#57D9A3]/10'
+                        : 'text-textItemBlur border-newBgLineColor hover:text-textColor'
+                    )}
+                  >
+                    {s.auto ? 'AUTO' : 'OFF'}
+                  </button>
+                  <button onClick={removeSource(s.id)} className="text-textItemBlur hover:text-red-400 text-[11px] ms-[2px] mobile:min-h-[36px] mobile:min-w-[36px] mobile:text-[14px]">✕</button>
+                </>
+              )}
             </div>
           ))}
-          <button onClick={openSource} className="border border-dashed border-newBgLineColor rounded-full px-[14px] py-[6px] mobile:min-h-[44px] text-[12px] text-textItemBlur hover:text-textColor">
-            ＋ {t('viral_add_source', 'Add source')}
-          </button>
-          <button
-            onClick={importDefaultSources}
-            title={t('viral_import_sources_hint', 'KOLs, competitor schools, parent groups (needs Apify) + 10 Google News keywords (free)')}
-            className="border border-dashed border-btnPrimary/40 text-btnPrimary rounded-full px-[14px] py-[6px] mobile:min-h-[44px] text-[12px] hover:bg-btnPrimary/10"
-          >
-            📥 {t('viral_import_sources', 'Import n8n source pack')}
-          </button>
-          <button
-            onClick={cleanupSources}
-            title={t('viral_cleanup_sources_hint', 'One click: DELETE all Facebook/IG/TikTok sources (the crawl partner handles those and labels each post itself), remove duplicates, turn AUTO on for news & Google News keywords')}
-            className="border border-dashed border-[#57D9A3]/50 text-[#57D9A3] rounded-full px-[14px] py-[6px] mobile:min-h-[44px] text-[12px] hover:bg-[#57D9A3]/10"
-          >
-            🧹 {t('viral_cleanup_sources', 'Clean up sources')}
-          </button>
+          {canModerate && (
+            <>
+              <button onClick={openSource} className="border border-dashed border-newBgLineColor rounded-full px-[14px] py-[6px] mobile:min-h-[44px] text-[12px] text-textItemBlur hover:text-textColor">
+                ＋ {t('viral_add_source', 'Add source')}
+              </button>
+              <button
+                onClick={importDefaultSources}
+                title={t('viral_import_sources_hint', 'KOLs, competitor schools, parent groups (needs Apify) + 10 Google News keywords (free)')}
+                className="border border-dashed border-btnPrimary/40 text-btnPrimary rounded-full px-[14px] py-[6px] mobile:min-h-[44px] text-[12px] hover:bg-btnPrimary/10"
+              >
+                📥 {t('viral_import_sources', 'Import n8n source pack')}
+              </button>
+              <button
+                onClick={cleanupSources}
+                title={t('viral_cleanup_sources_hint', 'One click: DELETE all Facebook/IG/TikTok sources (the crawl partner handles those and labels each post itself), remove duplicates, turn AUTO on for news & Google News keywords')}
+                className="border border-dashed border-[#57D9A3]/50 text-[#57D9A3] rounded-full px-[14px] py-[6px] mobile:min-h-[44px] text-[12px] hover:bg-[#57D9A3]/10"
+              >
+                🧹 {t('viral_cleanup_sources', 'Clean up sources')}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -91,7 +91,11 @@ export class AuthMiddleware implements NestMiddleware {
       const setOrg =
         organization.find((org) => org.id === orgHeader) || organization[0];
 
-      if (!organization) {
+      // MẢNG RỖNG vẫn truthy → `!organization` là dead check; phải kiểm .length
+      // và setOrg trước khi đọc setOrg.apiKey, không thì ném TypeError câm rồi
+      // bị catch thành 403 khó hiểu. Xảy ra khi user hết sạch membership enabled
+      // (bị xoá khỏi org duy nhất, hoặc mọi org bị tắt sau khi gộp).
+      if (!organization.length || !setOrg) {
         throw new HttpForbiddenException();
       }
 
