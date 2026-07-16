@@ -158,6 +158,9 @@ export type BotRoute = {
   gbpAutoPublish?: boolean;
   gbpLocationIds?: string[];
   gbpLocationId?: string;
+  // Kênh Media Hub đích: mảng nhiều-kênh (mới) + field đơn cũ giữ lại để bot
+  // bản chưa cập nhật vẫn đăng được kênh chính. Xem routeChannelIds() ở zalo.routes.
+  postizIntegrationIds?: string[];
   postizIntegrationId?: string;
   allowSenders?: string[];
 };

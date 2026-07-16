@@ -458,14 +458,6 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
 
   return (
     <div className="flex flex-col gap-[14px]">
-      {/* Giải thích luồng mới: bài vào Calendar rồi thì tự rời danh sách này */}
-      <div className="text-[12.5px] text-textItemBlur leading-[1.6]">
-        {t(
-          'zalo_posts_history_hint2',
-          'Mỗi bài gom từ nhóm Zalo tự động thành bản nháp trong Calendar — duyệt, sửa và đăng ở đó. Bài đã vào Media Hub sẽ TỰ RỜI danh sách này; ở đây chỉ còn bài đẩy lỗi hoặc chưa đẩy.'
-        )}
-      </div>
-
       {/* Toolbar: lọc theo mục + refresh */}
       <div className="flex items-center gap-[10px] flex-wrap">
         {folders.length > 1 && (
@@ -497,7 +489,7 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
           <div className="text-[13px] text-textItemBlur text-center py-[20px] leading-[1.6]">
             {posts.length
               ? t('zalo_posts_none_filter', 'No posts match this filter.')
-              : t('zalo_posts_none', 'No posts yet. When someone sends images into a listened Zalo group, drafts will appear here.')}
+              : t('zalo_posts_none2', 'Chưa có bài viết nào.')}
           </div>
         </Card>
       )}

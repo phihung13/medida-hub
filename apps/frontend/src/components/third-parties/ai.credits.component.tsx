@@ -323,28 +323,35 @@ export const AiCreditsComponent: FC = () => {
   const t = useT();
   const fetch = useFetch();
 
-  // Cứ 15 phút (khi trang mở): tự gọi API lấy số dư cho các mục hỗ trợ auto
-  // (HeyGen) rồi đọc lại. Các nhà cung cấp nhập tay không có API nên bỏ qua.
+  // Tự gọi API lấy số dư cho các mục hỗ trợ auto (HeyGen) rồi đọc lại — MỘT LẦN
+  // ngay khi mở trang (số liệu vừa nạp) + lặp mỗi 15 phút. Refresh chỉ ĐỌC số dư
+  // (miễn phí, không gọi model) nên chạy tự động an toàn. Nhập tay thì bỏ qua.
   const dataRef = useRef<any[]>([]);
   dataRef.current = data || [];
+  const tick = useCallback(async () => {
+    const autoItems = (dataRef.current || []).filter((i: any) => i.supportsAuto);
+    if (!autoItems.length) return;
+    await Promise.all(
+      autoItems.map((i: any) =>
+        fetch(`/ai-credits/${i.id}/refresh`, { method: 'POST' }).catch(() => {})
+      )
+    );
+    mutate();
+  }, [fetch, mutate]);
+
+  // Bấm "Cập nhật" hộ người dùng ngay lần đầu số dư về (chỉ chạy 1 lần/phiên mở).
+  const didInitialRefresh = useRef(false);
   useEffect(() => {
-    const tick = async () => {
-      const autoItems = (dataRef.current || []).filter(
-        (i: any) => i.supportsAuto
-      );
-      if (!autoItems.length) return;
-      await Promise.all(
-        autoItems.map((i: any) =>
-          fetch(`/ai-credits/${i.id}/refresh`, { method: 'POST' }).catch(
-            () => {}
-          )
-        )
-      );
-      mutate();
-    };
+    if (didInitialRefresh.current) return;
+    if (!(data || []).some((i: any) => i.supportsAuto)) return;
+    didInitialRefresh.current = true;
+    tick();
+  }, [data, tick]);
+
+  useEffect(() => {
     const id = setInterval(tick, AUTO_REFRESH_MS);
     return () => clearInterval(id);
-  }, [fetch, mutate]);
+  }, [tick]);
 
   const add = useCallback(() => {
     modal.openModal({
@@ -371,19 +378,21 @@ export const AiCreditsComponent: FC = () => {
         <Button onClick={add}>{t('add_tool_button', 'Add tool')}</Button>
       </div>
 
-      {isLoading ? (
-        <div className="mt-[24px] opacity-60 text-[13px]">{t('loading', 'Loading...')}</div>
-      ) : !data?.length ? (
-        <div className="mt-[24px] p-[24px] rounded-[12px] border border-dashed border-newBgLineColor text-center text-[13px] opacity-70">
-          {t('no_tools', 'No tools yet — click "Add tool" to get started.')}
-        </div>
-      ) : (
-        <div className="mt-[20px] grid grid-cols-3 mobile:grid-cols-1 tablet:grid-cols-2 gap-[16px]">
-          {data.map((item: any) => (
-            <CreditCard key={item.id} item={item} reload={mutate} />
-          ))}
-        </div>
-      )}
+      <div className="mt-[20px]">
+        {isLoading ? (
+          <div className="opacity-60 text-[13px]">{t('loading', 'Loading...')}</div>
+        ) : !data?.length ? (
+          <div className="p-[24px] rounded-[12px] border border-dashed border-newBgLineColor text-center text-[13px] opacity-70">
+            {t('no_tools', 'No tools yet — click "Add tool" to get started.')}
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 mobile:grid-cols-1 tablet:grid-cols-2 gap-[16px]">
+            {data.map((item: any) => (
+              <CreditCard key={item.id} item={item} reload={mutate} />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

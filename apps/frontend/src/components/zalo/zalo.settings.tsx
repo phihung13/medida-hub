@@ -1,7 +1,6 @@
 'use client';
 
 import { FC, useCallback, useEffect, useState } from 'react';
-import clsx from 'clsx';
 import { useToaster } from '@gitroom/react/toaster/toaster';
 import { deleteDialog } from '@gitroom/react/helpers/delete.dialog';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
@@ -11,7 +10,6 @@ import {
   DangerLink,
   fmtFull,
   getBotUrl,
-  inputCls,
   PrimaryButton,
   SimpleButton,
   StatusChip,
@@ -44,7 +42,6 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
   } | null>(null);
   const [allowText, setAllowText] = useState('');
   const [allGroups, setAllGroups] = useState<ZaloGroup[] | null>(null);
-  const [revealPass, setRevealPass] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [qrTick, setQrTick] = useState(0);
@@ -86,16 +83,13 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
     [onChanged, t]
   );
 
+  // Xem mã tất cả nhóm — không cần mật khẩu nữa (request đã qua đăng nhập Hub).
   const revealGroups = useCallback(async () => {
-    if (!revealPass.trim()) {
-      toast.show(t('zalo_settings_need_pass', 'Enter the bot dashboard password'), 'warning');
-      return;
-    }
     setBusy(true);
     try {
       const r = await bot(
         '/api/zalo/groups/reveal',
-        { method: 'POST', body: JSON.stringify({ pass: revealPass }) },
+        { method: 'POST', body: '{}' },
         120000
       );
       if (Array.isArray(r)) setAllGroups(r);
@@ -105,7 +99,7 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
     } finally {
       setBusy(false);
     }
-  }, [revealPass, t]);
+  }, [t]);
 
   const logout = useCallback(
     async (wipe: boolean) => {
@@ -184,13 +178,6 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
               >
                 {t('zalo_settings_save_filter', 'Save filter')}
               </PrimaryButton>
-              <input
-                type="password"
-                value={revealPass}
-                onChange={(e) => setRevealPass(e.target.value)}
-                placeholder={t('zalo_settings_dash_pass', 'bot dashboard password…')}
-                className={clsx(inputCls, '!w-auto min-w-[180px] !h-[34px] mobile:!w-full mobile:!h-[44px]')}
-              />
               <SimpleButton className="!h-[34px] mobile:!h-[44px] text-[13px]" disabled={busy} onClick={revealGroups}>
                 {t('zalo_settings_reveal', 'Show ALL group IDs')}
               </SimpleButton>
@@ -271,12 +258,6 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
           <DangerLink onClick={() => logout(true)}>
             {t('zalo_settings_logout_wipe', 'Log out + DELETE old data')}
           </DangerLink>
-        </div>
-        <div className="text-[12px] text-textItemBlur leading-[1.6]">
-          {t(
-            'zalo_settings_account_note',
-            'Đổi tài khoản có hiệu lực ngay, không cần khởi động lại. Token Facebook luôn được giữ.'
-          )}
         </div>
       </Card>
 

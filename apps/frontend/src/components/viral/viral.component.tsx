@@ -794,10 +794,6 @@ const PersonasModal: FC = () => {
 
   return (
     <div className="flex flex-col gap-[12px]">
-      <div className="flex items-start gap-[8px] text-[12px] leading-[1.55] text-textItemBlur bg-newColColor border border-newBgLineColor rounded-[9px] px-[13px] py-[8px]">
-        <span className="shrink-0">🧬</span>
-        <span>{t('viral_personas_hint', 'The 8 parent personas AI uses to score & rewrite posts. The dynamic parts (interests, psychology, behaviour, insights) auto-enrich after each crawl from real signals (parent groups, news, winning posts).')}</span>
-      </div>
       {!items.length ? (
         <div className="text-[13px] text-textItemBlur p-[24px] text-center">{t('viral_loading', 'Loading…')}</div>
       ) : (
@@ -2624,7 +2620,6 @@ export const ViralComponent: FC = () => {
     mutate();
   };
 
-  const stats = data?.stats;
   const items = data?.items || [];
   const topics = topicsData?.topics || [];
   const sources = data?.sources || [];
@@ -2662,22 +2657,8 @@ export const ViralComponent: FC = () => {
         selected.size > 0 && 'mobile:pb-[140px]'
       )}
     >
-      {/* header: stats bên trái + nút bên phải, MỘT hàng cho gọn diện tích.
-          Mobile: stats = dãy chip cuộn ngang, nút = hàng cuộn ngang, Add → FAB. */}
+      {/* header: chỉ còn hàng nút (đã bỏ dãy số liệu cho gọn — nhìn là làm). */}
       <div className="flex items-center gap-[10px] flex-wrap">
-        <div className="flex gap-[22px] px-[16px] py-[8px] bg-newColColor border border-newBgLineColor rounded-[10px] flex-wrap items-center mobile-hscroll mobile:w-full mobile:flex-nowrap mobile:gap-[8px] mobile:p-0 mobile:bg-transparent mobile:border-0 mobile:rounded-none">
-          {[
-            [stats?.total ?? '—', t('viral_stat_captured', 'posts captured'), false],
-            [nice(stats?.totalShares) ?? '—', t('viral_stat_total_shares', 'total shares'), true],
-            [stats?.cloned ?? '—', t('viral_stat_cloned', 'cloned'), false],
-            [stats?.sources ?? '—', t('viral_stat_sources', 'tracked sources'), false],
-          ].map(([v, k, gold], i) => (
-            <div key={i} className="flex items-baseline gap-[6px] mobile:shrink-0 mobile:whitespace-nowrap mobile:bg-newColColor mobile:border mobile:border-newBgLineColor mobile:rounded-full mobile:px-[12px] mobile:py-[7px]">
-              <span className={clsx('text-[16px] font-[700] tabular-nums', gold && 'text-[#FFC53D]')}>{v as any}</span>
-              <span className="text-[11px] text-textItemBlur">{k as any}</span>
-            </div>
-          ))}
-        </div>
         <div className="flex-1 mobile:hidden" />
         {/* contents = vỏ trong suốt trên desktop (không đổi pixel); mobile thành hàng cuộn */}
         <div className="contents mobile:flex mobile:w-full mobile:items-center mobile:gap-[8px] mobile-hscroll">
@@ -2781,30 +2762,17 @@ export const ViralComponent: FC = () => {
         </button>
       </div>
 
-      {/* hướng dẫn bước hiện tại — ai mới vào nhìn là biết làm gì tiếp */}
-      <div className="flex items-start gap-[8px] text-[12px] leading-[1.55] text-textItemBlur bg-newColColor border border-newBgLineColor rounded-[9px] px-[13px] py-[8px]">
-        <span className="shrink-0">💡</span>
-        <span>
-          {tab === 'pending' && t('viral_flow_pending_topics', 'Step 1 · Each card is one CONTENT — many posts from many sources merged (a 1-post content is fine too). The AI already scored & rewrote it up to 3 rounds: ≥ threshold auto-approved, low ones auto-skipped, the rest wait for you here. ✓ Approve = auto-produce the suggested format.')}
-          {tab === 'approved' && t('viral_flow_approved_topics2', 'Step 2 · Only content still being produced (or failed) stays here — once every product finishes, the card leaves this tab automatically (its products are in "Ready to post"). Select cards → "🏭 Produce" for more formats or "⧉ Clone" for a social post.')}
-          {tab === 'ready' && t('viral_flow_ready2', 'Step 3 · Everything finished, waiting to publish. ✍️ Social posts → 📤 push to the Calendar (Facebook…). 🏭 Blog/infographic/podcast → download & publish to the website / YouTube / fanpage. Tick or drag-select multiple cards → bulk "📤 Add to Calendar" / "🗑 Delete".')}
-          {tab === 'archive' && t('viral_flow_archive_topics', 'Outside the flow · Skipped + deleted content rests here. Everything is permanently deleted after 7 days. You can still ↩ Restore a content back to "To review".')}
-          {tab === 'skills' && t('viral_flow_skills', 'Outside the flow · The AI recipes behind every step: writing formulas, scoring rubric, group routing, weekly brief… Edit as markdown, import a .md file, or reset to the built-in default — changes apply from the very next AI run.')}
-          {tab === 'reports' && t('viral_flow_reports', 'Outside the flow · Weekly briefs the AI compiles from 7 days of crawling: hot news, market moves and a to-do list. Auto-created on the Mon-Wed-Fri schedule + Sunday recap, also sent to Zalo/email — tick off to-dos right here.')}
-        </span>
-      </div>
-
-      {/* ⏸ băng rôn Dừng sản xuất — thấy ngay tại sao không có gì tự duyệt/sản xuất */}
+      {/* ⏸ Đang tạm dừng — chỉ một dấu hiệu gọn, không mô tả dài */}
       {cfgData?.productionPaused && (
-        <div className="flex items-center gap-[10px] flex-wrap bg-amber-400/10 border border-amber-400/40 rounded-[10px] px-[14px] py-[9px]">
-          <span className="text-[12.5px] font-[700] text-amber-400">
-            ⏸ {t('viral_paused_banner', 'PRODUCTION PAUSED — every content stops at "To review" no matter the score; no rewriting, and approving does not auto-produce.')}
+        <div className="flex items-center gap-[10px] self-start bg-amber-400/10 border border-amber-400/40 rounded-full px-[12px] py-[5px]">
+          <span className="text-[12.5px] font-[700] text-amber-400" title={t('viral_paused_title', 'Đang tạm dừng sản xuất — bài dừng ở "Chờ duyệt", duyệt không tự sản xuất.')}>
+            ⏸ {t('viral_paused_short', 'Đang tạm dừng')}
           </span>
           {/* resume ghi /viral/config (superadmin) — người khác chỉ cần biết trạng thái */}
           {isSuperAdmin && (
             <button
               onClick={resumeProduction}
-              className="ms-auto h-[30px] px-[12px] rounded-[8px] text-[12px] font-[700] bg-[#57D9A3]/15 text-[#57D9A3] hover:bg-[#57D9A3]/25"
+              className="h-[26px] px-[10px] rounded-full text-[12px] font-[700] bg-[#57D9A3]/15 text-[#57D9A3] hover:bg-[#57D9A3]/25"
             >
               ▶ {t('viral_resume_production_btn', 'Resume production')}
             </button>

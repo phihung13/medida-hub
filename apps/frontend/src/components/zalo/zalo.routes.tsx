@@ -19,7 +19,6 @@ import {
   selectCls,
   SimpleButton,
   StatusChip,
-  textareaCls,
   Toggle,
   ZaloGroup,
 } from './zalo.shared';
@@ -37,7 +36,6 @@ import {
 const newRoute = (): BotRoute => ({
   threadId: '',
   label: '',
-  folder: '',
   fanpageId: '',
   fanpageTokenEnv: '',
   published: false,
@@ -45,13 +43,21 @@ const newRoute = (): BotRoute => ({
   enabled: true,
   curateImages: true,
   autoHashtags: true,
-  comment: '',
   captionFooter: '',
-  writeGuide: '',
+  postizIntegrationIds: [],
   postizIntegrationId: '',
   debounceMs: 600000,
   maxWaitMs: 1800000,
 });
+
+// Kênh đích của route (chuẩn hoá): mảng mới postizIntegrationIds, có fallback
+// về field cũ postizIntegrationId (routes.json bản trước chỉ lưu 1 kênh).
+const routeChannelIds = (r: BotRoute): string[] => {
+  if (Array.isArray(r.postizIntegrationIds) && r.postizIntegrationIds.length) {
+    return r.postizIntegrationIds.filter(Boolean);
+  }
+  return r.postizIntegrationId ? [r.postizIntegrationId] : [];
+};
 
 export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> = ({
   zaloLogged,
@@ -77,7 +83,12 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
         f.routes.forEach((r: BotRoute) => {
           if (r.debounceMs == null) r.debounceMs = defs.debounceMs ?? 600000;
           if (r.maxWaitMs == null) r.maxWaitMs = defs.maxWaitMs ?? 1800000;
-          if (r.writeGuide == null) r.writeGuide = r.styleSample || '';
+          // Nâng field cũ 1-kênh → mảng nhiều-kênh (tương thích routes.json cũ).
+          if (!Array.isArray(r.postizIntegrationIds)) {
+            r.postizIntegrationIds = r.postizIntegrationId
+              ? [r.postizIntegrationId]
+              : [];
+          }
         });
         // routes.json còn sót cấu hình Google Business cũ = bot VẪN tự đăng bằng
         // Playwright (nó đọc thẳng file này, không qua UI). Bật sẵn cờ chưa-lưu
@@ -141,6 +152,11 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
       r.gbpLocationIds = [];
       r.gbpLocationId = '';
       r.gbpAutoPublish = false;
+      // Kênh đích: chuẩn hoá mảng + GIỮ postizIntegrationId = phần tử đầu để bot
+      // bản CŨ (đọc field đơn) vẫn đăng được ít nhất kênh chính khi chưa cập nhật.
+      const chIds = routeChannelIds(r);
+      r.postizIntegrationIds = chIds;
+      r.postizIntegrationId = chIds[0] || '';
       if (!r.threadId) {
         toast.show(
           t('zalo_routes_missing_thread', 'Route {{n}} ({{name}}) has no Zalo group selected')
@@ -150,7 +166,7 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
         );
         return;
       }
-      if (!r.postizIntegrationId) {
+      if (!chIds.length) {
         toast.show(
           t('zalo_routes_missing_target', 'Route {{n}} ({{name}}): chọn kênh Media Hub để bài có đích đến.')
             .replace('{{n}}', String(i + 1))
@@ -219,13 +235,6 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
   return (
     // Chừa chỗ cho thanh Lưu fixed đáy trên mobile khi có thay đổi chưa lưu
     <div className={clsx('flex flex-col gap-[14px]', dirty && 'mobile:pb-[76px]')}>
-      <div className="text-[12.5px] text-textItemBlur max-w-[720px]">
-        {t(
-          'zalo_routes_intro2',
-          'Mỗi thẻ: một nhóm Zalo nguồn → kênh Media Hub (bài thành BẢN NHÁP chờ duyệt trên Lịch, Hub tự chèn chân bài của kênh + hashtag). Muốn đăng Google Business thì chọn kênh Google Business ở đây như mọi kênh khác. Nhớ bấm "Lưu cấu hình" sau khi sửa.'
-        )}
-      </div>
-
       {!!legacyGbp && (
         <div className="text-[12.5px] leading-[1.6] text-amber-400 border border-amber-400/40 bg-amber-400/10 rounded-[12px] px-[16px] py-[12px] max-w-[720px]">
           {t(
@@ -264,41 +273,30 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
               <StatusChip tone={r.enabled !== false ? 'ok' : 'off'}>
                 {r.enabled !== false ? t('zalo_on', 'On') : t('zalo_off', 'Off')}
               </StatusChip>
-              <StatusChip tone={r.postizIntegrationId ? 'wait' : 'warn'}>
-                {r.postizIntegrationId
-                  ? t('zalo_routes_hub_draft', '→ Nháp chờ duyệt trên Lịch')
-                  : t('zalo_routes_hub_missing', 'Chưa chọn kênh Media Hub')}
-              </StatusChip>
+              {(() => {
+                const n = routeChannelIds(r).length;
+                return (
+                  <StatusChip tone={n ? 'wait' : 'warn'}>
+                    {n
+                      ? t('zalo_routes_hub_draft_n', '→ {{n}} kênh · nháp chờ duyệt').replace('{{n}}', String(n))
+                      : t('zalo_routes_hub_missing', 'Chưa chọn kênh Media Hub')}
+                  </StatusChip>
+                );
+              })()}
               <span className="text-textItemBlur text-[12px]">{isOpen ? '▾' : '▸'}</span>
             </div>
 
             {isOpen && (
               <div className="p-[14px] pt-0 flex flex-col gap-[12px]">
-                {/* Tên + mục */}
-                {/* mobile: phủ lên md — dưới 1025px luôn 1 cột, desktop >1025 giữ nguyên */}
-                <div className="grid grid-cols-1 md:grid-cols-2 mobile:grid-cols-1 gap-[10px]">
-                  <div className="flex flex-col gap-[5px]">
-                    <FieldLabel>{t('zalo_routes_label', 'Display name')}</FieldLabel>
-                    <input
-                      value={r.label || ''}
-                      onChange={(e) => patch(i, { label: e.target.value })}
-                      placeholder={t('zalo_routes_label_ph', 'e.g. Kindergarten class → Việt Anh Page')}
-                      className={inputCls}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-[5px]">
-                    <FieldLabel
-                      hint={t('zalo_routes_folder_hint', 'Group pages of the same person into one section — the Posts tab filters by it.')}
-                    >
-                      {t('zalo_routes_folder', 'Section / person in charge')}
-                    </FieldLabel>
-                    <input
-                      value={r.folder || ''}
-                      onChange={(e) => patch(i, { folder: e.target.value })}
-                      placeholder={t('zalo_routes_folder_ph', 'e.g. Ms. Lan · Brand A')}
-                      className={inputCls}
-                    />
-                  </div>
+                {/* Tên hiển thị */}
+                <div className="flex flex-col gap-[5px]">
+                  <FieldLabel>{t('zalo_routes_label', 'Display name')}</FieldLabel>
+                  <input
+                    value={r.label || ''}
+                    onChange={(e) => patch(i, { label: e.target.value })}
+                    placeholder={t('zalo_routes_label_ph', 'e.g. Kindergarten class → Việt Anh Page')}
+                    className={inputCls}
+                  />
                 </div>
 
                 {/* Nguồn + đích */}
@@ -343,28 +341,45 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
                     )}
                   </div>
                   <div className="flex flex-col gap-[5px]">
-                    <FieldLabel
-                      hint={t(
-                        'zalo_routes_hub_hint2',
-                        'Bài thành BẢN NHÁP chờ duyệt trên Lịch cho kênh này. Hub tự chèn chân bài đã cài cho kênh (bấm avatar kênh trên Lịch) dưới caption, trên hashtag.'
-                      )}
-                    >
-                      {t('zalo_routes_hub_channel', 'Media Hub channel')}
+                    <FieldLabel>
+                      {t('zalo_routes_hub_channel', 'Kênh Media Hub (chọn nhiều)')}
                     </FieldLabel>
-                    <select
-                      value={r.postizIntegrationId || ''}
-                      onChange={(e) => patch(i, { postizIntegrationId: e.target.value })}
-                      className={selectCls}
-                    >
-                      <option value="">{t('zalo_no_channel_selected', '— No channel selected —')}</option>
-                      {channels
-                        .filter((ch) => isSupportedChannel(ch.identifier))
-                        .map((ch) => (
-                          <option key={ch.id} value={ch.id}>
-                            → {ch.name || ch.id}
-                          </option>
-                        ))}
-                    </select>
+                    {(() => {
+                      const sel = routeChannelIds(r);
+                      const list = channels.filter((ch) => isSupportedChannel(ch.identifier));
+                      if (!list.length)
+                        return (
+                          <div className="text-[12px] text-textItemBlur">
+                            {t('zalo_routes_no_channels', 'Chưa có kênh nào — kết nối kênh ở Lịch → Add Channel.')}
+                          </div>
+                        );
+                      const toggle = (id: string) =>
+                        patch(i, {
+                          postizIntegrationIds: sel.includes(id)
+                            ? sel.filter((x) => x !== id)
+                            : [...sel, id],
+                        });
+                      return (
+                        <div className="flex gap-[8px] flex-wrap">
+                          {list.map((ch) => {
+                            const on = sel.includes(ch.id);
+                            return (
+                              <label
+                                key={ch.id}
+                                className={clsx(
+                                  'flex items-center gap-[6px] text-[12.5px] font-[600] border rounded-[8px] px-[10px] h-[32px] mobile:h-[40px] mobile:px-[14px] cursor-pointer tap-shrink',
+                                  on ? 'border-btnPrimary text-btnPrimary bg-btnPrimary/10' : 'border-newTableBorder text-textItemBlur'
+                                )}
+                              >
+                                <input type="checkbox" hidden checked={on} onChange={() => toggle(ch.id)} />
+                                {on ? '✓ ' : ''}
+                                {ch.name || ch.id}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -397,7 +412,7 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
                 >
                   <b className="text-[13px]">{t('zalo_routes_advanced', 'Advanced settings')}</b>
                   <span className="text-[11.5px] text-textItemBlur">
-                    {t('zalo_routes_advanced_sub2', 'thời gian · bình luận tự động · hướng dẫn viết · hashtag')}{' '}
+                    {t('zalo_routes_advanced_sub3', 'thời gian gom bài · hashtag')}{' '}
                     {advOpen ? '▾' : '▸'}
                   </span>
                 </div>
@@ -439,40 +454,11 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
                         />
                       </div>
                     </div>
-                    <div className="flex flex-col gap-[5px]">
-                      <FieldLabel hint={t('zalo_routes_comment_hint', 'Automatically commented right under each published post.')}>
-                        {t('zalo_routes_comment', 'Automatic first comment (optional)')}
-                      </FieldLabel>
-                      <input
-                        value={r.comment || ''}
-                        onChange={(e) => patch(i, { comment: e.target.value })}
-                        placeholder={t('zalo_routes_comment_ph', 'e.g. ☎ 0902 095 956 · Address…')}
-                        className={inputCls}
-                      />
-                    </div>
-                    <div className="text-[12px] text-textItemBlur border border-dashed border-newTableBorder rounded-[8px] px-[10px] py-[8px]">
+                    <div className="text-[12px] text-textItemBlur border border-dashed border-newTableBorder rounded-[8px] px-[10px] py-[8px] leading-[1.6]">
                       {t(
                         'zalo_routes_footer_moved',
                         'Chân bài (hotline/địa chỉ) nay cài MỘT LẦN cho từng kênh trong Lịch — bấm avatar kênh trên trang Lịch. Hub tự chèn vào mọi bài của kênh, kể cả bản nháp từ Zalo.'
                       )}
-                    </div>
-                    <div className="flex flex-col gap-[5px]">
-                      <FieldLabel
-                        hint={t('zalo_routes_guide_hint', 'AI follows these INSTRUCTIONS to adapt each post (tone, addressing, campaign, lead magnet) — not copied verbatim.')}
-                      >
-                        {t('zalo_routes_guide', 'Writing guide for this Page (optional)')}
-                        {(r.writeGuide || '').length ? ` · ${(r.writeGuide || '').length} ${t('zalo_routes_chars', 'chars')}` : ''}
-                      </FieldLabel>
-                      <textarea
-                        rows={6}
-                        value={r.writeGuide || ''}
-                        onChange={(e) => patch(i, { writeGuide: e.target.value })}
-                        placeholder={t(
-                          'zalo_routes_guide_ph',
-                          "Write DIRECTIONS for the AI, e.g.:\n- Style: warm, emotional.\n- Addressing: call readers 'ba mẹ', sign as 'nhà trường'.\n- Running campaign: July tuition offer.\n- Lead magnet: invite to leave a phone number for a tour.\nLeave empty = default style."
-                        )}
-                        className={textareaCls}
-                      />
                     </div>
                     <label className="flex items-center gap-[8px] text-[13px] font-[600] cursor-pointer w-fit mobile:min-h-[44px]">
                       <Toggle small on={r.autoHashtags !== false} onChange={() => patch(i, { autoHashtags: !(r.autoHashtags !== false) })} />
