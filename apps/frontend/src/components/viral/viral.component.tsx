@@ -2657,40 +2657,10 @@ export const ViralComponent: FC = () => {
         selected.size > 0 && 'mobile:pb-[140px]'
       )}
     >
-      {/* header: chỉ còn hàng nút (đã bỏ dãy số liệu cho gọn — nhìn là làm). */}
-      <div className="flex items-center gap-[10px] flex-wrap">
-        <div className="flex-1 mobile:hidden" />
-        {/* contents = vỏ trong suốt trên desktop (không đổi pixel); mobile thành hàng cuộn */}
-        <div className="contents mobile:flex mobile:w-full mobile:items-center mobile:gap-[8px] mobile-hscroll">
-          <button onClick={openPersonas} title={t('viral_modal_personas', '8 customer personas')} className="h-[40px] px-[12px] rounded-[9px] border border-newBgLineColor text-textItemBlur hover:text-textColor text-[13px] mobile:shrink-0 mobile:whitespace-nowrap tap-shrink">
-            🧬 {t('viral_personas_button', 'Personas')}
-          </button>
-          {/* Cài đặt ghi key/config toàn instance → chỉ superadmin thấy nút */}
-          {isSuperAdmin && (
-            <button onClick={openConfig} title={t('viral_modal_config', 'Auto-crawl configuration')} className="h-[40px] px-[12px] rounded-[9px] border border-newBgLineColor text-textItemBlur hover:text-textColor text-[13px] mobile:shrink-0 mobile:whitespace-nowrap tap-shrink">
-              {t('viral_config_button', 'Settings')}
-            </button>
-          )}
-          {canModerate && (
-            <>
-              <button onClick={crawlNow} disabled={crawling} className="h-[40px] px-[14px] rounded-[9px] border border-newBgLineColor bg-newColColor text-[13px] font-[600] disabled:opacity-50 mobile:shrink-0 mobile:whitespace-nowrap tap-shrink">
-                {crawling ? t('viral_crawling', 'Crawling…') : t('viral_crawl_now', 'Crawl now')}
-              </button>
-              <Button className="mobile:hidden" onClick={openCapture}>{t('viral_add_post_button', 'Add viral post')}</Button>
-            </>
-          )}
-        </div>
-      </div>
-      {/* FAB mobile = hành động chính "Thêm bài viral"; nhường chỗ khi đang chọn
-          (thanh bulk fixed đáy) và ở tab ngoài luồng content */}
-      {canModerate && (isTopicTab || isReady) && !showTicks && selected.size === 0 && (
-        <MobileFab label={t('viral_add_post_button', 'Add viral post')} onClick={openCapture} />
-      )}
-
-      {/* LUỒNG 4 BƯỚC: ①Chờ duyệt → ②Đã duyệt → ③Bài của mình → ④Sản phẩm.
-          Lưu trữ nằm NGOÀI luồng (bên phải). Dưới tabs có dòng hướng dẫn bước.
-          Mobile: 1 hàng pill cuộn ngang, bỏ mũi tên. */}
-      <div className="flex items-center gap-[6px] flex-wrap mobile:flex-nowrap mobile-hscroll">
+      {/* HÀNG 1 — Toolbar chính: LUỒNG trạng thái (trái) + nút hành động (phải),
+          gom về 1 hàng cho gọn (trước đây nút hành động nằm hàng riêng, trống
+          nửa trái). Mobile: 1 hàng cuộn ngang. */}
+      <div className="flex items-center gap-[8px] flex-wrap mobile:flex-nowrap mobile-hscroll">
         {[
           ['pending', t('viral_status_pending', 'To review'), topicsData?.counts?.pending ?? data?.statusCounts?.pending],
           ['approved', t('viral_status_approved', 'Approved'), topicsData?.counts?.approved ?? data?.statusCounts?.approved],
@@ -2701,7 +2671,7 @@ export const ViralComponent: FC = () => {
             <button
               onClick={() => setTab(k as string)}
               className={clsx(
-                'flex items-center gap-[7px] px-[12px] py-[7px] rounded-[8px] text-[12.5px] font-[700] border mobile:h-[40px] mobile:shrink-0 mobile:whitespace-nowrap tap-shrink',
+                'flex items-center gap-[7px] h-[38px] px-[12px] rounded-[8px] text-[12.5px] font-[700] border mobile:shrink-0 mobile:whitespace-nowrap tap-shrink',
                 tab === k
                   ? 'bg-btnPrimary/15 border-btnPrimary/50 text-btnPrimary'
                   : 'border-newBgLineColor text-textItemBlur hover:text-textColor'
@@ -2720,13 +2690,39 @@ export const ViralComponent: FC = () => {
             </button>
           </Fragment>
         ))}
-        {/* mobile: hàng cuộn ngang nên spacer chỉ giữ khoảng ngăn nhóm tab phụ */}
-        <div className="flex-1 mobile:min-w-[16px]" />
+        <div className="flex-1 mobile:min-w-[8px]" />
+        <button onClick={openPersonas} title={t('viral_modal_personas', '8 customer personas')} className="h-[38px] px-[12px] rounded-[8px] border border-newBgLineColor text-textItemBlur hover:text-textColor text-[13px] mobile:shrink-0 mobile:whitespace-nowrap tap-shrink">
+          🧬 {t('viral_personas_button', 'Personas')}
+        </button>
+        {/* Cài đặt ghi key/config toàn instance → chỉ superadmin thấy nút */}
+        {isSuperAdmin && (
+          <button onClick={openConfig} title={t('viral_modal_config', 'Auto-crawl configuration')} className="h-[38px] px-[12px] rounded-[8px] border border-newBgLineColor text-textItemBlur hover:text-textColor text-[13px] mobile:shrink-0 mobile:whitespace-nowrap tap-shrink">
+            {t('viral_config_button', 'Settings')}
+          </button>
+        )}
+        {canModerate && (
+          <>
+            <button onClick={crawlNow} disabled={crawling} className="h-[38px] px-[14px] rounded-[8px] border border-newBgLineColor bg-newColColor text-[13px] font-[600] disabled:opacity-50 mobile:shrink-0 mobile:whitespace-nowrap tap-shrink">
+              {crawling ? t('viral_crawling', 'Crawling…') : t('viral_crawl_now', 'Crawl now')}
+            </button>
+            <Button className="!h-[38px] mobile:hidden" onClick={openCapture}>{t('viral_add_post_button', 'Add viral post')}</Button>
+          </>
+        )}
+      </div>
+      {/* FAB mobile = hành động chính "Thêm bài viral"; nhường chỗ khi đang chọn
+          (thanh bulk fixed đáy) và ở tab ngoài luồng content */}
+      {canModerate && (isTopicTab || isReady) && !showTicks && selected.size === 0 && (
+        <MobileFab label={t('viral_add_post_button', 'Add viral post')} onClick={openCapture} />
+      )}
+
+      {/* HÀNG 2 — Toolbar phụ: tab NGOÀI luồng + trạng thái tạm dừng (trái),
+          sắp xếp (phải). Mobile: cuộn ngang. */}
+      <div className="flex items-center gap-[8px] flex-wrap mobile:flex-nowrap mobile-hscroll">
         <button
           onClick={() => setTab('reports')}
           title={t('viral_tab_reports_hint', 'Weekly briefs: hot news, market moves, to-do list — also sent to Zalo/email')}
           className={clsx(
-            'px-[12px] py-[7px] rounded-[8px] text-[12.5px] font-[700] border mobile:h-[40px] mobile:flex mobile:items-center mobile:shrink-0 mobile:whitespace-nowrap tap-shrink',
+            'h-[34px] px-[12px] rounded-[8px] text-[12.5px] font-[700] border flex items-center mobile:shrink-0 mobile:whitespace-nowrap tap-shrink',
             tab === 'reports'
               ? 'bg-newColColor border-newTableBorder text-textColor'
               : 'border-newBgLineColor text-textItemBlur hover:text-textColor'
@@ -2738,7 +2734,7 @@ export const ViralComponent: FC = () => {
           onClick={() => setTab('skills')}
           title={t('viral_tab_skills_hint', 'Edit the AI recipes: blog/podcast/infographic formulas, scoring rubric, rewrite rules…')}
           className={clsx(
-            'px-[12px] py-[7px] rounded-[8px] text-[12.5px] font-[700] border mobile:h-[40px] mobile:flex mobile:items-center mobile:shrink-0 mobile:whitespace-nowrap tap-shrink',
+            'h-[34px] px-[12px] rounded-[8px] text-[12.5px] font-[700] border flex items-center mobile:shrink-0 mobile:whitespace-nowrap tap-shrink',
             tab === 'skills'
               ? 'bg-newColColor border-newTableBorder text-textColor'
               : 'border-newBgLineColor text-textItemBlur hover:text-textColor'
@@ -2749,7 +2745,7 @@ export const ViralComponent: FC = () => {
         <button
           onClick={() => setTab('archive')}
           className={clsx(
-            'px-[12px] py-[7px] rounded-[8px] text-[12.5px] font-[700] border mobile:h-[40px] mobile:flex mobile:items-center mobile:shrink-0 mobile:whitespace-nowrap tap-shrink',
+            'h-[34px] px-[12px] rounded-[8px] text-[12.5px] font-[700] border flex items-center mobile:shrink-0 mobile:whitespace-nowrap tap-shrink',
             tab === 'archive'
               ? 'bg-newColColor border-newTableBorder text-textColor'
               : 'border-newBgLineColor text-textItemBlur hover:text-textColor'
@@ -2760,25 +2756,32 @@ export const ViralComponent: FC = () => {
             <span className="ms-[6px] tabular-nums opacity-80">{topicsData?.counts?.archive ?? data?.statusCounts?.archive}</span>
           )}
         </button>
+        {/* ⏸ Đang tạm dừng — dấu hiệu gọn, mô tả nằm trong tooltip */}
+        {cfgData?.productionPaused && (
+          <div className="flex items-center gap-[8px] h-[34px] bg-amber-400/10 border border-amber-400/40 rounded-full px-[12px] mobile:shrink-0">
+            <span className="text-[12px] font-[700] text-amber-400 whitespace-nowrap" title={t('viral_paused_title', 'Đang tạm dừng sản xuất — bài dừng ở "Chờ duyệt", duyệt không tự sản xuất.')}>
+              ⏸ {t('viral_paused_short', 'Đang tạm dừng')}
+            </span>
+            {isSuperAdmin && (
+              <button
+                onClick={resumeProduction}
+                className="h-[24px] px-[10px] rounded-full text-[12px] font-[700] bg-[#57D9A3]/15 text-[#57D9A3] hover:bg-[#57D9A3]/25 whitespace-nowrap"
+              >
+                ▶ {t('viral_resume_production_btn', 'Resume')}
+              </button>
+            )}
+          </div>
+        )}
+        <div className="flex-1 mobile:min-w-[8px]" />
+        {(isTopicTab || isReady) && selectModeBtn}
+        {isTopicTab && (
+          <select value={sort} onChange={(e) => setSort(e.target.value)} className="h-[34px] bg-newColColor border border-newBgLineColor rounded-[8px] px-[10px] mobile:h-[44px] mobile:shrink-0 text-[12.5px] outline-none">
+            <option value="shares">{t('viral_sort_convergence', 'Hottest (most posts & sources)')}</option>
+            <option value="score">{t('viral_sort_score', 'Highest AI score')}</option>
+            <option value="new">{t('viral_sort_recent', 'Recently captured')}</option>
+          </select>
+        )}
       </div>
-
-      {/* ⏸ Đang tạm dừng — chỉ một dấu hiệu gọn, không mô tả dài */}
-      {cfgData?.productionPaused && (
-        <div className="flex items-center gap-[10px] self-start bg-amber-400/10 border border-amber-400/40 rounded-full px-[12px] py-[5px]">
-          <span className="text-[12.5px] font-[700] text-amber-400" title={t('viral_paused_title', 'Đang tạm dừng sản xuất — bài dừng ở "Chờ duyệt", duyệt không tự sản xuất.')}>
-            ⏸ {t('viral_paused_short', 'Đang tạm dừng')}
-          </span>
-          {/* resume ghi /viral/config (superadmin) — người khác chỉ cần biết trạng thái */}
-          {isSuperAdmin && (
-            <button
-              onClick={resumeProduction}
-              className="h-[26px] px-[10px] rounded-full text-[12px] font-[700] bg-[#57D9A3]/15 text-[#57D9A3] hover:bg-[#57D9A3]/25"
-            >
-              ▶ {t('viral_resume_production_btn', 'Resume production')}
-            </button>
-          )}
-        </div>
-      )}
 
       {/* thanh thao tác hàng loạt + điều khiển Lưu trữ.
           Mobile khi CÓ chọn: ghim đáy ngay trên tab bar, 1 hàng nút 44px cuộn
@@ -2828,21 +2831,7 @@ export const ViralComponent: FC = () => {
         </div>
       )}
 
-      {/* điều khiển tab content: chỉ còn SẮP XẾP (1 content trộn nhiều nền tảng
-          + nhiều cấp học nên bỏ 2 hàng lọc cũ của chế độ theo-bài) */}
-      {isTopicTab && (
-        <div className="flex gap-[6px] items-center flex-wrap">
-          {selectModeBtn}
-          <select value={sort} onChange={(e) => setSort(e.target.value)} className="ms-auto bg-newColColor border border-newBgLineColor rounded-[8px] px-[10px] py-[7px] mobile:h-[44px] text-[12.5px] outline-none">
-            <option value="shares">{t('viral_sort_convergence', 'Hottest (most posts & sources)')}</option>
-            <option value="score">{t('viral_sort_score', 'Highest AI score')}</option>
-            <option value="new">{t('viral_sort_recent', 'Recently captured')}</option>
-          </select>
-        </div>
-      )}
-
-      {/* tab Chờ đăng không có toolbar sắp xếp → hàng riêng cho nút Chọn (mobile) */}
-      {isReady && <div className="hidden mobile:flex">{selectModeBtn}</div>}
+      {/* Sắp xếp + nút Chọn (mobile) đã gộp vào Toolbar phụ (Hàng 2) ở trên. */}
 
       {/* 📰 Bản tin tuần — đọc lại + tick todo + cấu hình gửi Zalo */}
       {isReports ? (
