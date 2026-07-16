@@ -2177,7 +2177,9 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
       try {
         await this.produceOne(orgId, product);
       } catch (e: any) {
-        const error = String(e?.message || e).slice(0, 500);
+        // 800: lỗi carousel nay gồm cả lý do gốc + số slide đã lưu + hướng dẫn
+        // key free-tier — cắt 500 là mất đúng phần người dùng cần đọc.
+        const error = String(e?.message || e).slice(0, 800);
         failed.push(error);
         await this._repo
           .updateProduct(pid, { status: 'error', error })
@@ -2299,9 +2301,26 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
       // BỘ CAROUSEL như n8n WF-SanXuat: Claude soạn bộ slide (bìa + thân +
       // CTA) → Gemini vẽ BÌA trước → vẽ từng slide thân KÈM ảnh bìa làm mẫu
       // (đồng bộ phong cách cả bộ) → lưu hết vào Media library. Thiếu 1 slide
-      // = lỗi cả bộ (không giao album thiếu — giống n8n), bấm Thử lại làm lại.
-      const { system, user } = buildCarouselPrompt(input);
-      const story = await this._openai.viralProduceCarousel(system, user);
+      // = lỗi cả bộ (không giao album thiếu — giống n8n).
+      // VẼ ĐẾN ĐÂU LƯU ĐẾN ĐÓ: mỗi slide xong ghi ngay checkpoint (kịch bản +
+      // các slide đã vẽ) vào meta. Lỗi giữa chừng (hết hạn mức, rớt mạng) →
+      // "Thử lại" vẽ TIẾP từ slide hỏng, dùng ĐÚNG kịch bản cũ và ĐÚNG ảnh bìa
+      // cũ làm mẫu nên phong cách khớp bộ đang dở; không đốt lại slide đã có.
+      // Muốn bộ hoàn toàn mới thì bấm "Tạo lại" (xoá checkpoint).
+      let ck: any = {};
+      try {
+        ck = JSON.parse(product.meta || '{}');
+      } catch {
+        /* meta hỏng — coi như chưa có checkpoint, dựng lại từ đầu */
+      }
+      // Chỉ nhận slide cũ khi CÒN kịch bản cũ đi kèm: slide của kịch bản khác
+      // thì thứ tự vô nghĩa và phong cách cũng đã khác.
+      const oldStory = ck?.story?.slides?.length ? ck.story : null;
+      let story = oldStory;
+      if (!story) {
+        const { system, user } = buildCarouselPrompt(input);
+        story = await this._openai.viralProduceCarousel(system, user);
+      }
       // Tối đa 15 slide như n8n — AI được dặn CHIA THÊM slide cho thoáng chữ
       // (ít chữ mỗi slide = ít lỗi chính tả khi Gemini render).
       const slides = (story.slides || []).filter((s) => s?.heading || s?.body).slice(0, 15);
@@ -2310,9 +2329,35 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
       const style =
         String(story.style || '').trim() ||
         'hiện đại, ấm áp, màu pastel, font sans-serif tròn';
-      const slideItems: { id: string; path: string }[] = [];
+      const slideItems: { id: string; path: string }[] = oldStory
+        ? (Array.isArray(ck.slides) ? ck.slides : [])
+            .filter((s: any) => s?.id && s?.path)
+            .slice(0, slides.length)
+        : [];
+      const checkpoint = () =>
+        this._repo
+          .updateProduct(product.id, {
+            meta: JSON.stringify({
+              ratio: '1:1',
+              story,
+              slides: slideItems,
+              total: slides.length,
+            }),
+          })
+          .catch(() => null);
+      // Ghi kịch bản NGAY trước khi vẽ — hỏng ngay slide đầu vẫn còn kịch bản,
+      // Thử lại khỏi tốn thêm một lượt Claude.
+      await checkpoint();
       let coverB64: string | undefined;
-      for (let i = 0; i < slides.length; i++) {
+      if (slideItems.length) {
+        // Vẽ tiếp phải ĐÚNG PHONG CÁCH bộ dở → nạp lại ảnh bìa đã lưu làm mẫu.
+        // Bìa bay mất thì thà vẽ lại cả bộ còn hơn giao album hai phong cách.
+        coverB64 = await this._media
+          .loadMediaBase64(slideItems[0].path)
+          .catch(() => undefined);
+        if (!coverB64) slideItems.length = 0;
+      }
+      for (let i = slideItems.length; i < slides.length; i++) {
         const prompt = carouselSlidePrompt(slides[i], i + 1, slides.length, style);
         // 3 nhịp thử/slide; 429 = đụng hạn mức → chờ theo retryDelay Gemini
         // gợi ý (mặc định 25s) thay vì 1.5s vô ích
@@ -2327,8 +2372,12 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
             // key FREE TIER (limit 0) → thử lại vô nghĩa, báo thẳng
             if (/free_tier[^,]*,\s*limit:\s*0/i.test(msg)) break;
             const m = msg.match(/retry in\s*([\d.]+)s|retryDelay[^0-9]*(\d+)/i);
+            // 503 = model quá tải phía Google; gemini.service đã chờ tới ~80s
+            // trong lượt vừa rồi, nghỉ thêm 30s nữa mới đáng thử lượt kế.
             const wait = /429/.test(msg)
               ? Math.min((parseFloat(m?.[1] || m?.[2] || '25') + 3) * 1000, 65000)
+              : /503/.test(msg)
+              ? 30000
               : 2000;
             await new Promise((r) => setTimeout(r, wait));
           }
@@ -2337,9 +2386,16 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
           const msg = String(lastErr?.message || 'Gemini không trả ảnh');
           const tier = /free_tier[^,]*,\s*limit:\s*0/i.test(msg)
             ? ' ⚠ KEY GEMINI ĐANG Ở FREE TIER (hạn mức ảnh = 0): tiền đã nạp nằm ở PROJECT KHÁC với project của key — vào aistudio.google.com/apikey tạo key mới trong project có billing rồi dán vào Cài đặt.'
+            : /503|high demand|overloaded/i.test(msg)
+            ? ' ⚠ MODEL ẢNH ĐANG QUÁ TẢI PHÍA GOOGLE (503) — không phải lỗi key hay hạn mức. Chờ vài phút rồi Thử lại; nếu nghẽn cả buổi thì vào Cài đặt đổi model ảnh sang Nano Banana (gemini-2.5-flash-image) cho nhẹ tải.'
+            : '';
+          const kept = i
+            ? ` — ĐÃ LƯU ${i} slide đầu, bấm "Thử lại" là vẽ tiếp từ slide ${
+                i + 1
+              } (giữ nguyên phong cách bộ này).`
             : '';
           throw new Error(
-            `Slide ${i + 1}/${slides.length} lỗi: ${msg.slice(0, 300)}${tier}`
+            `Slide ${i + 1}/${slides.length} lỗi: ${msg.slice(0, 200)}${kept}${tier}`
           );
         }
         if (i === 0) coverB64 = b64;
@@ -2350,6 +2406,7 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
           file
         );
         slideItems.push({ id: saved.id, path: saved.path });
+        await checkpoint(); // vẽ tới đâu lưu tới đó
         // giãn nhịp giữa các slide — model ảnh có hạn mức/phút thấp
         if (i < slides.length - 1) await new Promise((r) => setTimeout(r, 5000));
       }
@@ -2361,7 +2418,9 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
         textContent: story.fb_caption
           ? String(story.fb_caption).slice(0, 5000)
           : null,
-        // slides = [{id, path}]: id media để nút "Đăng lên Lịch" đính ảnh
+        // slides = [{id, path}]: id media để nút "Đăng lên Lịch" đính ảnh.
+        // Xong bộ thì BỎ kịch bản checkpoint khỏi meta — nó chỉ để vẽ tiếp lúc
+        // dở dang, giữ lại sẽ phình meta và có nguy cơ chạm trần cắt 8000.
         meta: JSON.stringify({ ratio: '1:1', slides: slideItems, total: slideItems.length }).slice(0, 8000),
         error: null,
       });
@@ -2518,10 +2577,26 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
   }
 
   // Thử lại sản phẩm lỗi — reset về processing rồi chạy nền.
-  async retryProduct(orgId: string, id: string): Promise<boolean> {
+  //   fresh=false ("↻ Thử lại" trên thẻ lỗi): GIỮ checkpoint → bộ carousel vẽ
+  //     tiếp từ slide hỏng, đúng kịch bản và phong cách bộ đang dở.
+  //   fresh=true  ("↻ Tạo lại" / cứu bộ ảnh cũ thiếu media id): XOÁ checkpoint
+  //     → dựng bộ hoàn toàn mới từ đầu.
+  async retryProduct(orgId: string, id: string, fresh = false): Promise<boolean> {
     const p = await this._repo.getProduct(orgId, id);
     if (!p) return false;
-    await this._repo.updateProduct(id, { status: 'processing', error: null });
+    const data: any = { status: 'processing', error: null };
+    if (fresh) {
+      // podcast: cờ trộn nhạc nền được chọn lúc tạo job và chỉ sống trong meta
+      // — giữ lại, phần còn lại bỏ.
+      let bgm = false;
+      try {
+        bgm = !!JSON.parse(p.meta || '{}')?.bgm;
+      } catch {
+        /* meta hỏng — coi như không trộn nhạc */
+      }
+      data.meta = bgm ? JSON.stringify({ bgm: true }) : null;
+    }
+    await this._repo.updateProduct(id, data);
     this.runProducts(orgId, [id]).catch(() => null);
     return true;
   }

@@ -64,27 +64,68 @@ export class GeminiService {
       reqParts.push({ inlineData: { mimeType: 'image/png', data: refImageB64 } });
     }
     reqParts.push({ text: prompt });
-    const res = await fetch(
-      `${BASE}/v1beta/models/${IMAGE_MODEL()}:generateContent?key=${key}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: reqParts }],
-          // Ép trả ẢNH (khớp node "Gen ảnh" của n8n) — một số model image cần
-          // khai rõ modality mới trả ảnh thay vì mô tả bằng chữ.
-          generationConfig: { responseModalities: ['IMAGE'] },
-        }),
+    const url = `${BASE}/v1beta/models/${IMAGE_MODEL()}:generateContent?key=${key}`;
+    const bodyStr = JSON.stringify({
+      contents: [{ parts: reqParts }],
+      // Ép trả ẢNH (khớp node "Gen ảnh" của n8n) — một số model image cần khai
+      // rõ modality mới trả ảnh thay vì mô tả bằng chữ.
+      generationConfig: { responseModalities: ['IMAGE'] },
+    });
+    // Retry cho lỗi TẠM THỜI của Google (503 "high demand" quá tải / 429 rate /
+    // 500) — model mới như Nano Banana Pro hay nghẽn lúc cao điểm. 4 lần, backoff
+    // tăng dần (khớp tinh thần retryOnFail của node n8n). Lỗi khác (400/403 sai
+    // key/quyền) → ném ngay, không retry vô ích.
+    const MAX = 4;
+    let lastErr = '';
+    for (let attempt = 1; attempt <= MAX; attempt++) {
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: bodyStr,
+          signal: AbortSignal.timeout(300000),
+        });
+      } catch (e: any) {
+        lastErr = `mạng: ${e?.message || e}`;
+        if (attempt < MAX) {
+          await new Promise((r) => setTimeout(r, 2500 * attempt));
+          continue;
+        }
+        throw new Error(`Gemini image lỗi (mạng) sau ${MAX} lần: ${lastErr}`);
       }
-    );
-    if (!res.ok) {
+      if (res.ok) {
+        const data: any = await res.json();
+        const parts = data?.candidates?.[0]?.content?.parts || [];
+        const img = parts.find((p: any) => p?.inlineData?.data);
+        return img?.inlineData?.data || null;
+      }
       const body = await res.text().catch(() => '');
+      lastErr = `${res.status}: ${body.slice(0, 300)}`;
+      const transient =
+        res.status === 503 || res.status === 429 || res.status === 500;
+      if (transient && attempt < MAX) {
+        // Ưu tiên nhịp chờ Google TỰ gợi ý (429 hay kèm retryDelay/"retry in").
+        const hinted =
+          parseFloat(
+            body.match(/retry in\s*([\d.]+)s/i)?.[1] ||
+              body.match(/retryDelay[^0-9]*(\d+)/i)?.[1] ||
+              ''
+          ) || 0;
+        // 503 "high demand" = model quá tải phía Google, spike thường kéo vài
+        // phút — 3s/6s/9s là thử lại vào giữa cơn nghẽn nên gần như chắc trượt.
+        // Chờ hẳn 8s → 25s → 50s cho spike hạ nhiệt (chạy nền, không ai đợi).
+        const wait = hinted
+          ? Math.min(hinted * 1000 + 2000, 65000)
+          : res.status === 503
+          ? [8000, 25000, 50000][attempt - 1]
+          : 3000 * attempt;
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
+      }
       throw new Error(`Gemini image lỗi (${res.status}): ${body.slice(0, 300)}`);
     }
-    const data: any = await res.json();
-    const parts = data?.candidates?.[0]?.content?.parts || [];
-    const img = parts.find((p: any) => p?.inlineData?.data);
-    return img?.inlineData?.data || null;
+    throw new Error(`Gemini image lỗi sau ${MAX} lần: ${lastErr}`);
   }
 
   // ---- Xem video → tiêu đề + mô tả ---------------------------------------

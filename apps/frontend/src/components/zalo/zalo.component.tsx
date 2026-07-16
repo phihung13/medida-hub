@@ -23,23 +23,25 @@ import {
 } from './zalo.shared';
 import { ZaloPostsTab } from './zalo.posts';
 import { ZaloRoutesTab } from './zalo.routes';
-import { ZaloGbpTab } from './zalo.gbp';
 import { ZaloLogsTab, ZaloSettingsTab } from './zalo.settings';
 
 // ============================================================================
 //  Trang Zalo — TRUNG TÂM ĐIỀU KHIỂN thay thế hoàn toàn dashboard bot :8088.
-//  6 tab: Tổng quan (QR, cầu nối, nhóm nghe + trạng thái gom realtime),
-//  Bài viết (thẻ duyệt + đã đăng), Nhóm → Trang (chân bài, thời gian chờ,
-//  bình luận, hướng dẫn viết, GBP, tự đăng — Trang FB lấy từ Add Channel),
-//  Google Business, Cài đặt, Nhật ký. Mọi API đi qua proxy /botapi (JWT + HUB_BOT_TOKEN).
+//  Bot CHỈ lo Zalo. 3 tab: Tổng quan (QR, cầu nối, nhóm nghe + trạng thái gom
+//  realtime, kèm Bài viết), Nhóm → Trang (chân bài, thời gian chờ, bình luận,
+//  hướng dẫn viết — Trang FB lấy từ Add Channel), Cài đặt (kèm Nhật ký).
+//  Mọi API đi qua proxy /botapi (JWT + HUB_BOT_TOKEN).
+//
+//  Google Business ĐÃ RỜI trang này: trước phải lách bằng phiên Playwright trên
+//  máy bot vì chưa xin được API; nay nối thẳng bằng GMB API chính thức nên nó
+//  là một kênh bình thường — thêm ở Add Channel, đăng qua Lịch như kênh khác.
 // ============================================================================
 
-type TabKey = 'overview' | 'routes' | 'gbp' | 'settings';
+type TabKey = 'overview' | 'routes' | 'settings';
 
 const TAB_HASH: Record<TabKey, string> = {
   overview: 'tong-quan',
   routes: 'nhom-trang',
-  gbp: 'google-business',
   settings: 'cai-dat',
 };
 
@@ -388,9 +390,9 @@ export const ZaloComponent: FC = () => {
 
   const TABS: { key: TabKey; label: string; badge?: number }[] = [
     // Bài viết hiện LUÔN trong Tổng quan; Nhật ký dời vào Cài đặt → bỏ 2 tab.
+    // Google Business bỏ nốt — nay là kênh thường, nối bằng GMB API ở Add Channel.
     { key: 'overview', label: t('zalo_tab_overview', 'Overview') },
     { key: 'routes', label: t('zalo_tab_routes', 'Groups → Pages') },
-    { key: 'gbp', label: 'Google Business' },
     { key: 'settings', label: t('zalo_tab_settings', 'Settings') },
   ];
 
@@ -772,7 +774,6 @@ export const ZaloComponent: FC = () => {
 
       {/* ============================ CÁC TAB KHÁC ============================ */}
       {tab === 'routes' && <ZaloRoutesTab zaloLogged={zaloLogged} onChanged={loadAll} />}
-      {tab === 'gbp' && <ZaloGbpTab />}
       {tab === 'settings' && (
         <>
           <ZaloSettingsTab onChanged={loadAll} />

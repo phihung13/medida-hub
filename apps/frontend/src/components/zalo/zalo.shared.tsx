@@ -143,7 +143,6 @@ export type BotRoute = {
   enabled?: boolean;
   published?: boolean;
   facebookAutoPublish?: boolean;
-  gbpAutoPublish?: boolean;
   curateImages?: boolean;
   autoHashtags?: boolean;
   comment?: string;
@@ -152,6 +151,11 @@ export type BotRoute = {
   styleSample?: string;
   debounceMs?: number;
   maxWaitMs?: number;
+  // CŨ — Google Business đăng bằng Playwright trên máy bot (hồi chưa xin được
+  // API). Nay nối bằng GMB API chính thức nên nó là kênh Media Hub thường:
+  // routes.json trên bot còn sót 3 trường này, giữ kiểu để lúc lưu DỌN chúng
+  // về rỗng (xem zalo.routes.tsx) cho bot thôi đăng theo đường cũ.
+  gbpAutoPublish?: boolean;
   gbpLocationIds?: string[];
   gbpLocationId?: string;
   postizIntegrationId?: string;
@@ -173,14 +177,6 @@ export type FbPage = {
   envName?: string;
   hasToken: boolean;
   expiresAt?: number | null;
-};
-
-export type GbpBusiness = { name?: string; id: string };
-
-export type GbpStatus = {
-  session?: { hasSession?: boolean; expired?: boolean; updatedAt?: number; expiresAt?: number };
-  login?: { active?: boolean; vnc?: boolean };
-  businesses?: GbpBusiness[];
 };
 
 export type ZaloGroup = { threadId: string; name: string };

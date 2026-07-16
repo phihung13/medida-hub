@@ -30,6 +30,15 @@ import { AiImage } from '@gitroom/frontend/components/launches/ai.image';
 import { DropFiles } from '@gitroom/frontend/components/layout/drop.files';
 import { deleteDialog } from '@gitroom/react/helpers/delete.dialog';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
+import {
+  FRAME_MAX_TILES,
+  FrameVariant,
+  frameItemCls,
+  frameVariantsFor,
+  frameWrapCls,
+  resolveFrameVariant,
+  useFrameVariant,
+} from '@gitroom/frontend/components/media/frame.variant';
 import { ThirdPartyMedia } from '@gitroom/frontend/components/third-parties/third-party.media';
 import { ReactSortable } from 'react-sortablejs';
 import { MediaComponentInner } from '@gitroom/frontend/components/launches/helpers/media.settings.component';
@@ -719,29 +728,8 @@ export const MediaBox: FC<{
 
 // ── Xem trước KHUNG bài đăng — các BIẾN THỂ CHUẨN FACEBOOK theo số ảnh ──────
 // Kéo ảnh NGAY TRONG KHUNG để đổi thứ tự (cùng list với hàng thumbnail).
-// FB thật đổi khung theo tỉ lệ ảnh đầu (ngang → "to trên", dọc → "to trái");
-// ở đây cho CHỌN TAY từng kiểu + lưới đều kiểu IG.
-type FrameVariant =
-  | 'v2col' // 2 ảnh đứng cạnh nhau
-  | 'v2row' // 2 ảnh ngang chồng nhau
-  | 'topBig' // 1 TO trên + 2/3 nhỏ dưới (ảnh đầu ngang)
-  | 'leftBig' // 1 TO trái + 2/3 nhỏ phải (ảnh đầu dọc)
-  | 'cols3' // 3 cột đứng
-  | 'grid22' // lưới 2×2
-  | 'fiveTop2' // 2 TO trên + 3 nhỏ dưới (+N)
-  | 'fiveLeft2' // 2 TO trái (dọc) + 3 nhỏ phải (+N) — như bài mẫu của trường
-  | 'fiveTop1' // 1 TO trên + 4 nhỏ dưới (+N)
-  | 'grid'; // lưới 3 cột đều (kiểu IG)
-
-// Biến thể áp dụng được cho từng số ảnh — nút chọn hiện đúng nhóm này.
-const frameVariantsFor = (n: number): FrameVariant[] => {
-  if (n <= 1) return ['grid'];
-  if (n === 2) return ['v2col', 'v2row', 'grid'];
-  if (n === 3) return ['topBig', 'leftBig', 'cols3', 'grid'];
-  if (n === 4) return ['topBig', 'leftBig', 'grid22', 'grid'];
-  return ['fiveTop2', 'fiveLeft2', 'fiveTop1', 'grid'];
-};
-
+// Định nghĩa bố cục nằm ở frame.variant.tsx để khung Post Preview bên phải
+// dùng CHUNG — chọn kiểu nào thì bên đó hiện đúng kiểu đó.
 const FramePreview: FC<{
   media: Array<{ id: string; path: string }>;
   variant: FrameVariant;
@@ -751,59 +739,30 @@ const FramePreview: FC<{
   const n = media.length;
   // các khung 5-ảnh chỉ hiện 5 ô đầu (đúng FB), ô 5 phủ "+N"
   const isFive = variant.startsWith('five');
-  const shown = isFive ? media.slice(0, 5) : media;
-  const hidden = isFive ? n - 5 : 0;
-
-  const wrapCls = (() => {
-    switch (variant) {
-      case 'v2col': return 'grid grid-cols-2 gap-[3px]';
-      case 'v2row': return 'grid grid-cols-1 gap-[3px]';
-      case 'topBig': return n === 3 ? 'grid grid-cols-2 gap-[3px]' : 'grid grid-cols-3 gap-[3px]';
-      case 'leftBig':
-        return n === 3
-          ? 'grid grid-cols-3 grid-rows-2 gap-[3px] h-[320px]'
-          : 'grid grid-cols-3 grid-rows-3 gap-[3px] h-[390px]';
-      case 'cols3': return 'grid grid-cols-3 gap-[3px]';
-      case 'grid22': return 'grid grid-cols-2 gap-[3px]';
-      case 'fiveTop2': return 'grid grid-cols-6 gap-[3px]';
-      case 'fiveLeft2': return 'grid grid-cols-5 grid-rows-6 gap-[3px] h-[430px]';
-      case 'fiveTop1': return 'grid grid-cols-4 gap-[3px]';
-      default: return 'grid grid-cols-3 gap-[3px]'; // grid
-    }
-  })();
-
-  const itemCls = (i: number) => {
-    switch (variant) {
-      case 'v2col': return 'aspect-[3/4]';
-      case 'v2row': return 'aspect-[16/8]';
-      case 'topBig':
-        if (n === 3) return i === 0 ? 'col-span-2 aspect-[16/9]' : 'aspect-square';
-        return i === 0 ? 'col-span-3 aspect-[16/8]' : 'aspect-square';
-      case 'leftBig':
-        if (n === 3) return i === 0 ? 'col-span-2 row-span-2 h-full min-h-0' : 'col-span-1 h-full min-h-0';
-        return i === 0 ? 'col-span-2 row-span-3 h-full min-h-0' : 'col-span-1 row-span-1 h-full min-h-0';
-      case 'cols3': return 'aspect-[3/4]';
-      case 'grid22': return 'aspect-[4/3]';
-      case 'fiveTop2': return i < 2 ? 'col-span-3 aspect-[4/3]' : 'col-span-2 aspect-square';
-      case 'fiveLeft2':
-        return i < 2 ? 'col-span-3 row-span-3 h-full min-h-0' : 'col-span-2 row-span-2 h-full min-h-0';
-      case 'fiveTop1': return i === 0 ? 'col-span-4 aspect-[16/9]' : 'aspect-square';
-      default: return 'aspect-square'; // grid
-    }
-  };
+  const shown = isFive ? media.slice(0, FRAME_MAX_TILES) : media;
+  const hidden = isFive ? n - FRAME_MAX_TILES : 0;
 
   return (
     <ReactSortable
       list={shown as any}
       setList={(value) =>
         // khung 5 chỉ hiện 5 đầu → ghép phần còn lại giữ nguyên thứ tự
-        onSort(isFive ? [...value, ...media.slice(5)] : value)
+        onSort(isFive ? [...value, ...media.slice(FRAME_MAX_TILES)] : value)
       }
       animation={200}
-      className={clsx('w-full max-w-[430px] rounded-[10px] overflow-hidden', wrapCls)}
+      className={clsx(
+        'w-full max-w-[430px] rounded-[10px] overflow-hidden',
+        frameWrapCls(variant, n)
+      )}
     >
       {shown.map((m, i) => (
-        <div key={m.id} className={clsx('relative cursor-move overflow-hidden bg-newBgColor', itemCls(i))}>
+        <div
+          key={m.id}
+          className={clsx(
+            'relative cursor-move overflow-hidden bg-newBgColor',
+            frameItemCls(variant, n, i)
+          )}
+        >
           {hasExtension(m.path, 'mp4') ? (
             <video src={mediaDirectory.set(m.path)} muted playsInline className="w-full h-full object-cover" />
           ) : (
@@ -813,7 +772,7 @@ const FramePreview: FC<{
           <span className="absolute top-[4px] start-[4px] w-[18px] h-[18px] rounded-full bg-black/60 text-white text-[10px] font-[800] grid place-items-center">
             {i + 1}
           </span>
-          {i === 4 && hidden > 0 && (
+          {i === FRAME_MAX_TILES - 1 && hidden > 0 && (
             <div className="absolute inset-0 bg-black/55 grid place-items-center text-white text-[26px] font-[800]">
               +{hidden}
             </div>
@@ -885,7 +844,10 @@ export const MultiMediaComponent: FC<{
   const [currentMedia, setCurrentMedia] = useState(value);
   // Xem trước khung bài đăng: bật/tắt + biến thể khung FB đang chọn
   const [frame, setFrame] = useState(false);
-  const [variant, setVariant] = useState<FrameVariant>('topBig');
+  // Biến thể khung nằm ở store dùng chung — khung Post Preview bên phải đọc
+  // cùng giá trị này nên đổi kiểu ở đây là bên đó đổi theo ngay.
+  const variant = useFrameVariant((state) => state.variant);
+  const setVariant = useFrameVariant((state) => state.setVariant);
   const mediaDirectory = useMediaDirectory();
   const changeMedia = useCallback(
     (
@@ -1033,7 +995,7 @@ export const MultiMediaComponent: FC<{
         {/* Khung xem trước bài đăng — chọn biến thể CHUẨN FB + kéo ô đổi thứ tự */}
         {frame && !!currentMedia?.length && (() => {
           const variants = frameVariantsFor(currentMedia.length);
-          const active = variants.includes(variant) ? variant : variants[0];
+          const active = resolveFrameVariant(variant, currentMedia.length);
           const LABELS: Record<FrameVariant, string> = {
             v2col: t('media_frame_v2col', '2 side-by-side'),
             v2row: t('media_frame_v2row', '2 stacked'),
@@ -1042,7 +1004,6 @@ export const MultiMediaComponent: FC<{
             cols3: t('media_frame_cols3', '3 columns'),
             grid22: t('media_frame_grid22', '2×2 grid'),
             fiveTop2: t('media_frame_fivetop2', '2 top + 3 below'),
-            fiveLeft2: t('media_frame_fiveleft2', '2 left + 3 right'),
             fiveTop1: t('media_frame_fivetop1', '1 big + 4 below'),
             grid: t('media_frame_grid', 'Even grid'),
           };

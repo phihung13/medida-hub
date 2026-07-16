@@ -12,7 +12,6 @@ import {
   Card,
   DangerLink,
   FieldLabel,
-  GbpBusiness,
   HubChannel,
   inputCls,
   isSupportedChannel,
@@ -26,10 +25,12 @@ import {
 } from './zalo.shared';
 
 // ============================================================================
-//  Tab "Nhóm → Trang" — mỗi nhóm Zalo nguồn nối tới kênh Media Hub (bản nháp
-//  chờ duyệt trên Lịch) và/hoặc Google Business. Facebook KHÔNG còn đăng thẳng
-//  từ bot: Trang đã kết nối trong Media Hub, bài thành bản nháp chờ duyệt và
-//  Hub tự chèn CHÂN BÀI của kênh (cài trong Lịch) dưới caption, trên hashtag.
+//  Tab "Nhóm → Trang" — mỗi nhóm Zalo nguồn nối tới MỘT kênh Media Hub (bài
+//  thành bản nháp chờ duyệt trên Lịch). Facebook KHÔNG còn đăng thẳng từ bot:
+//  Trang đã kết nối trong Media Hub, bài thành bản nháp chờ duyệt và Hub tự
+//  chèn CHÂN BÀI của kênh (cài trong Lịch) dưới caption, trên hashtag.
+//  Google Business cũng vậy — trước bot tự đăng bằng Playwright, nay nối bằng
+//  GMB API chính thức nên chọn nó như mọi kênh Media Hub khác.
 //  Lưu = ghi nguyên file routes.json của bot.
 // ============================================================================
 
@@ -41,14 +42,12 @@ const newRoute = (): BotRoute => ({
   fanpageTokenEnv: '',
   published: false,
   facebookAutoPublish: false,
-  gbpAutoPublish: false,
   enabled: true,
   curateImages: true,
   autoHashtags: true,
   comment: '',
   captionFooter: '',
   writeGuide: '',
-  gbpLocationIds: [],
   postizIntegrationId: '',
   debounceMs: 600000,
   maxWaitMs: 1800000,
@@ -63,12 +62,12 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
 
   const [file, setFile] = useState<BotRoutesFile | null>(null);
   const [groups, setGroups] = useState<ZaloGroup[] | null>(null);
-  const [businesses, setBusinesses] = useState<GbpBusiness[]>([]);
   const [channels, setChannels] = useState<HubChannel[]>([]);
   const [open, setOpen] = useState<Set<number>>(new Set());
   const [adv, setAdv] = useState<Set<number>>(new Set());
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [legacyGbp, setLegacyGbp] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -78,19 +77,24 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
         f.routes.forEach((r: BotRoute) => {
           if (r.debounceMs == null) r.debounceMs = defs.debounceMs ?? 600000;
           if (r.maxWaitMs == null) r.maxWaitMs = defs.maxWaitMs ?? 1800000;
-          if (!Array.isArray(r.gbpLocationIds))
-            r.gbpLocationIds = r.gbpLocationId ? [String(r.gbpLocationId)] : [];
           if (r.writeGuide == null) r.writeGuide = r.styleSample || '';
         });
+        // routes.json còn sót cấu hình Google Business cũ = bot VẪN tự đăng bằng
+        // Playwright (nó đọc thẳng file này, không qua UI). Bật sẵn cờ chưa-lưu
+        // để mở khoá nút Lưu — save() sẽ dọn sạch gbp*.
+        const legacy = f.routes.filter(
+          (r: BotRoute) =>
+            r.gbpLocationIds?.length || r.gbpLocationId || r.gbpAutoPublish
+        ).length;
+        setLegacyGbp(legacy);
         setFile(f);
-        setDirty(false);
+        setDirty(legacy > 0);
         // Nhóm chưa đủ thông tin (thiếu nhóm nguồn) thì tự mở sẵn để điền tiếp.
         setOpen(new Set(f.routes.map((r: BotRoute, i: number) => (!r.threadId ? i : -1)).filter((i: number) => i >= 0)));
       }
     } catch {
       toast.show(t('zalo_bot_unreachable', 'Cannot reach the Zalo bot'), 'warning');
     }
-    bot('/api/gbp/businesses').then((b) => Array.isArray(b) && setBusinesses(b)).catch(() => {});
     bot('/api/postiz/integrations')
       .then((r) => r?.ok && setChannels(r.integrations || []))
       .catch(() => {});
@@ -131,9 +135,12 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
       r.fanpageTokenEnv = '';
       r.facebookAutoPublish = false;
       r.captionFooter = '';
-      r.gbpLocationIds = (r.gbpLocationIds || []).map(String).filter(Boolean);
-      r.gbpLocationId = r.gbpLocationIds[0] || '';
-      r.gbpAutoPublish = !!(r.gbpLocationIds.length && r.gbpAutoPublish);
+      // Google Business rời khỏi route: nay nối bằng GMB API chính thức nên nó
+      // là kênh Media Hub bình thường, bot hết phải đăng bằng Playwright. DỌN
+      // hẳn cấu hình cũ khỏi routes.json để bot thôi tự đăng theo đường cũ.
+      r.gbpLocationIds = [];
+      r.gbpLocationId = '';
+      r.gbpAutoPublish = false;
       if (!r.threadId) {
         toast.show(
           t('zalo_routes_missing_thread', 'Route {{n}} ({{name}}) has no Zalo group selected')
@@ -143,9 +150,9 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
         );
         return;
       }
-      if (!r.postizIntegrationId && !r.gbpLocationIds.length) {
+      if (!r.postizIntegrationId) {
         toast.show(
-          t('zalo_routes_missing_target', 'Route {{n}} ({{name}}): chọn kênh Media Hub (hoặc Google Business) để bài có đích đến.')
+          t('zalo_routes_missing_target', 'Route {{n}} ({{name}}): chọn kênh Media Hub để bài có đích đến.')
             .replace('{{n}}', String(i + 1))
             .replace('{{name}}', r.label || t('zalo_routes_unnamed', 'unnamed')),
           'warning'
@@ -215,9 +222,18 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
       <div className="text-[12.5px] text-textItemBlur max-w-[720px]">
         {t(
           'zalo_routes_intro2',
-          'Mỗi thẻ: một nhóm Zalo nguồn → kênh Media Hub (bài thành BẢN NHÁP chờ duyệt trên Lịch, Hub tự chèn chân bài của kênh + hashtag) và/hoặc Google Business. Nhớ bấm "Lưu cấu hình" sau khi sửa.'
+          'Mỗi thẻ: một nhóm Zalo nguồn → kênh Media Hub (bài thành BẢN NHÁP chờ duyệt trên Lịch, Hub tự chèn chân bài của kênh + hashtag). Muốn đăng Google Business thì chọn kênh Google Business ở đây như mọi kênh khác. Nhớ bấm "Lưu cấu hình" sau khi sửa.'
         )}
       </div>
+
+      {!!legacyGbp && (
+        <div className="text-[12.5px] leading-[1.6] text-amber-400 border border-amber-400/40 bg-amber-400/10 rounded-[12px] px-[16px] py-[12px] max-w-[720px]">
+          {t(
+            'zalo_routes_legacy_gbp',
+            '⚠ {{n}} nhóm còn cấu hình Google Business kiểu cũ — bot VẪN đang tự đăng lên Google bằng trình duyệt ngầm. Bấm "Lưu cấu hình" để dọn hẳn. Sau đó muốn đăng Google Business thì chọn kênh Google Business ở ô kênh Media Hub của nhóm.'
+          ).replace('{{n}}', String(legacyGbp))}
+        </div>
+      )}
 
       {!routes.length && (
         <div className="text-[13px] text-textItemBlur border border-dashed border-newTableBorder rounded-[12px] px-[16px] py-[14px]">
@@ -226,7 +242,6 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
       )}
 
       {routes.map((r, i) => {
-        const gbpIds = r.gbpLocationIds || [];
         const isOpen = open.has(i);
         const advOpen = adv.has(i);
         return (
@@ -254,13 +269,6 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
                   ? t('zalo_routes_hub_draft', '→ Nháp chờ duyệt trên Lịch')
                   : t('zalo_routes_hub_missing', 'Chưa chọn kênh Media Hub')}
               </StatusChip>
-              {!!gbpIds.length && (
-                <StatusChip tone={r.gbpAutoPublish ? 'warn' : 'wait'}>
-                  {(r.gbpAutoPublish
-                    ? t('zalo_routes_gbp_auto', 'GBP auto-publish')
-                    : t('zalo_routes_gbp_review', 'GBP reviewed')) + ` (${gbpIds.length})`}
-                </StatusChip>
-              )}
               <span className="text-textItemBlur text-[12px]">{isOpen ? '▾' : '▸'}</span>
             </div>
 
@@ -360,50 +368,6 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
                   </div>
                 </div>
 
-                {/* Google Business multi-select */}
-                <div className="flex flex-col gap-[5px]">
-                  <FieldLabel
-                    hint={t('zalo_routes_gbp_hint', 'Profiles saved in the Google Business tab. Leave empty to skip Google.')}
-                  >
-                    Google Business
-                  </FieldLabel>
-                  {businesses.length ? (
-                    <div className="flex gap-[10px] flex-wrap">
-                      {businesses.map((b) => {
-                        const on = gbpIds.includes(String(b.id));
-                        return (
-                          <label
-                            key={b.id}
-                            className={clsx(
-                              'flex items-center gap-[6px] text-[12.5px] font-[600] border rounded-[8px] px-[10px] h-[32px] mobile:h-[40px] mobile:px-[14px] cursor-pointer tap-shrink',
-                              on ? 'border-btnPrimary text-btnPrimary bg-btnPrimary/10' : 'border-newTableBorder text-textItemBlur'
-                            )}
-                          >
-                            <input
-                              type="checkbox"
-                              hidden
-                              checked={on}
-                              onChange={(e) =>
-                                patch(i, {
-                                  gbpLocationIds: e.target.checked
-                                    ? [...gbpIds, String(b.id)]
-                                    : gbpIds.filter((x) => x !== String(b.id)),
-                                })
-                              }
-                            />
-                            {on ? '✓ ' : ''}
-                            {b.name || b.id}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="text-[12px] text-textItemBlur">
-                      {t('zalo_routes_no_gbp', 'No Google Business profile saved yet — add them in the Google Business tab.')}
-                    </div>
-                  )}
-                </div>
-
                 {/* Công tắc chính */}
                 <div className="flex items-center gap-[18px] flex-wrap mobile:gap-x-[16px] mobile:gap-y-0">
                   <label className="flex items-center gap-[8px] text-[13px] font-[600] cursor-pointer mobile:min-h-[44px]">
@@ -416,20 +380,6 @@ export const ZaloRoutesTab: FC<{ zaloLogged: boolean; onChanged?: () => void }> 
                   >
                     <Toggle small on={r.curateImages !== false} onChange={() => patch(i, { curateImages: !(r.curateImages !== false) })} />
                     {t('zalo_routes_curate', 'Curate images')}
-                  </label>
-                  <label
-                    className={clsx(
-                      'flex items-center gap-[8px] text-[13px] font-[600] text-amber-400 mobile:min-h-[44px]',
-                      gbpIds.length ? 'cursor-pointer' : 'opacity-40 cursor-not-allowed'
-                    )}
-                  >
-                    <Toggle
-                      small
-                      disabled={!gbpIds.length}
-                      on={!!r.gbpAutoPublish}
-                      onChange={() => patch(i, { gbpAutoPublish: !r.gbpAutoPublish })}
-                    />
-                    {t('zalo_routes_gbp_autopublish', 'Google Business auto-publish')}
                   </label>
                 </div>
 

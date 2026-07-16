@@ -1301,7 +1301,8 @@ const PostProductModal: FC<{ product: any; onDone: () => void }> = ({ product, o
   const doRetry = useCallback(async () => {
     setBusy(true);
     try {
-      await fetch(`/viral/products/${product.id}/retry`, { method: 'POST' });
+      // fresh=1: bộ ảnh cũ hỏng (thiếu media id) → phải dựng lại từ đầu
+      await fetch(`/viral/products/${product.id}/retry?fresh=1`, { method: 'POST' });
       toast.show(
         t('viral_prod_retrying', 'Retrying — check back in a few minutes.'),
         'success'
@@ -1508,6 +1509,8 @@ const ProductCard: FC<{
       setBusy(false);
     }
   };
+  // Thử lại thẻ lỗi — KHÔNG kèm fresh: bộ ảnh dở dang sẽ vẽ tiếp từ slide hỏng
+  // (giữ kịch bản + phong cách), không đốt lại các slide đã vẽ xong.
   const retry = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setBusy(true);
@@ -1540,7 +1543,8 @@ const ProductCard: FC<{
       return;
     setBusy(true);
     try {
-      await fetch(`/viral/products/${product.id}/retry`, { method: 'POST' });
+      // fresh=1: "Tạo lại" là muốn bản KHÁC — bỏ kịch bản/slide cũ, dựng từ đầu
+      await fetch(`/viral/products/${product.id}/retry?fresh=1`, { method: 'POST' });
       toast.show(
         t('viral_prod_retrying', 'Retrying — check back in a few minutes.'),
         'success'

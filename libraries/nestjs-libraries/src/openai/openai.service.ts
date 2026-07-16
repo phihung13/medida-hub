@@ -78,11 +78,77 @@ async function claudeText(
   return (await claudeRaw(system, user, maxTokens)).text;
 }
 
+// Chữa JSON "bệnh" bằng cách quét từng ký tự theo trạng thái TRONG/NGOÀI chuỗi
+// — bắt được các ca mà thay-thế kiểu regex không phân biệt nổi:
+//   • dấu " lạc giữa câu chưa escape — ca hay gặp nhất với nội dung tiếng Việt
+//     (vd body: "Con "lười" hay con chưa hiểu?") làm gãy nguyên bộ slide;
+//   • dấu \ đơn lẻ không phải escape hợp lệ (vd "50\50");
+//   • xuống dòng thật giữa chuỗi → \n đúng chuẩn (GIỮ được xuống dòng, thay vì
+//     nuốt thành khoảng trắng như bản thay control char ở dưới);
+//   • bài bị cắt cụt: đóng nốt chuỗi/ngoặc còn hở, bỏ dấu phẩy thừa.
+// Chỉ chạy như cứu cánh CUỐI (các bản lành hơn đã parse hỏng) nên không đụng
+// vào ca JSON vốn hợp lệ.
+function repairJson(src: string): string {
+  const ESCAPES = '"\\/bfnrtu';
+  const CLOSERS = ',:}]';
+  const out: string[] = [];
+  const stack: string[] = [];
+  let inStr = false;
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (!inStr) {
+      if (ch === '"') inStr = true;
+      else if (ch === '{' || ch === '[') stack.push(ch);
+      else if (ch === '}' || ch === ']') stack.pop();
+      out.push(ch);
+      continue;
+    }
+    if (ch === '\\') {
+      const next = src[i + 1];
+      if (next && ESCAPES.includes(next)) {
+        out.push(ch, next);
+        i++;
+      } else {
+        out.push('\\\\');
+      }
+      continue;
+    }
+    if (ch === '"') {
+      // Đóng chuỗi THẬT chỉ khi ký tự có nghĩa kế tiếp là , : } ] hoặc hết bài;
+      // còn lại là dấu nháy nằm trong câu → escape để giữ nguyên chữ.
+      let j = i + 1;
+      while (j < src.length && /\s/.test(src[j])) j++;
+      if (j >= src.length || CLOSERS.includes(src[j])) {
+        inStr = false;
+        out.push(ch);
+      } else {
+        out.push('\\"');
+      }
+      continue;
+    }
+    if (ch.charCodeAt(0) < 0x20) {
+      out.push(
+        ch === '\n' ? '\\n' : ch === '\t' ? '\\t' : ch === '\r' ? '\\r' : ' '
+      );
+      continue;
+    }
+    out.push(ch);
+  }
+  let s = out.join('');
+  if (inStr) s += '"';
+  while (stack.length) {
+    s = s.replace(/,\s*$/, '');
+    s += stack.pop() === '{' ? '}' : ']';
+  }
+  return s.replace(/,(\s*[}\]])/g, '$1');
+}
+
 // Bóc + parse JSON từ text model trả (bỏ ```json fences, bóc block đầu tiên).
 // Kèm bước SỬA JSON BỆNH: model viết body_html/script dài hay chèn XUỐNG DÒNG
 // THẬT vào giữa chuỗi JSON (chuẩn JSON cấm control char trong chuỗi) → thay
 // mọi control char bằng khoảng trắng — không phá JSON hợp lệ (giữa các token
 // chúng vốn chỉ là whitespace), chữa được ca lỗi phổ biến nhất của bài dài.
+// Hết bài thì tới lượt repairJson lo các ca nặng hơn (nháy lạc, cắt cụt).
 function tryParseJson<T>(raw: string): T | null {
   const cleaned = raw
     .replace(/^```(?:json)?/i, '')
@@ -97,6 +163,12 @@ function tryParseJson<T>(raw: string): T | null {
   // bản đã "chữa bệnh" control char (xuống dòng thật trong chuỗi → space)
   for (const base of [...attempts]) {
     attempts.push(base.replace(/[\u0000-\u001f]/g, ' '));
+  }
+  // xếp CUỐI hàng: bản quét-và-chữa (nháy lạc, \ đơn, cắt cụt) — chỉ tới lượt
+  // khi mọi bản nhẹ tay ở trên đều parse hỏng.
+  const block = start >= 0 && end > start ? [cleaned.slice(start, end + 1)] : [];
+  for (const base of [cleaned, ...block]) {
+    attempts.push(repairJson(base));
   }
   for (const candidate of attempts) {
     try {

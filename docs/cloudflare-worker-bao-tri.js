@@ -129,6 +129,36 @@ const maintenance = () =>
 
 export default {
   async fetch(request) {
+    const url = new URL(request.url);
+    // ── XÁC MINH TIKTOK (mọi thuộc tính URL) ────────────────────────────────
+    // TikTok đặt tên file xác minh theo dạng "tiktok<MÃ>.txt" và nội dung là
+    // "tiktok-developers-site-verification=<MÃ>". Worker tự suy nội dung từ tên
+    // file nên phục vụ được MỌI file (root, prefix, hiện tại lẫn sau này) mà
+    // KHÔNG cần deploy hay sửa gì. Xoá được sau khi verify xong (hoặc để yên).
+    const tk = url.pathname.match(/\/tiktok([A-Za-z0-9]+)\.txt$/);
+    if (tk) {
+      return new Response('tiktok-developers-site-verification=' + tk[1], {
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Cache-Control': 'no-store',
+        },
+      });
+    }
+    // Điều khoản + Chính sách bảo mật phục vụ DƯỚI prefix đã verify của TikTok,
+    // proxy nội dung THẬT từ website trường (khỏi verify thêm domain).
+    if (
+      url.pathname === '/integrations/social/tiktok/terms' ||
+      url.pathname === '/integrations/social/tiktok/privacy'
+    ) {
+      const target = url.pathname.endsWith('/terms')
+        ? 'https://truongvietanh.com/dieu-khoan-su-dung/'
+        : 'https://truongvietanh.com/chinh-sach-bao-mat/';
+      const upstream = await fetch(target, { cf: { cacheTtl: 300 } });
+      return new Response(upstream.body, {
+        status: upstream.status,
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      });
+    }
     const wantsHtml =
       request.method === 'GET' &&
       (request.headers.get('accept') || '').includes('text/html');

@@ -210,6 +210,12 @@ export class MediaService {
     return Buffer.from(await res.arrayBuffer());
   }
 
+  // Tải lại 1 media ĐÃ LƯU về base64 thuần (không kèm data: prefix). Bộ carousel
+  // vẽ tiếp ở lần Thử lại cần ảnh bìa cũ làm mẫu để giữ ĐÚNG phong cách cả bộ.
+  async loadMediaBase64(dbPath: string): Promise<string> {
+    return (await this.loadMediaBuffer(dbPath)).toString('base64');
+  }
+
   saveFile(org: string, fileName: string, filePath: string, originalName?: string) {
     return this._mediaRepository.saveFile(org, fileName, filePath, originalName);
   }

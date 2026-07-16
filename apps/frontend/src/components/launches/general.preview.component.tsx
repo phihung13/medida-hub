@@ -1,8 +1,7 @@
 import { useIntegration } from '@gitroom/frontend/components/launches/helpers/use.integration';
-import { useMediaDirectory } from '@gitroom/react/helpers/use.media.directory';
 import clsx from 'clsx';
-import { VideoOrImage } from '@gitroom/react/helpers/video.or.image';
 import { FC } from 'react';
+import { FrameCollage } from '@gitroom/frontend/components/media/frame.variant';
 import { textSlicer } from '@gitroom/helpers/utils/count.length';
 import SafeImage from '@gitroom/react/helpers/safe.image';
 import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
@@ -13,7 +12,6 @@ export const GeneralPreviewComponent: FC<{
 }> = (props) => {
   const { value: topValue, integration } = useIntegration();
   const current = useLaunchStore((state) => state.current);
-  const mediaDir = useMediaDirectory();
 
   const renderContent = topValue.map((p) => {
     const newContent = stripHtmlValidation(
@@ -117,28 +115,12 @@ export const GeneralPreviewComponent: FC<{
                 }}
               />
               {!!value?.images?.length && (
-                <div
-                  className={clsx(
-                    'w-full rounded-[16px] overflow-hidden mt-[12px]',
-                    value?.images?.length > 3
-                      ? 'grid grid-cols-2 gap-[4px]'
-                      : 'flex gap-[4px]'
-                  )}
-                >
-                  {value.images.map((image, index) => (
-                    <a
-                      key={`image_${index}`}
-                      className="flex-1"
-                      href={mediaDir.set(image.path)}
-                      target="_blank"
-                    >
-                      <VideoOrImage
-                        autoplay={true}
-                        src={mediaDir.set(image.path)}
-                      />
-                    </a>
-                  ))}
-                </div>
+                // Bố cục KIỂU FACEBOOK, chung với khung chọn ở widget ảnh:
+                // bài nhiều ảnh mặc định "2 to trên + 3 nhỏ dưới (+N)".
+                <FrameCollage
+                  media={value.images}
+                  className="rounded-[16px] mt-[12px]"
+                />
               )}
             </div>
           </div>

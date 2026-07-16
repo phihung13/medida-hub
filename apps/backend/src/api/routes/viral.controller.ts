@@ -420,12 +420,15 @@ export class ViralController {
     return { items: await this._service.listProducts(org.id) };
   }
 
+  // fresh=1 ("Tạo lại"): bỏ phần đã làm dở, dựng bản mới từ đầu. Không có cờ
+  // ("Thử lại"): bộ carousel vẽ tiếp từ slide hỏng, giữ phong cách bộ đang dở.
   @Post('/products/:id/retry')
   async retryProduct(
     @GetOrgFromRequest() org: Organization,
-    @Param('id') id: string
+    @Param('id') id: string,
+    @Query('fresh') fresh?: string
   ) {
-    const ok = await this._service.retryProduct(org.id, id);
+    const ok = await this._service.retryProduct(org.id, id, fresh === '1');
     if (!ok) throw new HttpException('Không tìm thấy sản phẩm.', 404);
     return { ok: true };
   }

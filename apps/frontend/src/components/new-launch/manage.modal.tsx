@@ -521,7 +521,11 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
                         <PicksSocialsComponent toolTip={true} />
                       </div>
                       <div>
-                        {!dummy && (
+                        {/* Sửa bài CÓ SẴN thì không đổi được kênh (cùng luật với
+                            PicksSocialsComponent và SelectCurrent): đổi kênh lúc
+                            này sẽ thay sạch selectedIntegrations, mà nội dung bài
+                            nằm ở internal của kênh cũ nên sẽ mất. */}
+                        {!dummy && !existingData.integration && (
                           <SelectCustomer
                             onChange={changeCustomer}
                             integrations={integrations}

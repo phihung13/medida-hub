@@ -5,6 +5,7 @@ import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validatio
 import { textSlicer } from '@gitroom/helpers/utils/count.length';
 import { FC } from 'react';
 import { VideoOrImage } from '@gitroom/react/helpers/video.or.image';
+import { FrameCollage } from '@gitroom/frontend/components/media/frame.variant';
 
 const Icons = () => {
   return (
@@ -136,18 +137,10 @@ export const FacebookPreview: FC<{
         }}
       />
       {!!renderContent?.[0]?.images?.length && (
-        <div className="h-[280px] -mx-[15px] overflow-hidden flex">
-          {renderContent?.[0]?.images.map((image, index) => (
-            <a
-              key={`image_${index}`}
-              className="flex-1"
-              href={mediaDir.set(image.path)}
-              target="_blank"
-            >
-              <VideoOrImage autoplay={true} src={mediaDir.set(image.path)} />
-            </a>
-          ))}
-        </div>
+        // Bố cục KIỂU FACEBOOK, chung với khung chọn ở widget ảnh: bài nhiều
+        // ảnh mặc định "2 to trên + 3 nhỏ dưới (+N)" thay vì dồn mọi ảnh vào
+        // một hàng ngang. Đây là MÔ PHỎNG — FB thật tự dàn bố cục khi đăng.
+        <FrameCollage media={renderContent[0].images} className="-mx-[15px]" />
       )}
       <div className="flex text-textLinkedin text-[12px] font-[400] items-center">
         <div className="flex flex-1 gap-[10px] items-center">
