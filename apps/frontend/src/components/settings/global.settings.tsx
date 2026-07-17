@@ -9,6 +9,7 @@ import { AnthropicComponent } from '@gitroom/frontend/components/settings/anthro
 import { GeminiComponent } from '@gitroom/frontend/components/settings/gemini.component';
 import { ImageGenComponent } from '@gitroom/frontend/components/settings/image.gen.component';
 import { SocialKeysComponent } from '@gitroom/frontend/components/settings/social-keys.component';
+import { EmailSmtpComponent } from '@gitroom/frontend/components/settings/email-smtp.component';
 
 const MetricComponent = dynamic(
   () => import('@gitroom/frontend/components/settings/metric.component'),
@@ -26,6 +27,7 @@ export const GlobalSettings = () => {
       <GeminiComponent />
       <ImageGenComponent />
       <SocialKeysComponent />
+      <EmailSmtpComponent />
       <MetricComponent />
       <EmailNotificationsComponent />
       <ShortlinkPreferenceComponent />

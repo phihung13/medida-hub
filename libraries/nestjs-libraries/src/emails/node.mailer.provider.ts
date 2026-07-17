@@ -1,15 +1,6 @@
 import nodemailer from 'nodemailer';
 import { EmailInterface } from '@gitroom/nestjs-libraries/emails/email.interface';
-
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: +process.env.EMAIL_PORT!,
-  secure: process.env.EMAIL_SECURE === 'true',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+import { getEmailConfig } from '@gitroom/nestjs-libraries/emails/email.config';
 
 export class NodeMailerProvider implements EmailInterface {
   name = 'nodemailer';
@@ -27,6 +18,18 @@ export class NodeMailerProvider implements EmailInterface {
     emailFromName: string,
     emailFromAddress: string
   ) {
+    // Build transporter MỖI LẦN từ cấu hình đọc FRESH — đổi tài khoản Gmail/SMTP
+    // qua UI Settings là ăn ngay, không cache lúc module-load, không cần restart.
+    const c = getEmailConfig();
+    const transporter = nodemailer.createTransport({
+      host: c.host,
+      port: +(c.port || '465'),
+      secure: c.secure === 'true',
+      auth: {
+        user: c.user,
+        pass: c.pass,
+      },
+    });
     const sends = await transporter.sendMail({
       from: `${emailFromName} <${emailFromAddress}>`, // sender address
       to: to, // list of receivers

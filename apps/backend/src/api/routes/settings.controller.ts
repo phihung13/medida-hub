@@ -21,12 +21,19 @@ import {
   setSocialKeys,
   SocialKeyStatus,
 } from '@gitroom/nestjs-libraries/keys/social.keys';
+import {
+  getEmailStatus,
+  setEmailConfig,
+  EmailConfig,
+} from '@gitroom/nestjs-libraries/emails/email.config';
+import { NotificationService } from '@gitroom/nestjs-libraries/database/prisma/notifications/notification.service';
 
 @ApiTags('Settings')
 @Controller('/settings')
 export class SettingsController {
   constructor(
-    private _organizationService: OrganizationService
+    private _organizationService: OrganizationService,
+    private _notificationService: NotificationService
   ) {}
 
   // @CheckPolicies KHÔNG chặn gì trên self-host thiếu Stripe (permissions
@@ -215,5 +222,48 @@ export class SettingsController {
   } {
     this.assertSuperAdmin(user);
     return setSocialKeys(body?.vars || {});
+  }
+
+  // ==== Cấu hình GỬI EMAIL (Gmail/SMTP hoặc Resend) — nhập từ UI, ăn ngay ====
+  @Get('/email-config')
+  getEmailConfig(@GetUserFromRequest() user: User) {
+    this.assertSuperAdmin(user);
+    return getEmailStatus();
+  }
+
+  @Post('/email-config')
+  saveEmailConfig(
+    @GetUserFromRequest() user: User,
+    @Body() body: Partial<EmailConfig>
+  ) {
+    this.assertSuperAdmin(user);
+    setEmailConfig(body || {});
+    return { ok: true, ...getEmailStatus() };
+  }
+
+  // Gửi email THỬ tới chính mình (hoặc địa chỉ nhập) để kiểm cấu hình.
+  @Post('/email-config/test')
+  async testEmailConfig(
+    @GetUserFromRequest() user: User,
+    @Body() body: { to?: string }
+  ) {
+    this.assertSuperAdmin(user);
+    const to = (body?.to || (user as any)?.email || '').trim();
+    if (!to) throw new HttpException('Thiếu địa chỉ email để gửi thử.', 400);
+    if (!this._notificationService.hasEmailProvider()) {
+      throw new HttpException('Chưa cấu hình nhà gửi email (điền + Lưu trước).', 400);
+    }
+    const ok = await this._notificationService.sendReportEmail(
+      to,
+      'Email thử — Media Hub',
+      '<p>Nếu bạn nhận được email này thì cấu hình gửi email đã hoạt động. 🎉</p>'
+    );
+    if (!ok) {
+      throw new HttpException(
+        'Gửi thử THẤT BẠI — kiểm lại host/cổng/tài khoản/mật khẩu ứng dụng.',
+        400
+      );
+    }
+    return { ok: true, to };
   }
 }

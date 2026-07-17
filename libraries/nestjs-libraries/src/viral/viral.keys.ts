@@ -38,10 +38,14 @@ interface ViralConfig {
   // ⏸ DỪNG SẢN XUẤT: bật = KHÔNG tự duyệt (mọi content dừng ở Chờ duyệt dù
   // điểm cao đến mấy) và KHÔNG tự sản xuất (kể cả khi duyệt tay). Bỏ vẫn tự bỏ.
   productionPaused: boolean;
-  // GỬI BẢN TIN QUA ZALO: danh sách người nhận (bạn bè/nhóm/SĐT đã tra),
-  // toggle tự gửi sau mỗi bản tin, và giờ gửi (-1 = ngay khi có bản tin,
-  // 0-23 = gom lại gửi vào đúng giờ đó trong ngày).
-  reportRecipients: { threadId: string; type: 'user' | 'group'; name: string }[];
+  // GỬI BẢN TIN: danh sách người nhận. type 'user'/'group' = Zalo (bạn bè/nhóm),
+  // 'email' = địa chỉ email (threadId chứa email). Toggle tự gửi sau mỗi bản
+  // tin, và giờ gửi (-1 = ngay khi có bản tin, 0-23 = gom gửi vào giờ đó).
+  reportRecipients: {
+    threadId: string;
+    type: 'user' | 'group' | 'email';
+    name: string;
+  }[];
   reportAutoSend: boolean;
   reportSendHour: number;
 }
@@ -70,12 +74,22 @@ const config: ViralConfig = {
 function sanitizeRecipients(v: any): ViralConfig['reportRecipients'] {
   if (!Array.isArray(v)) return [];
   return v
-    .map((r: any) => ({
-      threadId: String(r?.threadId || '').trim().slice(0, 60),
-      type: r?.type === 'user' ? ('user' as const) : ('group' as const),
-      name: String(r?.name || '').trim().slice(0, 80) || 'Không tên',
-    }))
-    .filter((r) => r.threadId)
+    .map((r: any) => {
+      const type =
+        r?.type === 'user'
+          ? ('user' as const)
+          : r?.type === 'email'
+          ? ('email' as const)
+          : ('group' as const);
+      // email: threadId là địa chỉ, dài hơn 60 nên nới trần + kiểm có '@'.
+      const threadId = String(r?.threadId || '').trim().slice(0, type === 'email' ? 160 : 60);
+      return {
+        threadId,
+        type,
+        name: String(r?.name || '').trim().slice(0, 80) || threadId || 'Không tên',
+      };
+    })
+    .filter((r) => (r.type === 'email' ? /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(r.threadId) : !!r.threadId))
     .slice(0, 30);
 }
 

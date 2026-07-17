@@ -1900,6 +1900,7 @@ const ZaloSendPanel: FC<{ latestId?: string }> = ({ latestId }) => {
   const [contactsErr, setContactsErr] = useState(false);
   const [q, setQ] = useState('');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!cfg) return;
@@ -1947,6 +1948,18 @@ const ZaloSendPanel: FC<{ latestId?: string }> = ({ latestId }) => {
       toast.show(t('viral_zalo_phone_fail', 'No Zalo user found for this phone number.'), 'warning');
     }
   };
+  const addEmail = () => {
+    const e = email.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) {
+      toast.show(t('viral_email_invalid', 'Địa chỉ email không hợp lệ.'), 'warning');
+      return;
+    }
+    setRecipients((prev) =>
+      prev.some((x) => x.threadId === e) ? prev : [...prev, { threadId: e, type: 'email', name: e }]
+    );
+    setEmail('');
+  };
+  const rIcon = (type: string) => (type === 'user' ? '👤' : type === 'email' ? '📧' : '👥');
   const save = async (patch?: any) => {
     const res = await fetch('/viral/config', {
       method: 'POST',
@@ -1987,7 +2000,7 @@ const ZaloSendPanel: FC<{ latestId?: string }> = ({ latestId }) => {
   return (
     <div className="bg-newColColor border border-newBgLineColor rounded-[12px] p-[14px] flex flex-col gap-[10px]">
       <div className="flex items-center gap-[10px] flex-wrap">
-        <span className="text-[13px] font-[800]">📤 {t('viral_zalo_panel', 'Send briefs via Zalo (bot)')}</span>
+        <span className="text-[13px] font-[800]">📤 {t('viral_send_panel', 'Gửi bản tin (Zalo · Email)')}</span>
         {/* checkbox auto + ✏️ Sửa ghi /viral/config → chỉ superadmin;
             📨 Gửi ngay là mutation thường → quản trị viên tổ chức. */}
         {isSuperAdmin && (
@@ -2014,11 +2027,11 @@ const ZaloSendPanel: FC<{ latestId?: string }> = ({ latestId }) => {
           {recipients.length ? (
             recipients.map((r) => (
               <span key={r.threadId} className="px-[9px] py-[3px] rounded-full bg-newBgColor border border-newBgLineColor text-textColor">
-                {r.type === 'user' ? '👤' : '👥'} {r.name}
+                {rIcon(r.type)} {r.name}
               </span>
             ))
           ) : (
-            <span>⚠ {t('viral_zalo_none', 'No recipients yet — press ✏️ Edit to pick friends/groups.')}</span>
+            <span>⚠ {t('viral_send_none', 'Chưa có người nhận — bấm ✏️ Sửa để thêm email / bạn bè / nhóm.')}</span>
           )}
           <span className="ms-auto">🕐 {t('viral_zalo_schedule', 'Schedule:')} <b className="text-textColor">{hourLabel}</b></span>
         </div>
@@ -2028,12 +2041,26 @@ const ZaloSendPanel: FC<{ latestId?: string }> = ({ latestId }) => {
           <div className="flex items-center gap-[6px] flex-wrap min-h-[26px]">
             {recipients.map((r) => (
               <button key={r.threadId} onClick={() => setRecipients((prev) => prev.filter((x) => x.threadId !== r.threadId))} className="px-[9px] py-[3px] rounded-full bg-btnPrimary/12 text-btnPrimary text-[12px] hover:bg-[#FF5A52]/15 hover:text-[#FF5A52]" title={t('viral_zalo_remove', 'Remove')}>
-                {r.type === 'user' ? '👤' : '👥'} {r.name} ✕
+                {rIcon(r.type)} {r.name} ✕
               </button>
             ))}
             {!recipients.length && <span className="text-[12px] text-textItemBlur">{t('viral_zalo_pick', 'Pick recipients below…')}</span>}
           </div>
-          {/* tìm + SĐT */}
+          {/* email — KHÔNG cần bot, gửi thẳng qua máy chủ mail; luôn dùng được */}
+          <div className="flex gap-[6px] flex-wrap">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addEmail(); } }}
+              placeholder={t('viral_email_ph', 'Địa chỉ email nhận bản tin…')}
+              className={inputCls + ' flex-1 min-w-[200px]'}
+            />
+            <button onClick={addEmail} className="px-[12px] rounded-[8px] text-[12px] font-[700] bg-btnPrimary/15 text-btnPrimary hover:bg-btnPrimary/25">
+              📧 {t('viral_email_add', 'Thêm email')}
+            </button>
+          </div>
+          {/* tìm + SĐT (Zalo) */}
           <div className="flex gap-[8px] flex-wrap">
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('viral_zalo_search', 'Search name…')} className={inputCls + ' flex-1 min-w-[160px]'} />
             <div className="flex gap-[6px]">

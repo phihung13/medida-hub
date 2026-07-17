@@ -5,22 +5,27 @@ import { EmptyProvider } from '@gitroom/nestjs-libraries/emails/empty.provider';
 import { NodeMailerProvider } from '@gitroom/nestjs-libraries/emails/node.mailer.provider';
 import { TemporalService } from 'nestjs-temporal-core';
 import { timer } from '@gitroom/helpers/utils/timer';
+import {
+  getEmailConfig,
+  hasEmailConfig,
+} from '@gitroom/nestjs-libraries/emails/email.config';
 
 @Injectable()
 export class EmailService {
   emailService: EmailInterface;
   constructor(private _temporalService: TemporalService) {
-    this.emailService = this.selectProvider(process.env.EMAIL_PROVIDER!);
+    this.emailService = this.selectProvider(getEmailConfig().provider);
     console.log('Email service provider:', this.emailService.name);
-    for (const key of this.emailService.validateEnvKeys) {
-      if (!process.env[key]) {
-        console.error(`Missing environment variable: ${key}`);
-      }
-    }
+  }
+
+  // Provider chọn FRESH theo cấu hình hiện tại (UI Settings có thể đổi lúc chạy)
+  // — không dùng this.emailService đã cache lúc khởi tạo.
+  private freshProvider(): EmailInterface {
+    return this.selectProvider(getEmailConfig().provider);
   }
 
   hasProvider() {
-    return !(this.emailService instanceof EmptyProvider);
+    return hasEmailConfig();
   }
 
   selectProvider(provider: string) {
@@ -53,21 +58,26 @@ export class EmailService {
       });
   }
 
+  // Gửi THẲNG (không qua Temporal). Trả TRUE nếu gửi thành công, FALSE nếu
+  // thiếu cấu hình / sai địa chỉ / thất bại sau 3 lần thử — để nơi gọi (vd nút
+  // "Gửi bản tin ngay") báo đúng thành/bại thay vì im lặng.
   async sendEmailSync(
     to: string,
     subject: string,
     html: string,
     replyTo?: string
-  ) {
+  ): Promise<boolean> {
     if (to.indexOf('@') === -1) {
-      return;
+      return false;
     }
 
-    if (!process.env.EMAIL_FROM_ADDRESS || !process.env.EMAIL_FROM_NAME) {
-      console.log(
-        'Email sender information not found in environment variables'
-      );
-      return;
+    // FROM đọc FRESH từ cấu hình (UI Settings), không chỉ process.env.
+    const emailCfg = getEmailConfig();
+    const fromName = emailCfg.fromName;
+    const fromAddress = emailCfg.fromAddress;
+    if (!fromAddress || !fromName) {
+      console.log('Email sender information not configured');
+      return false;
     }
 
     const modifiedHtml = `
@@ -114,7 +124,7 @@ export class EmailService {
                         font-weight: 600;
                         color: #1f2937;
                         margin: 0;
-                    ">${process.env.EMAIL_FROM_NAME}</h2>
+                    ">${fromName}</h2>
                     <div style="font-size: 12px">
                       You can change your notification preferences in your <a href="${process.env.FRONTEND_URL}/settings">account settings.</a>
                      </div>
@@ -124,19 +134,20 @@ export class EmailService {
     </div>
     `;
 
+    const provider = this.freshProvider();
     let lastErr: unknown;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const sends = await this.emailService.sendEmail(
+        const sends = await provider.sendEmail(
           to,
           subject,
           modifiedHtml,
-          process.env.EMAIL_FROM_NAME,
-          process.env.EMAIL_FROM_ADDRESS,
+          fromName,
+          fromAddress,
           replyTo
         );
         console.log(sends);
-        return;
+        return true;
       } catch (err) {
         lastErr = err;
         console.log(`Email attempt ${attempt + 1}/3 failed:`, err);
@@ -146,5 +157,6 @@ export class EmailService {
       }
     }
     console.log(`Email to ${to} failed after 3 attempts:`, lastErr);
+    return false;
   }
 }

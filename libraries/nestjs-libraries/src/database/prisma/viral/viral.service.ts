@@ -200,7 +200,7 @@ export class ViralService implements OnModuleInit {
               .pendingZaloReports(organizationId)
               .catch(() => [] as any[]);
             for (const r of pend) {
-              await this.sendReportToRecipients(r.content).catch(() => null);
+              await this.sendReportToRecipients(r.content, undefined, r.title || undefined).catch(() => null);
               await this._repo
                 .setReportMetaFlag(r.id, {
                   zaloPending: false,
@@ -2627,34 +2627,104 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
   }
 
   // ── BẢN TIN TUẦN + TODO LIST (gửi Zalo/email/in-app) ─────────────────────
+  // Chia văn bản dài thành phần ≤ max ký tự, cắt theo ranh giới đoạn/dòng cho
+  // đẹp; đoạn liền quá dài thì cắt cứng.
+  private splitText(text: string, max: number): string[] {
+    const parts: string[] = [];
+    let buf = '';
+    const flush = () => {
+      if (buf) {
+        parts.push(buf);
+        buf = '';
+      }
+    };
+    const add = (piece: string, sep: string) => {
+      if (!piece) return;
+      if ((buf ? buf.length + sep.length : 0) + piece.length > max) {
+        flush();
+        while (piece.length > max) {
+          parts.push(piece.slice(0, max));
+          piece = piece.slice(max);
+        }
+        buf = piece;
+      } else {
+        buf = buf ? buf + sep + piece : piece;
+      }
+    };
+    for (const para of String(text || '').split(/\n\n+/)) {
+      if (para.length > max) para.split('\n').forEach((l) => add(l, '\n'));
+      else add(para, '\n\n');
+    }
+    flush();
+    return parts.length ? parts : [String(text || '').slice(0, max)];
+  }
+
   // Gửi tin nhắn văn bản qua bot Zalo (endpoint /api/postiz/send, auth
   // x-hub-token). type 'user' = nhắn thẳng 1 người (bạn bè), 'group' = nhóm.
+  // "Cho bằng được" — chạy ĐƯỢC NGAY với bot đang chạy, không đợi bot cập nhật:
+  //  • Zalo giới hạn độ dài → CHIA NHỎ phía Hub (~1800/phần), gửi lần lượt.
+  //  • "Tham số không hợp lệ" thường do SAI loại thread → đọc lỗi bot, tự đổi
+  //    loại (user↔group) và nhớ loại đúng cho các phần sau.
   private async sendZaloReport(
     threadId: string,
     text: string,
     type: 'user' | 'group' = 'group'
-  ) {
+  ): Promise<void> {
     const base = (process.env.ZALO_BOT_URL || 'http://127.0.0.1:8088').replace(/\/$/, '');
-    const res = await fetch(`${base}/api/postiz/send`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        ...(process.env.HUB_BOT_TOKEN
-          ? { 'x-hub-token': process.env.HUB_BOT_TOKEN }
-          : {}),
-      },
-      body: JSON.stringify({ threadId, text, threadType: type }),
-      signal: AbortSignal.timeout(30000),
-    });
-    if (!res.ok) throw new Error(`Bot Zalo trả ${res.status}`);
+    const headers: Record<string, string> = {
+      'content-type': 'application/json',
+      ...(process.env.HUB_BOT_TOKEN ? { 'x-hub-token': process.env.HUB_BOT_TOKEN } : {}),
+    };
+    const postOne = async (msg: string, tt: 'user' | 'group') => {
+      const res = await fetch(`${base}/api/postiz/send`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ threadId, text: msg, threadType: tt }),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (res.ok) return { ok: true as const };
+      const body = await res.text().catch(() => '');
+      return { ok: false as const, status: res.status, body };
+    };
+
+    const parts = this.splitText(text, 1800);
+    let curType = type;
+    let switched = false;
+    for (let i = 0; i < parts.length; i++) {
+      const msg = parts.length > 1 ? `(${i + 1}/${parts.length})\n${parts[i]}` : parts[i];
+      let r = await postOne(msg, curType);
+      // Sai loại thread → thử loại kia MỘT lần, dùng luôn cho các phần sau.
+      if (!r.ok && !switched && /hợp lệ|invalid|param/i.test(r.body || '')) {
+        curType = curType === 'user' ? 'group' : 'user';
+        switched = true;
+        r = await postOne(msg, curType);
+      }
+      if (!r.ok) {
+        throw new Error(`Bot Zalo trả ${r.status}: ${(r.body || '').slice(0, 120)}`);
+      }
+      if (i < parts.length - 1) await new Promise((res) => setTimeout(res, 600));
+    }
   }
 
-  // Gửi 1 văn bản tới TOÀN BỘ danh sách người nhận đã lưu (hoặc list truyền
-  // vào) — tuần tự cách 2 giây né spam-limit Zalo. Chưa cấu hình danh sách
-  // thì rơi về nhóm cũ (reportZaloThreadId) cho tương thích.
+  // Bản tin plain-text → HTML đọc được (email). Escape + tách đoạn theo dòng
+  // trống, xuống dòng đơn thành <br>. sendEmailSync bọc thêm khung/tiêu đề.
+  private reportTextToHtml(text: string): string {
+    const esc = (s: string) =>
+      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return esc(String(text || ''))
+      .split(/\n{2,}/)
+      .map((p) => `<p style="margin:0 0 12px;line-height:1.6">${p.replace(/\n/g, '<br/>')}</p>`)
+      .join('');
+  }
+
+  // Gửi 1 bản tin tới TOÀN BỘ danh sách người nhận đã lưu (hoặc list truyền
+  // vào): Zalo (user/group) qua bot — tuần tự cách 2s né spam-limit; email
+  // (type 'email') gửi thẳng qua provider. Chưa cấu hình thì rơi về nhóm Zalo
+  // cũ (reportZaloThreadId) cho tương thích.
   private async sendReportToRecipients(
     text: string,
-    override?: { threadId: string; type: 'user' | 'group'; name?: string }[]
+    override?: { threadId: string; type: 'user' | 'group' | 'email'; name?: string }[],
+    subject = 'Bản tin Phát hiện — Trường Việt Anh'
   ): Promise<{ sent: number; failed: number }> {
     const cfg = getViralConfig();
     const list =
@@ -2667,26 +2737,34 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
         : [];
     let sent = 0;
     let failed = 0;
+    let html = '';
     for (const r of list) {
       try {
-        await this.sendZaloReport(r.threadId, text, r.type);
-        sent++;
+        if (r.type === 'email') {
+          if (!html) html = this.reportTextToHtml(text);
+          const ok = await this._notification.sendReportEmail(r.threadId, subject, html);
+          if (ok) sent++;
+          else failed++;
+        } else {
+          await this.sendZaloReport(r.threadId, text, r.type);
+          sent++;
+          await new Promise((res) => setTimeout(res, 2000)); // né spam-limit Zalo
+        }
       } catch {
         failed++;
       }
-      await new Promise((res) => setTimeout(res, 2000));
     }
     return { sent, failed };
   }
 
-  // Gửi TAY 1 bản tin qua Zalo (nút 📤 trên thẻ / "Gửi ngay" trên panel).
+  // Gửi TAY 1 bản tin tới danh sách người nhận (Zalo + email) — nút "Gửi ngay".
   async sendReportZalo(
     orgId: string,
     reportId: string
   ): Promise<{ sent: number; failed: number } | null> {
     const r: any = await this._repo.getReport(orgId, reportId);
     if (!r) return null;
-    return this.sendReportToRecipients(r.content);
+    return this.sendReportToRecipients(r.content, undefined, r.title || undefined);
   }
 
   // Tổng hợp 7 ngày → AI viết bản tin (tin nóng + diễn biến thị trường + todo
@@ -2810,33 +2888,30 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
       })
       .catch(() => null);
 
-    // 3 kênh — kênh nào lỗi thì bỏ qua kênh đó, không chặn kênh khác.
+    // Chuông in-app (org) — luôn có. KHÔNG email cả org nữa: sau khi gộp tổ
+    // chức, org chứa MỌI tài khoản, gửi hết = spam. Bản tin đi tới đúng DANH
+    // SÁCH người nhận (Zalo + email) cấu hình ở tab 📰.
     await this._notification
       .inAppNotification(orgId, head, text.slice(0, 3500), false)
       .catch(() => null);
-    if (this._notification.hasEmailProvider()) {
-      await this._notification
-        .sendEmailsToOrg(orgId, head, text.replace(/\n/g, '<br/>'), 'info')
-        .catch(() => null);
-    }
-    // Zalo: theo danh sách người nhận + toggle auto + giờ hẹn (Cài đặt tab 📰)
+    // Người nhận (Zalo user/group + email) + toggle auto + giờ hẹn.
     const cfgZ = getViralConfig();
     const hasRecipients =
       cfgZ.reportRecipients.length > 0 || !!cfgZ.reportZaloThreadId;
-    let zalo = false;
+    let sentAny = false;
     if (hasRecipients && cfgZ.reportAutoSend) {
       if (cfgZ.reportSendHour >= 0 && (saved as any)?.id) {
         // gom lại — vòng quét 10 phút sẽ gửi vào đúng giờ đã hẹn trong ngày
         await this._repo
           .setReportMetaFlag((saved as any).id, { zaloPending: true })
           .catch(() => null);
-        zalo = true;
+        sentAny = true;
       } else {
-        const r = await this.sendReportToRecipients(text).catch(() => null);
-        zalo = !!r && r.sent > 0;
+        const r = await this.sendReportToRecipients(text, undefined, head).catch(() => null);
+        sentAny = !!r && r.sent > 0;
       }
     }
-    return { ok: true, zalo, reportId: (saved as any)?.id || null };
+    return { ok: true, zalo: sentAny, reportId: (saved as any)?.id || null };
   }
 
   listReports(orgId: string) {

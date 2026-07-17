@@ -1,7 +1,6 @@
 import { Resend } from 'resend';
 import { EmailInterface } from '@gitroom/nestjs-libraries/emails/email.interface';
-
-const resend = new Resend(process.env.RESEND_API_KEY || 're_132');
+import { getEmailConfig } from '@gitroom/nestjs-libraries/emails/email.config';
 
 export class ResendProvider implements EmailInterface {
   name = 'resend';
@@ -14,6 +13,8 @@ export class ResendProvider implements EmailInterface {
     emailFromAddress: string,
     replyTo?: string
   ) {
+    // Key đọc FRESH từ cấu hình (UI Settings) — đổi là ăn ngay.
+    const resend = new Resend(getEmailConfig().resendKey || 're_132');
     try {
       const sends = await resend.emails.send({
         from: `${emailFromName} <${emailFromAddress}>`,

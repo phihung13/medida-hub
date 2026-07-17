@@ -111,6 +111,17 @@ export class NotificationService {
     await this._emailService.sendEmail(to, subject, html, 'top', replyTo);
   }
 
+  // Gửi 1 email NGAY (đồng bộ, không qua Temporal) — dùng cho bản tin gửi tới
+  // địa chỉ cụ thể, cần biết thành/bại liền để báo lên UI. Trả TRUE nếu gửi ok.
+  async sendReportEmail(
+    to: string,
+    subject: string,
+    html: string
+  ): Promise<boolean> {
+    if (!this.hasEmailProvider()) return false;
+    return !!(await this._emailService.sendEmailSync(to, subject, html));
+  }
+
   hasEmailProvider() {
     return this._emailService.hasProvider();
   }
