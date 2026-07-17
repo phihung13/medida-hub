@@ -2861,9 +2861,9 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
         .forEach((td, i) => lines.push(`${i + 1}. ${td.title} — ${td.action}`));
       lines.push('');
     }
-    lines.push(`📊 ${statsText}`);
-    lines.push('👉 Vào trang Phát hiện để duyệt & sản xuất.');
-    const text = lines.join('\n');
+    // (Bỏ dòng "📊 7 ngày qua… 👉 Vào trang Phát hiện" theo yêu cầu — statsText
+    //  vẫn dùng làm bối cảnh cho AI + lưu meta, chỉ không hiện trong bản tin gửi.)
+    const text = lines.join('\n').replace(/\n+$/, '');
 
     // Lưu vào tab 📰 Bản tin TRƯỚC khi gửi — kênh gửi lỗi vẫn đọc được trên web.
     const saved = await this._repo
