@@ -926,22 +926,26 @@ export class PostsService {
       }));
 
       // Chân bài (footer) cố định của kênh: chèn DƯỚI caption, TRÊN hashtag ở
-      // phần nội dung cuối cùng. Idempotent (không chèn lại nếu đã có).
-      try {
-        const integ = await this._integrationService.getIntegrationById(
-          orgId,
-          post.integration.id
-        );
-        const footer = ((integ as any)?.postFooter || '').trim();
-        if (footer && post.value.length) {
-          const last = post.value.length - 1;
-          post.value[last] = {
-            ...post.value[last],
-            content: this.applyPostFooter(post.value[last].content, footer),
-          };
+      // phần nội dung cuối cùng — CHỈ khi TẠO MỚI. Khi 'update' (user bấm Cập
+      // nhật để sửa bài), KHÔNG đụng vào: nếu user xoá bớt chân bài thì để nó ở
+      // trạng thái xoá, không tự mọc lại (tránh nhân đôi/re-bake).
+      if (body.type !== 'update') {
+        try {
+          const integ = await this._integrationService.getIntegrationById(
+            orgId,
+            post.integration.id
+          );
+          const footer = ((integ as any)?.postFooter || '').trim();
+          if (footer && post.value.length) {
+            const last = post.value.length - 1;
+            post.value[last] = {
+              ...post.value[last],
+              content: this.applyPostFooter(post.value[last].content, footer),
+            };
+          }
+        } catch {
+          /* không lấy được footer — vẫn đăng bình thường */
         }
-      } catch {
-        /* không lấy được footer — vẫn đăng bình thường */
       }
 
       const { posts } = await this._postRepository.createOrUpdatePost(

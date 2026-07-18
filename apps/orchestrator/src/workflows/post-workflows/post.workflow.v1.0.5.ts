@@ -28,6 +28,23 @@ const proxyTaskQueue = (taskQueue: string) => {
   });
 };
 
+// Trích message lỗi ĐỌC ĐƯỢC trước khi truyền qua ranh giới activity: Temporal
+// JSON-serialize Error/ActivityFailure thành '{}' (mất message). ApplicationFailure
+// giữ message thật ở .cause — bóc thành chuỗi để changeState lưu ĐÚNG lý do
+// (token hết hạn / thiếu quyền / Facebook từ chối nội dung…) thay vì "{}".
+function errText(err: any): string {
+  if (!err) return 'Unknown error';
+  if (typeof err === 'string') return err;
+  const msg =
+    err?.cause?.cause?.message || err?.cause?.message || err?.message || '';
+  if (msg) return String(msg).slice(0, 1500);
+  try {
+    return JSON.stringify(err).slice(0, 1500);
+  } catch {
+    return String(err).slice(0, 1500);
+  }
+}
+
 const {
   getPostsList,
   getPost,
@@ -228,7 +245,7 @@ export async function postWorkflowV105({
             err?.cause?.message || ''
           );
           if (!refresh || !refresh.accessToken) {
-            await changeState(postsList[0].id, 'ERROR', err, postsList);
+            await changeState(postsList[0].id, 'ERROR', errText(err), postsList);
             return false;
           }
 
@@ -237,7 +254,7 @@ export async function postWorkflowV105({
         }
 
         // for other errors, change state and inform the user if needed
-        await changeState(postsList[0].id, 'ERROR', err, postsList);
+        await changeState(postsList[0].id, 'ERROR', errText(err), postsList);
 
         // specific case for bad body errors
         if (

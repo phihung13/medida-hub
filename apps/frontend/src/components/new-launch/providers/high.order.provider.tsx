@@ -19,24 +19,6 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import useSWR from 'swr';
 
-// Chèn chân bài (footer) của kênh vào nội dung XEM TRƯỚC — dưới caption, trên
-// khối hashtag; idempotent. Chỉ để hiển thị preview (backend chèn thật lúc tạo bài).
-function withFooter(content: string, footer?: string): string {
-  const body = content || '';
-  const f = (footer || '').trim();
-  if (!f || body.includes(f)) return body;
-  const lines = body.split('\n');
-  const isTag = (l: string) => {
-    const s = l.trim();
-    return s === '' || /^#[^\s#]+(\s+#[^\s#]+)*$/.test(s);
-  };
-  let idx = lines.length;
-  while (idx > 0 && isTag(lines[idx - 1])) idx--;
-  const head = lines.slice(0, idx).join('\n').replace(/\s+$/, '');
-  const tail = lines.slice(idx).join('\n').trim();
-  if (tail) return `${head}\n\n${f}\n\n${tail}`;
-  return head ? `${head}\n\n${f}` : f;
-}
 import { InternalChannels } from '@gitroom/frontend/components/launches/internal.channels';
 import { createPortal } from 'react-dom';
 import clsx from 'clsx';
@@ -251,13 +233,9 @@ export const withProvider = function <T extends object>(params: {
           allIntegrations,
           value: value.map((p, i) => ({
             id: p.id,
-            content:
-              i === value.length - 1
-                ? withFooter(
-                    p.content,
-                    (selectedIntegration.integration as any).postFooter
-                  )
-                : p.content,
+            // Chân bài đã được backend nướng vào content lúc createPost — preview
+            // hiện thẳng content, KHÔNG chèn lại (trước đây chèn lại gây 2 chân bài).
+            content: p.content,
             image: p.media,
           })),
         }}

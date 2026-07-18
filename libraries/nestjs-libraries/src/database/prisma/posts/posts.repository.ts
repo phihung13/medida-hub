@@ -426,7 +426,9 @@ export class PostsRepository {
       data: {
         state,
         ...(err
-          ? { error: typeof err === 'string' ? err : JSON.stringify(err) }
+          ? { error: typeof err === 'string'
+          ? err
+          : err?.message || err?.cause?.message || JSON.stringify(err) }
           : {}),
       },
       include: {
@@ -442,7 +444,9 @@ export class PostsRepository {
       try {
         await this._errors.model.errors.create({
           data: {
-            message: typeof err === 'string' ? err : JSON.stringify(err),
+            message: typeof err === 'string'
+          ? err
+          : err?.message || err?.cause?.message || JSON.stringify(err),
             organizationId: update.organizationId,
             platform: update.integration.providerIdentifier,
             postId: update.id,
