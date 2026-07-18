@@ -12,6 +12,7 @@ import {
   SocialProvider,
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { Integration, Organization } from '@prisma/client';
+import { capitalize } from 'lodash';
 import { NotificationService } from '@gitroom/nestjs-libraries/database/prisma/notifications/notification.service';
 import dayjs from 'dayjs';
 import { timer } from '@gitroom/helpers/utils/timer';
@@ -358,6 +359,21 @@ export class IntegrationService {
       getIntegration.token,
       pageDataList[0]
     );
+    // BẪY LẶNG: nếu provider KHÔNG đưa access_token cho kênh này (vd Trang FB
+    // chỉ thấy qua Business Manager, hoặc chưa tick Trang trong hộp thoại FB)
+    // thì updateIntegration nhận token:undefined → Prisma BỎ QUA field → kênh
+    // giữ NGUYÊN token cũ (có thể là user token hỏng) mà UI vẫn báo "nối thành
+    // công". Phải chặn ngay tại đây, nói rõ cho user thay vì hỏng ngầm.
+    if (!(first as any)?.access_token) {
+      throw new HttpException(
+        `${capitalize(getIntegration.providerIdentifier)} không đưa token cho kênh "${
+          first?.name || pageDataList[0]?.page || ''
+        }" khi chọn. Hãy nối lại và trong màn ${capitalize(
+          getIntegration.providerIdentifier
+        )} bấm "Chỉnh sửa cài đặt" (Edit settings), tick ĐÚNG Trang/kênh này rồi chọn lại.`,
+        HttpStatus.BAD_REQUEST
+      );
+    }
     await this.checkForDeletedOnceAndUpdate(org, String(first.id));
     await this._integrationRepository.updateIntegration(id, {
       picture: first.picture,
