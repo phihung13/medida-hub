@@ -8,6 +8,7 @@ import {
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import dayjs from 'dayjs';
 import {
+  BadBody,
   SocialAbstract,
   ValidityMedia,
 } from '@gitroom/nestjs-libraries/integrations/social.abstract';
@@ -487,38 +488,75 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
     throw new Error('Page not found in your accounts');
   }
 
-  // Bảo đảm ĐĂNG BẰNG TOKEN TRANG. Một lần refresh nền từng ghi token NGƯỜI DÙNG
-  // đè lên token Trang của kênh (FB refreshToken() là no-op) → ảnh "ẩn"
-  // (published:false) khi ghép vào /feed bị FB từ chối #200 "Unpublished posts must
-  // be posted to a page as the page itself". Nếu token hiện tại KHÔNG thuộc về Trang
-  // (/me.id ≠ pageId), đổi sang token Trang lấy qua /{pageId}?fields=access_token
-  // (user token có quyền trang → trả token trang). Lỗi bất kỳ → giữ token cũ (không
-  // tệ hơn hiện trạng). Kênh khỏe: /me = pageId → trả ngay, chỉ tốn 1 GET rẻ.
+  // Bảo đảm ĐĂNG BẰNG TOKEN TRANG. Kênh có thể đang lưu token NGƯỜI DÙNG thay vì
+  // token Trang → ảnh "ẩn" (published:false) khi ghép vào /feed bị FB từ chối #200
+  // "Unpublished posts must be posted to a page as the page itself". Nếu /me.id ≠
+  // pageId thì đổi token Trang qua 2 đường: (1) /{pageId}?fields=access_token,
+  // (2) quét /me/accounts + Business Manager (fetchPageInformation — đúng đường đã
+  // dùng lúc NỐI KÊNH). Cả 2 fail → KHÔNG rơi êm về token cũ nữa (đăng kiểu gì
+  // cũng #200): ném BadBody nêu rõ lý do FB + cách sửa, để user thấy ngay trên UI.
+  // Kênh khỏe: /me = pageId → trả ngay, chỉ tốn 1 GET rẻ.
   private async ensurePageToken(
     pageId: string,
-    token: string
+    token: string,
+    throwOnFail = true
   ): Promise<string> {
+    // 1) Token thuộc về ai? Lỗi mạng/token hỏng → giữ hành vi cũ (đường
+    // refresh_token phía sau tự xử lý).
+    let meId = '';
     try {
       const me = await (
         await fetch(
           `https://graph.facebook.com/v20.0/me?fields=id&access_token=${token}`
         )
       ).json();
-      if (me?.id && String(me.id) === String(pageId)) {
-        return token;
-      }
-      const page = await (
+      meId = me?.id ? String(me.id) : '';
+    } catch {
+      return token;
+    }
+    if (!meId || meId === String(pageId)) {
+      return token; // đã là token Trang (hoặc không xác định được) → như cũ
+    }
+
+    // 2) Chắc chắn USER token → đổi trực tiếp
+    let reason = '';
+    try {
+      const direct = await (
         await fetch(
           `https://graph.facebook.com/v20.0/${pageId}?fields=access_token&access_token=${token}`
         )
       ).json();
-      if (page?.access_token) {
-        return page.access_token;
+      if (direct?.access_token) {
+        return direct.access_token;
       }
-    } catch {
-      // im lặng: rơi về token cũ
+      reason =
+        direct?.error?.message || JSON.stringify(direct || {}).slice(0, 200);
+    } catch (e: any) {
+      reason = e?.message || 'network error';
     }
-    return token;
+
+    // 3) Đường vòng: /me/accounts + Business Manager
+    try {
+      const info = await this.fetchPageInformation(token, { page: pageId });
+      if (info?.access_token) {
+        return info.access_token;
+      }
+    } catch (e: any) {
+      reason += ` | me/accounts: ${e?.message || 'failed'}`;
+    }
+
+    console.log(
+      `[facebook] ensurePageToken THẤT BẠI page=${pageId} me=${meId} lý do=${reason}`
+    );
+    if (!throwOnFail) {
+      return token;
+    }
+    throw new BadBody(
+      'facebook-page-token',
+      JSON.stringify({ pageId, meId, reason }),
+      '',
+      `Facebook: kênh đang lưu token NGƯỜI DÙNG (id ${meId}) thay vì token TRANG nên không đăng được (#200). Tự đổi sang token Trang thất bại: ${reason}. Cách sửa: vào Kênh → "Nối lại" (Reconnect) kênh này rồi chọn lại Trang.`
+    );
   }
 
   async post(
@@ -766,6 +804,9 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
     accessToken: string,
     date: number
   ): Promise<AnalyticsData[]> {
+    // Insights cũng cần token TRANG — kênh lỡ lưu user token thì tự đổi;
+    // không đổi được thì giữ token cũ (không ném, analytics trống còn hơn văng lỗi).
+    accessToken = await this.ensurePageToken(id, accessToken, false);
     const until = dayjs().endOf('day').unix();
     const since = dayjs().subtract(date, 'day').unix();
 

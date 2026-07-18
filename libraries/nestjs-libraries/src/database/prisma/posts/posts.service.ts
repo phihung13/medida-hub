@@ -882,13 +882,18 @@ export class PostsService {
     // Idempotent BỀN với HTML-escaping (&amp; vs &) + khoảng trắng: TipTap lưu
     // caption dạng HTML nên '&' thành '&amp;', còn footer ở DB giữ '&' — nếu so
     // THÔ (body.includes) sẽ KHÔNG thấy footer cũ và chèn thêm 1 bản mỗi lần lưu
-    // nháp (càng ấn càng thêm). Chuẩn hoá 2 vế (bỏ thẻ, giải mã &amp;/&nbsp;, gộp
-    // khoảng trắng) rồi so → đã có footer thì THÔI, không nhân bản.
+    // nháp (càng ấn càng thêm). Chuẩn hoá 2 vế rồi so → đã có footer thì THÔI.
+    // QUAN TRỌNG: thẻ HTML phải thay bằng KHOẢNG TRẮNG chứ không xoá trắng —
+    // '<p>A</p><p>B</p>' mà xoá thẻ sẽ thành 'AB' (dính liền) trong khi footer
+    // gốc là 'A\nB' → 'A B', so trượt → "Đăng ngay" trên bài mở lại từ editor
+    // (đã bị TipTap bọc footer vào <p>) vẫn chèn thêm bản 2.
     const norm = (s: string) =>
       s
-        .replace(/<[^>]+>/g, '')
+        .replace(/<[^>]+>/g, ' ')
         .replace(/&amp;/g, '&')
         .replace(/&nbsp;/g, ' ')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
         .replace(/\s+/g, ' ')
         .trim();
     if (norm(body).includes(norm(footerBlock))) return body;
