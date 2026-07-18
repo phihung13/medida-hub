@@ -487,11 +487,46 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
     throw new Error('Page not found in your accounts');
   }
 
+  // Bảo đảm ĐĂNG BẰNG TOKEN TRANG. Một lần refresh nền từng ghi token NGƯỜI DÙNG
+  // đè lên token Trang của kênh (FB refreshToken() là no-op) → ảnh "ẩn"
+  // (published:false) khi ghép vào /feed bị FB từ chối #200 "Unpublished posts must
+  // be posted to a page as the page itself". Nếu token hiện tại KHÔNG thuộc về Trang
+  // (/me.id ≠ pageId), đổi sang token Trang lấy qua /{pageId}?fields=access_token
+  // (user token có quyền trang → trả token trang). Lỗi bất kỳ → giữ token cũ (không
+  // tệ hơn hiện trạng). Kênh khỏe: /me = pageId → trả ngay, chỉ tốn 1 GET rẻ.
+  private async ensurePageToken(
+    pageId: string,
+    token: string
+  ): Promise<string> {
+    try {
+      const me = await (
+        await fetch(
+          `https://graph.facebook.com/v20.0/me?fields=id&access_token=${token}`
+        )
+      ).json();
+      if (me?.id && String(me.id) === String(pageId)) {
+        return token;
+      }
+      const page = await (
+        await fetch(
+          `https://graph.facebook.com/v20.0/${pageId}?fields=access_token&access_token=${token}`
+        )
+      ).json();
+      if (page?.access_token) {
+        return page.access_token;
+      }
+    } catch {
+      // im lặng: rơi về token cũ
+    }
+    return token;
+  }
+
   async post(
     id: string,
     accessToken: string,
     postDetails: PostDetails<FacebookDto>[]
   ): Promise<PostResponse[]> {
+    accessToken = await this.ensurePageToken(id, accessToken);
     const [firstPost] = postDetails;
     const isStory = firstPost?.settings?.post_type === 'story';
 
@@ -693,6 +728,7 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
     postDetails: PostDetails<FacebookDto>[],
     integration: Integration
   ): Promise<PostResponse[]> {
+    accessToken = await this.ensurePageToken(id, accessToken);
     const [commentPost] = postDetails;
     const replyToId = lastCommentId || postId;
 

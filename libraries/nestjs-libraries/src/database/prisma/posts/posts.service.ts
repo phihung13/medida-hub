@@ -879,7 +879,19 @@ export class PostsService {
     const body = content || '';
     const footerBlock = (footer || '').trim();
     if (!footerBlock) return body;
-    if (body.includes(footerBlock)) return body;
+    // Idempotent BỀN với HTML-escaping (&amp; vs &) + khoảng trắng: TipTap lưu
+    // caption dạng HTML nên '&' thành '&amp;', còn footer ở DB giữ '&' — nếu so
+    // THÔ (body.includes) sẽ KHÔNG thấy footer cũ và chèn thêm 1 bản mỗi lần lưu
+    // nháp (càng ấn càng thêm). Chuẩn hoá 2 vế (bỏ thẻ, giải mã &amp;/&nbsp;, gộp
+    // khoảng trắng) rồi so → đã có footer thì THÔI, không nhân bản.
+    const norm = (s: string) =>
+      s
+        .replace(/<[^>]+>/g, '')
+        .replace(/&amp;/g, '&')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (norm(body).includes(norm(footerBlock))) return body;
 
     const lines = body.split('\n');
     const isHashtagLine = (l: string) => {
