@@ -220,6 +220,27 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
       };
     }
 
+    // CATCH-ALL: lỗi FB KHÔNG khớp mã nào ở trên → bóc message THẬT từ body
+    // (FB trả {"error":{"message","code","error_subcode"}}) thay vì trả undefined
+    // → trước đây tầng fetch rơi về "Unknown Error", giấu mất lý do thật (token,
+    // quyền, nội dung vi phạm, ảnh lỗi…). Giờ hiện đúng câu FB nói.
+    try {
+      const fbErr = JSON.parse(body)?.error;
+      if (fbErr?.message) {
+        const code = fbErr.code
+          ? ` (#${fbErr.code}${
+              fbErr.error_subcode ? '/' + fbErr.error_subcode : ''
+            })`
+          : '';
+        return {
+          type: 'bad-body' as const,
+          value: `Facebook: ${String(fbErr.message).slice(0, 400)}${code}`,
+        };
+      }
+    } catch {
+      /* body không phải JSON — giữ hành vi cũ (trả undefined) */
+    }
+
     return undefined;
   }
 
