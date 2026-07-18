@@ -521,6 +521,24 @@ export const EditorWrapper: FC<{
               </div>
             )}
           </div>
+          {/* Chân bài cố định của kênh — KHUNG RIÊNG, chỉ hiển thị (không nằm
+              trong content, không đếm ký tự). Backend tự ghép vào bài lúc ĐĂNG
+              THẬT. Sửa nội dung footer: menu kênh → Chân bài cố định. */}
+          {index === 0 &&
+            current !== 'global' &&
+            !!((internalFromAll as any)?.postFooter || '').trim() && (
+              <div className="mx-[12px] mb-[12px] rounded-[8px] border border-dashed border-newSep bg-newBgColor px-[12px] py-[10px]">
+                <div className="mb-[4px] text-[12px] font-[600] opacity-60">
+                  {t(
+                    'post_footer_auto_label',
+                    'Chân bài cố định — tự thêm khi đăng'
+                  )}
+                </div>
+                <div className="whitespace-pre-wrap text-[13px] leading-[1.45] opacity-75">
+                  {((internalFromAll as any)?.postFooter || '').trim()}
+                </div>
+              </div>
+            )}
         </div>
       ))}
     </div>

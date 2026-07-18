@@ -233,8 +233,8 @@ export const withProvider = function <T extends object>(params: {
           allIntegrations,
           value: value.map((p, i) => ({
             id: p.id,
-            // Chân bài đã được backend nướng vào content lúc createPost — preview
-            // hiện thẳng content, KHÔNG chèn lại (trước đây chèn lại gây 2 chân bài).
+            // Content luôn SẠCH (không chứa chân bài) — footer per-channel được
+            // backend ghép lúc ĐĂNG THẬT, còn ở đây hiển thị KHUNG RIÊNG dưới preview.
             content: p.content,
             image: p.media,
           })),
@@ -289,6 +289,31 @@ export const withProvider = function <T extends object>(params: {
                   }
                 />
               ))}
+            {/* Chân bài cố định — KHUNG RIÊNG dưới preview: bài đăng thật =
+                content + chân bài (backend ghép lúc đăng), hiển thị tách 2
+                container để user thấy rõ mà không phải gõ vào bài. */}
+            {current &&
+              (tab === 0 ||
+                (!SettingsComponent && !data?.internalPlugs?.length)) &&
+              !!value?.[0]?.content?.length &&
+              !!(
+                (selectedIntegration?.integration as any)?.postFooter || ''
+              ).trim() && (
+                <div className="mx-[16px] mb-[16px] rounded-[8px] border border-dashed border-newSep bg-newBgColor px-[12px] py-[10px]">
+                  <div className="mb-[4px] text-[12px] font-[600] opacity-60">
+                    {t(
+                      'post_footer_auto_label',
+                      'Chân bài cố định — tự thêm khi đăng'
+                    )}
+                  </div>
+                  <div className="whitespace-pre-wrap text-[13px] leading-[1.45] opacity-75">
+                    {(
+                      (selectedIntegration?.integration as any)?.postFooter ||
+                      ''
+                    ).trim()}
+                  </div>
+                </div>
+              )}
             {(SettingsComponent || !!data?.internalPlugs?.length) &&
               createPortal(
                 <div data-id={props.id} className={isGlobal ? 'bg-newSettings pb-[12px] px-[12px]' : 'hidden bg-newSettings px-[12px] pb-[12px]'}>

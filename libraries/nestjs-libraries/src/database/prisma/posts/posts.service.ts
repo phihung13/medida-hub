@@ -875,46 +875,6 @@ export class PostsService {
 
   // Chèn footer vào nội dung: đặt DƯỚI caption và TRÊN khối hashtag ở cuối.
   // Idempotent — nếu nội dung đã chứa footer thì giữ nguyên (tránh lặp khi sửa bài).
-  private applyPostFooter(content: string, footer: string): string {
-    const body = content || '';
-    const footerBlock = (footer || '').trim();
-    if (!footerBlock) return body;
-    // Idempotent BỀN với HTML-escaping (&amp; vs &) + khoảng trắng: TipTap lưu
-    // caption dạng HTML nên '&' thành '&amp;', còn footer ở DB giữ '&' — nếu so
-    // THÔ (body.includes) sẽ KHÔNG thấy footer cũ và chèn thêm 1 bản mỗi lần lưu
-    // nháp (càng ấn càng thêm). Chuẩn hoá 2 vế rồi so → đã có footer thì THÔI.
-    // QUAN TRỌNG: thẻ HTML phải thay bằng KHOẢNG TRẮNG chứ không xoá trắng —
-    // '<p>A</p><p>B</p>' mà xoá thẻ sẽ thành 'AB' (dính liền) trong khi footer
-    // gốc là 'A\nB' → 'A B', so trượt → "Đăng ngay" trên bài mở lại từ editor
-    // (đã bị TipTap bọc footer vào <p>) vẫn chèn thêm bản 2.
-    const norm = (s: string) =>
-      s
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/\s+/g, ' ')
-        .trim();
-    if (norm(body).includes(norm(footerBlock))) return body;
-
-    const lines = body.split('\n');
-    const isHashtagLine = (l: string) => {
-      const t = l.trim();
-      return t === '' || /^#[^\s#]+(\s+#[^\s#]+)*$/.test(t);
-    };
-    let idx = lines.length;
-    while (idx > 0 && isHashtagLine(lines[idx - 1])) idx--;
-
-    const head = lines.slice(0, idx).join('\n').replace(/\s+$/, '');
-    const tail = lines.slice(idx).join('\n').trim();
-
-    if (tail) {
-      return `${head}\n\n${footerBlock}\n\n${tail}`;
-    }
-    return head ? `${head}\n\n${footerBlock}` : footerBlock;
-  }
-
   async createPost(
     orgId: string,
     body: CreatePostDto,
@@ -942,28 +902,11 @@ export class PostsService {
         content: removeLinks ? stripLinks(updateContent[i]) : updateContent[i],
       }));
 
-      // Chân bài (footer) cố định của kênh: chèn DƯỚI caption, TRÊN hashtag ở
-      // phần nội dung cuối cùng — CHỈ khi TẠO MỚI. Khi 'update' (user bấm Cập
-      // nhật để sửa bài), KHÔNG đụng vào: nếu user xoá bớt chân bài thì để nó ở
-      // trạng thái xoá, không tự mọc lại (tránh nhân đôi/re-bake).
-      if (body.type !== 'update') {
-        try {
-          const integ = await this._integrationService.getIntegrationById(
-            orgId,
-            post.integration.id
-          );
-          const footer = ((integ as any)?.postFooter || '').trim();
-          if (footer && post.value.length) {
-            const last = post.value.length - 1;
-            post.value[last] = {
-              ...post.value[last],
-              content: this.applyPostFooter(post.value[last].content, footer),
-            };
-          }
-        } catch {
-          /* không lấy được footer — vẫn đăng bình thường */
-        }
-      }
+      // Chân bài (postFooter): KHÔNG nướng vào content nữa — content lưu DB
+      // luôn SẠCH (hết vĩnh viễn lỗi nhân bản chân bài khi lưu/Đăng ngay).
+      // Footer per-channel được ghép ở giây ĐĂNG THẬT (orchestrator postSocial
+      // → applyPostFooter từ @gitroom/helpers) và hiển thị ở KHUNG RIÊNG trong
+      // composer/preview để user thấy mà không cần gõ.
 
       const { posts } = await this._postRepository.createOrUpdatePost(
         body.type,

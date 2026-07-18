@@ -11,6 +11,7 @@ import {
 } from '@gitroom/nestjs-libraries/database/prisma/notifications/notification.service';
 import { Integration, Post, State } from '@prisma/client';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
+import { applyPostFooter } from '@gitroom/helpers/utils/apply.post.footer';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { AuthTokenDetails } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
@@ -229,16 +230,32 @@ export class PostActivity {
       integration.internalId,
       integration.token,
       await Promise.all(
-        (newPosts || []).map(async (p) => ({
+        (newPosts || []).map(async (p, idx) => ({
           id: p.id,
-          message: stripHtmlValidation(
-            getIntegration.editor,
-            p.content,
-            true,
-            false,
-            !/<\/?[a-z][\s\S]*>/i.test(p.content),
-            getIntegration.mentionFormat
-          ),
+          // Chân bài cố định của kênh: content trong DB luôn SẠCH, chỉ ghép ở
+          // ĐÂY — giây đăng thật, sau khi HTML đã chuyển thành text. Chỉ ghép
+          // vào BÀI CHÍNH (idx 0), không ghép vào comment.
+          message:
+            idx === 0
+              ? applyPostFooter(
+                  stripHtmlValidation(
+                    getIntegration.editor,
+                    p.content,
+                    true,
+                    false,
+                    !/<\/?[a-z][\s\S]*>/i.test(p.content),
+                    getIntegration.mentionFormat
+                  ),
+                  integration.postFooter || ''
+                )
+              : stripHtmlValidation(
+                  getIntegration.editor,
+                  p.content,
+                  true,
+                  false,
+                  !/<\/?[a-z][\s\S]*>/i.test(p.content),
+                  getIntegration.mentionFormat
+                ),
           settings: JSON.parse(p.settings || '{}'),
           media: await this._postService.updateMedia(
             p.id,
