@@ -538,6 +538,49 @@ const SourceModal: FC<{ onDone: () => void }> = ({ onDone }) => {
 };
 
 // ── Cấu hình (token) ──────────────────────────────────────────────────────
+// Khung 1 MỤC cấu hình: tiêu đề + huy hiệu trạng thái (✓ đủ / ⚠ thiếu / ○ tùy
+// chọn) + thân gập-mở. Đặt NGOÀI ConfigModal để không bị remount mỗi keystroke
+// (định nghĩa component lồng trong component sẽ làm input mất focus khi gõ).
+const CfgSection: FC<{
+  icon: string;
+  title: string;
+  state: 'ok' | 'warn' | 'off';
+  note: string;
+  open: boolean;
+  onToggle: () => void;
+  children?: any;
+}> = ({ icon, title, state, note, open, onToggle, children }) => (
+  <div className="rounded-[10px] border border-newBgLineColor overflow-hidden">
+    <button
+      type="button"
+      onClick={onToggle}
+      className="w-full flex items-center gap-[10px] px-[12px] py-[10px] bg-newBgLineColor/20 hover:bg-newBgLineColor/40 transition-colors text-start"
+    >
+      <span className="text-[15px]">{icon}</span>
+      <span className="flex-1 text-[13px] font-[700]">{title}</span>
+      <span
+        className={clsx(
+          'text-[11px] font-[700] px-[8px] py-[2px] rounded-full whitespace-nowrap',
+          state === 'ok' && 'bg-[#2AA952]/15 text-[#3DDC68]',
+          state === 'warn' && 'bg-[#FFC53D]/15 text-[#FFC53D]',
+          state === 'off' && 'bg-newBgLineColor/40 text-textItemBlur'
+        )}
+      >
+        {state === 'ok' ? '✓' : state === 'warn' ? '⚠' : '○'} {note}
+      </span>
+      <span
+        className={clsx(
+          'text-[10px] text-textItemBlur transition-transform',
+          open && 'rotate-180'
+        )}
+      >
+        ▼
+      </span>
+    </button>
+    {open && <div className="flex flex-col gap-[12px] p-[12px]">{children}</div>}
+  </div>
+);
+
 const ConfigModal: FC = () => {
   const t = useT();
   const fetch = useFetch();
@@ -548,6 +591,31 @@ const ConfigModal: FC = () => {
   const [yt, setYt] = useState('');
   const [mmKey, setMmKey] = useState('');
   const [mmGroup, setMmGroup] = useState('');
+  // Giọng đọc podcast — rỗng = mặc định (Vietnamese_Audiobook_woman_v2)
+  const [voiceId, setVoiceId] = useState('');
+  const [mmModel, setMmModel] = useState('');
+  const [mmSpeed, setMmSpeed] = useState<number>(1.2);
+  useEffect(() => {
+    if (!data) return;
+    if (typeof data.minimaxVoiceId === 'string') setVoiceId(data.minimaxVoiceId);
+    if (typeof data.minimaxModel === 'string') setMmModel(data.minimaxModel);
+    if (typeof data.minimaxSpeed === 'number') setMmSpeed(data.minimaxSpeed);
+  }, [data]);
+  // Mục nào THIẾU thì mở sẵn, mục đủ ✓ thì gập lại cho gọn (chỉ tính 1 lần khi
+  // config về, sau đó tôn trọng thao tác gập/mở của user).
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [openInit, setOpenInit] = useState(false);
+  useEffect(() => {
+    if (!data || openInit) return;
+    setOpen({
+      podcast: !data.hasMinimax,
+      crawl: !data.hasYoutube,
+      funnel: !!data.productionPaused,
+      report: false,
+    });
+    setOpenInit(true);
+  }, [data, openInit]);
+  const toggle = (k: string) => setOpen((o) => ({ ...o, [k]: !o[k] }));
   const [hours, setHours] = useState<number>(data?.crawlEveryHours ?? 12);
   // Cách gom cụm content: 'ai' (Claude gom cả mẻ cào) hoặc 'embeddings' (vector).
   const [clusterMode, setClusterMode] = useState<string>(data?.clusterMode ?? 'ai');
@@ -608,77 +676,158 @@ const ConfigModal: FC = () => {
     if (yt.trim()) body.youtubeKey = yt.trim();
     if (mmKey.trim()) body.minimaxKey = mmKey.trim();
     if (mmGroup.trim()) body.minimaxGroupId = mmGroup.trim();
+    // Giọng/model/tốc độ KHÔNG phải bí mật → gửi luôn giá trị đang hiển thị
+    // (kể cả rỗng = quay về mặc định)
+    body.minimaxVoiceId = voiceId.trim();
+    body.minimaxModel = mmModel.trim();
+    body.minimaxSpeed = Number(mmSpeed) || 1.2;
     const res = await fetch('/viral/config', { method: 'POST', body: JSON.stringify(body) });
     if (res.status >= 400) {
       toast.show(t('viral_need_admin', 'System administrator permission required.'), 'warning');
       return;
     }
     toast.show(t('viral_config_saved', 'Configuration saved.'), 'success');
+    mutateCfg();
     modal.closeCurrent();
-  }, [apify, yt, mmKey, mmGroup, hours, zaloThread, clusterMode, approveMin, skipMax, maxRounds, autoProduce, paused]);
+  }, [apify, yt, mmKey, mmGroup, voiceId, mmModel, mmSpeed, hours, zaloThread, clusterMode, approveMin, skipMax, maxRounds, autoProduce, paused]);
 
   return (
-    <div className="flex flex-col gap-[14px]">
+    <div className="flex flex-col gap-[10px]">
       <div className="text-[12.5px] text-textItemBlur">
         {t(
-          'viral_config_hint',
-          'Auto-crawling sources: RSS news/blogs and looking up share counts via Facebook is FREE. YouTube needs a Google key (free). Crawling shares on FB/IG/TikTok needs an Apify token (paid, free tier $5/month).'
+          'viral_config_hint_sections',
+          'Mỗi mục có dấu ✓ khi đã cấu hình đủ — bấm tiêu đề để mở/gập. Cào RSS + Google News luôn FREE, không cần key nào.'
         )}
       </div>
-      <Field label={`${t('viral_apify_label', 'Apify token — paid, optional')} ${data?.hasApify ? `(${t('viral_saved', 'saved')} ${data.apifyMasked})` : ''}`}>
-        <input type="password" value={apify} onChange={(e) => setApify(e.target.value)} placeholder="apify_api_..." className={inputCls} />
-      </Field>
-      <Field label={`${t('viral_youtube_label', 'YouTube Data key — free')} ${data?.hasYoutube ? `(${t('viral_saved', 'saved')} ${data.youtubeMasked})` : ''}`}>
-        <input type="password" value={yt} onChange={(e) => setYt(e.target.value)} placeholder="AIza..." className={inputCls} />
-      </Field>
-      <Field label={`${t('viral_minimax_label', 'MiniMax TTS key — for podcast production')} ${data?.hasMinimax ? `(${t('viral_saved', 'saved')} ${data.minimaxMasked})` : ''}`}>
-        <input type="password" value={mmKey} onChange={(e) => setMmKey(e.target.value)} placeholder="eyJhbGci..." className={inputCls} />
-      </Field>
-      <Field label={t('viral_minimax_group', 'MiniMax GroupId')}>
-        <input value={mmGroup} onChange={(e) => setMmGroup(e.target.value)} placeholder={data?.minimaxGroupId || '19xxxxxxxxxxxxxxxxx'} className={inputCls} />
-      </Field>
-      <Field label={`${t('viral_bgm_label', 'Podcast background music (mp3)')} ${data?.hasBgm ? `— ✓ ${t('viral_bgm_saved', 'uploaded')}` : ''}`}>
-        <div className="flex gap-[8px] items-center">
-          <input
-            type="file"
-            accept="audio/mpeg,.mp3"
-            onChange={async (e) => {
-              const f = e.target.files?.[0];
-              if (!f) return;
-              const b64 = await new Promise<string>((res) => {
-                const r = new FileReader();
-                r.onload = () => res(String(r.result).split(',')[1] || '');
-                r.readAsDataURL(f);
-              });
-              const resp = await fetch('/viral/config/bgm', { method: 'POST', body: JSON.stringify({ base64: b64 }) });
-              toast.show(resp.ok ? t('viral_bgm_ok', 'Background music uploaded.') : t('viral_bgm_fail', 'Upload failed (admin only, mp3 ≤30MB).'), resp.ok ? 'success' : 'warning');
-              mutateCfg();
-            }}
-            className="text-[12px] text-textItemBlur file:mr-[8px] file:py-[6px] file:px-[10px] file:rounded-[7px] file:border-0 file:bg-btnPrimary/15 file:text-btnPrimary"
-          />
-          {data?.hasBgm && (
-            <button
-              onClick={async () => {
-                await fetch('/viral/config/bgm', { method: 'DELETE' });
+
+      {/* ── 🎙 Podcast (MiniMax TTS) ── */}
+      <CfgSection
+        icon="🎙"
+        title={t('viral_sec_podcast', 'Podcast — giọng đọc MiniMax')}
+        state={data?.hasMinimax ? 'ok' : 'warn'}
+        note={
+          data?.hasMinimax
+            ? t('viral_sec_ok', 'Đã đủ')
+            : t('viral_sec_podcast_miss', 'Thiếu API key + GroupId')
+        }
+        open={!!open.podcast}
+        onToggle={() => toggle('podcast')}
+      >
+        <Field label={`${t('viral_minimax_label', 'MiniMax TTS key — for podcast production')} ${data?.hasMinimax ? `(${t('viral_saved', 'saved')} ${data.minimaxMasked})` : ''}`}>
+          <input type="password" value={mmKey} onChange={(e) => setMmKey(e.target.value)} placeholder="eyJhbGci..." className={inputCls} />
+        </Field>
+        <Field label={t('viral_minimax_group', 'MiniMax GroupId')}>
+          <input value={mmGroup} onChange={(e) => setMmGroup(e.target.value)} placeholder={data?.minimaxGroupId || '19xxxxxxxxxxxxxxxxx'} className={inputCls} />
+        </Field>
+        <Field label={t('viral_minimax_voice', 'Voice ID — giọng đọc')}>
+          <input value={voiceId} onChange={(e) => setVoiceId(e.target.value)} placeholder="Vietnamese_Audiobook_woman_v2 (mặc định)" className={inputCls} />
+          <span className="text-[11px] text-textItemBlur mt-[4px] block">
+            {t(
+              'viral_minimax_voice_hint',
+              'Bỏ trống = giọng nữ đọc sách tiếng Việt. Xem kho giọng: minimax.io → Audio → Voices (copy đúng Voice ID).'
+            )}
+          </span>
+        </Field>
+        <div className="flex gap-[8px]">
+          <div className="flex-1">
+            <Field label={t('viral_minimax_model', 'Model TTS')}>
+              <input value={mmModel} onChange={(e) => setMmModel(e.target.value)} placeholder="speech-02-hd (mặc định)" className={inputCls} />
+              <span className="text-[11px] text-textItemBlur mt-[4px] block">
+                {t('viral_minimax_model_hint', 'speech-02-hd · speech-02-turbo (rẻ/nhanh hơn)')}
+              </span>
+            </Field>
+          </div>
+          <div className="w-[110px]">
+            <Field label={t('viral_minimax_speed', 'Tốc độ đọc')}>
+              <input type="number" min={0.5} max={2} step={0.1} value={mmSpeed} onChange={(e) => setMmSpeed(Number(e.target.value))} className={inputCls} />
+            </Field>
+          </div>
+        </div>
+        <Field label={`${t('viral_bgm_label', 'Podcast background music (mp3)')} ${data?.hasBgm ? `— ✓ ${t('viral_bgm_saved', 'uploaded')}` : ''}`}>
+          <div className="flex gap-[8px] items-center">
+            <input
+              type="file"
+              accept="audio/mpeg,.mp3"
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                const b64 = await new Promise<string>((res) => {
+                  const r = new FileReader();
+                  r.onload = () => res(String(r.result).split(',')[1] || '');
+                  r.readAsDataURL(f);
+                });
+                const resp = await fetch('/viral/config/bgm', { method: 'POST', body: JSON.stringify({ base64: b64 }) });
+                toast.show(resp.ok ? t('viral_bgm_ok', 'Background music uploaded.') : t('viral_bgm_fail', 'Upload failed (admin only, mp3 ≤30MB).'), resp.ok ? 'success' : 'warning');
                 mutateCfg();
               }}
-              className="text-[12px] text-[#FF5A52] hover:underline"
-            >
-              ✕ {t('viral_bgm_remove', 'Remove')}
-            </button>
+              className="text-[12px] text-textItemBlur file:mr-[8px] file:py-[6px] file:px-[10px] file:rounded-[7px] file:border-0 file:bg-btnPrimary/15 file:text-btnPrimary"
+            />
+            {data?.hasBgm && (
+              <button
+                onClick={async () => {
+                  await fetch('/viral/config/bgm', { method: 'DELETE' });
+                  mutateCfg();
+                }}
+                className="text-[12px] text-[#FF5A52] hover:underline"
+              >
+                ✕ {t('viral_bgm_remove', 'Remove')}
+              </button>
+            )}
+          </div>
+        </Field>
+      </CfgSection>
+
+      {/* ── 🕷 Cào nguồn (Apify / YouTube / chu kỳ) ── */}
+      <CfgSection
+        icon="🕷"
+        title={t('viral_sec_crawl', 'Cào nguồn — Apify / YouTube / chu kỳ')}
+        state={data?.hasYoutube ? 'ok' : 'warn'}
+        note={
+          data?.hasYoutube
+            ? data?.hasApify
+              ? t('viral_sec_ok', 'Đã đủ')
+              : t('viral_sec_crawl_noapify', 'Đủ (Apify tùy chọn)')
+            : t('viral_sec_crawl_miss', 'Thiếu YouTube key')
+        }
+        open={!!open.crawl}
+        onToggle={() => toggle('crawl')}
+      >
+        <div className="text-[11.5px] text-textItemBlur">
+          {t(
+            'viral_config_hint',
+            'Auto-crawling sources: RSS news/blogs and looking up share counts via Facebook is FREE. YouTube needs a Google key (free). Crawling shares on FB/IG/TikTok needs an Apify token (paid, free tier $5/month).'
           )}
         </div>
-      </Field>
-      <Field label={t('viral_crawl_cycle', 'Auto-crawl cycle')}>
-        <select value={hours} onChange={(e) => setHours(Number(e.target.value))} className={inputCls}>
-          <option value={0}>{t('viral_crawl_off', 'Off (manual crawl only)')}</option>
-          <option value={6}>{t('viral_crawl_6h', 'Every 6 hours')}</option>
-          <option value={12}>{t('viral_crawl_12h', 'Every 12 hours')}</option>
-          <option value={24}>{t('viral_crawl_daily', 'Every day')}</option>
-          <option value={72}>{t('viral_crawl_3d', 'Every 3 days')}</option>
-          <option value={246}>{t('viral_crawl_mwf', 'Mon-Wed-Fri 7pm + weekly brief to Zalo/email')}</option>
-        </select>
-      </Field>
+        <Field label={`${t('viral_youtube_label', 'YouTube Data key — free')} ${data?.hasYoutube ? `(${t('viral_saved', 'saved')} ${data.youtubeMasked})` : ''}`}>
+          <input type="password" value={yt} onChange={(e) => setYt(e.target.value)} placeholder="AIza..." className={inputCls} />
+        </Field>
+        <Field label={`${t('viral_apify_label', 'Apify token — paid, optional')} ${data?.hasApify ? `(${t('viral_saved', 'saved')} ${data.apifyMasked})` : ''}`}>
+          <input type="password" value={apify} onChange={(e) => setApify(e.target.value)} placeholder="apify_api_..." className={inputCls} />
+        </Field>
+        <Field label={t('viral_crawl_cycle', 'Auto-crawl cycle')}>
+          <select value={hours} onChange={(e) => setHours(Number(e.target.value))} className={inputCls}>
+            <option value={0}>{t('viral_crawl_off', 'Off (manual crawl only)')}</option>
+            <option value={6}>{t('viral_crawl_6h', 'Every 6 hours')}</option>
+            <option value={12}>{t('viral_crawl_12h', 'Every 12 hours')}</option>
+            <option value={24}>{t('viral_crawl_daily', 'Every day')}</option>
+            <option value={72}>{t('viral_crawl_3d', 'Every 3 days')}</option>
+            <option value={246}>{t('viral_crawl_mwf', 'Mon-Wed-Fri 7pm + weekly brief to Zalo/email')}</option>
+          </select>
+        </Field>
+      </CfgSection>
+      {/* ── 🧲 Gom cụm & Phễu duyệt tự động ── */}
+      <CfgSection
+        icon="🧲"
+        title={t('viral_sec_funnel', 'Gom cụm & Phễu duyệt tự động')}
+        state={paused ? 'warn' : 'ok'}
+        note={
+          paused
+            ? t('viral_sec_paused', 'ĐANG DỪNG SẢN XUẤT')
+            : t('viral_sec_ok', 'Đã đủ')
+        }
+        open={!!open.funnel}
+        onToggle={() => toggle('funnel')}
+      >
       {/* Cách gom nhiều bài cùng nội dung thành 1 "content" để duyệt */}
       <Field label={t('viral_cluster_mode', 'Grouping posts into one content')}>
         <select value={clusterMode} onChange={(e) => setClusterMode(e.target.value)} className={inputCls}>
@@ -718,6 +867,21 @@ const ConfigModal: FC = () => {
           {t('viral_funnel_hint', 'Between the two thresholds the AI rewrites and re-scores up to N rounds (keeping the better version); if still short, the content waits for manual review.')}
         </span>
       </Field>
+      </CfgSection>
+
+      {/* ── 📨 Bản tin tuần (Zalo/email) ── */}
+      <CfgSection
+        icon="📨"
+        title={t('viral_sec_report', 'Bản tin tuần — gửi Zalo')}
+        state={zaloThread ? 'ok' : 'off'}
+        note={
+          zaloThread
+            ? t('viral_sec_report_on', 'Có gửi Zalo')
+            : t('viral_sec_report_off', 'Chưa gửi Zalo')
+        }
+        open={!!open.report}
+        onToggle={() => toggle('report')}
+      >
       {/* Báo cáo tuần: bản tin + todo list gửi về nhóm Zalo (bot trang Zalo) + email */}
       <Field label={t('viral_report_zalo', 'Zalo group receiving weekly brief (via the Zalo bot)')}>
         <select value={zaloThread} onChange={(e) => setZaloThread(e.target.value)} className={inputCls}>
@@ -734,6 +898,8 @@ const ConfigModal: FC = () => {
           <span className="text-[11px] text-[#FFC53D] mt-[4px] block">⚠ {t('viral_report_zalo_boterr', 'Could not load groups from the bot — check the Zalo page (bot connected?).')}</span>
         )}
       </Field>
+      </CfgSection>
+
       <div className="flex gap-[8px]">
         <Button onClick={save} className="flex-1">{t('viral_save_config', 'Save configuration')}</Button>
         <button

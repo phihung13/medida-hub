@@ -2448,14 +2448,15 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
             authorization: `Bearer ${cfg.minimaxKey}`,
           },
           body: JSON.stringify({
-            model: 'speech-02-hd',
+            // Model/giọng/tốc độ lấy từ Cấu hình → mục Podcast (rỗng = mặc định)
+            model: cfg.minimaxModel || 'speech-02-hd',
             text: script.full_script,
             stream: false,
             language_boost: 'Vietnamese',
             output_format: 'url',
             voice_setting: {
-              voice_id: 'Vietnamese_Audiobook_woman_v2',
-              speed: 1.2,
+              voice_id: cfg.minimaxVoiceId || 'Vietnamese_Audiobook_woman_v2',
+              speed: Math.max(0.5, Math.min(2, cfg.minimaxSpeed || 1.2)),
               vol: 1,
               pitch: 0,
               emotion: 'calm',

@@ -16,6 +16,11 @@ interface ViralConfig {
   // Sản xuất podcast (MiniMax TTS) — key + GroupId lấy ở minimax.io
   minimaxKey: string;
   minimaxGroupId: string;
+  // Giọng đọc/model/tốc độ — rỗng = mặc định (Vietnamese_Audiobook_woman_v2 /
+  // speech-02-hd / 1.2). Voice ID xem kho giọng: minimax.io → Audio → Voices.
+  minimaxVoiceId: string;
+  minimaxModel: string;
+  minimaxSpeed: number;
   // Nhóm Zalo nhận bản tin tuần/tổng kết CN (threadId; rỗng = không gửi Zalo)
   reportZaloThreadId: string;
   // GOM CỤM THEO CHỦ ĐỀ:
@@ -56,6 +61,9 @@ const config: ViralConfig = {
   crawlEveryHours: 12,
   minimaxKey: '',
   minimaxGroupId: '',
+  minimaxVoiceId: '',
+  minimaxModel: '',
+  minimaxSpeed: 1.2,
   reportZaloThreadId: '',
   clusterMode: 'ai',
   convergenceMin: 2,
@@ -102,6 +110,12 @@ try {
   config.minimaxKey = typeof raw?.minimaxKey === 'string' ? raw.minimaxKey : '';
   config.minimaxGroupId =
     typeof raw?.minimaxGroupId === 'string' ? raw.minimaxGroupId : '';
+  config.minimaxVoiceId =
+    typeof raw?.minimaxVoiceId === 'string' ? raw.minimaxVoiceId : '';
+  config.minimaxModel =
+    typeof raw?.minimaxModel === 'string' ? raw.minimaxModel : '';
+  config.minimaxSpeed =
+    typeof raw?.minimaxSpeed === 'number' ? raw.minimaxSpeed : 1.2;
   config.reportZaloThreadId =
     typeof raw?.reportZaloThreadId === 'string' ? raw.reportZaloThreadId : '';
   config.clusterMode = raw?.clusterMode === 'embeddings' ? 'embeddings' : 'ai';
@@ -172,6 +186,9 @@ export function getViralStatus() {
     hasMinimax: !!(config.minimaxKey && config.minimaxGroupId),
     minimaxMasked: config.minimaxKey ? config.minimaxKey.slice(0, 8) + '…' : '',
     minimaxGroupId: config.minimaxGroupId,
+    minimaxVoiceId: config.minimaxVoiceId,
+    minimaxModel: config.minimaxModel,
+    minimaxSpeed: config.minimaxSpeed,
     hasBgm: hasBgm(),
     reportZaloThreadId: config.reportZaloThreadId,
     clusterMode: config.clusterMode,
@@ -196,6 +213,12 @@ export function setViralConfig(patch: Partial<ViralConfig>) {
     config.minimaxKey = patch.minimaxKey.trim();
   if (typeof patch.minimaxGroupId === 'string')
     config.minimaxGroupId = patch.minimaxGroupId.trim();
+  if (typeof patch.minimaxVoiceId === 'string')
+    config.minimaxVoiceId = patch.minimaxVoiceId.trim().slice(0, 120);
+  if (typeof patch.minimaxModel === 'string')
+    config.minimaxModel = patch.minimaxModel.trim().slice(0, 60);
+  if (typeof patch.minimaxSpeed === 'number' && !Number.isNaN(patch.minimaxSpeed))
+    config.minimaxSpeed = Math.max(0.5, Math.min(2, patch.minimaxSpeed));
   if (typeof patch.reportZaloThreadId === 'string')
     config.reportZaloThreadId = patch.reportZaloThreadId.trim();
   if (typeof patch.crawlEveryHours === 'number')

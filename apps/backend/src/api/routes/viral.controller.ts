@@ -293,6 +293,9 @@ export class ViralController {
       crawlEveryHours?: number;
       minimaxKey?: string;
       minimaxGroupId?: string;
+      minimaxVoiceId?: string;
+      minimaxModel?: string;
+      minimaxSpeed?: number;
       reportZaloThreadId?: string;
       clusterMode?: 'ai' | 'embeddings';
       convergenceMin?: number;
@@ -316,6 +319,15 @@ export class ViralController {
       ...(typeof body.minimaxKey === 'string' ? { minimaxKey: body.minimaxKey } : {}),
       ...(typeof body.minimaxGroupId === 'string'
         ? { minimaxGroupId: body.minimaxGroupId }
+        : {}),
+      ...(typeof body.minimaxVoiceId === 'string'
+        ? { minimaxVoiceId: body.minimaxVoiceId }
+        : {}),
+      ...(typeof body.minimaxModel === 'string'
+        ? { minimaxModel: body.minimaxModel }
+        : {}),
+      ...(typeof body.minimaxSpeed === 'number'
+        ? { minimaxSpeed: body.minimaxSpeed }
         : {}),
       ...(typeof body.reportZaloThreadId === 'string'
         ? { reportZaloThreadId: body.reportZaloThreadId }
