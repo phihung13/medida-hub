@@ -24,6 +24,12 @@ import {
   setSkill,
   resetSkill,
 } from '@gitroom/nestjs-libraries/viral/viral.skills';
+import {
+  getPodcastStatus,
+  setPodcastConfig,
+  saveCover,
+  deleteCover,
+} from '@gitroom/nestjs-libraries/viral/podcast.keys';
 
 // "Lò Bài Thắng": tường bài viral giáo dục → AI mổ công thức → nhân bản
 // thành bản nháp vào hàng chờ duyệt. Thước đo chính: lượt share.
@@ -423,6 +429,95 @@ export class ViralController {
       );
     }
     return res;
+  }
+
+  // ── KÊNH PODCAST RSS (Spotify) ─────────────────────────────────────────
+  // Đọc cấu hình show + trạng thái đủ/thiếu + URL feed để dán vào Spotify.
+  @Get('/podcast-config')
+  getPodcastCfg() {
+    const base = (
+      process.env.NEXT_PUBLIC_BACKEND_URL ||
+      `${process.env.FRONTEND_URL || ''}/api`
+    ).replace(/\/$/, '');
+    return {
+      ...getPodcastStatus(),
+      feedUrl: `${base}/public/podcast/feed.xml`,
+      coverUrl: `${base}/public/podcast/cover`,
+    };
+  }
+
+  @Post('/podcast-config')
+  setPodcastCfg(
+    @GetUserFromRequest() user: User,
+    @Body()
+    body: Partial<{
+      title: string;
+      description: string;
+      author: string;
+      email: string;
+      link: string;
+      language: string;
+      category: string;
+      explicit: boolean;
+      country: string;
+    }>
+  ) {
+    if (!user?.isSuperAdmin) {
+      throw new HttpException('Chỉ quản trị hệ thống mới đổi được.', 403);
+    }
+    setPodcastConfig(body);
+    return { ok: true, ...getPodcastStatus() };
+  }
+
+  // Ảnh bìa show (VUÔNG 1:1, PNG/JPEG, khuyến nghị ≥1400px) — base64 ≤5MB.
+  @Post('/podcast-config/cover')
+  setPodcastCover(
+    @GetUserFromRequest() user: User,
+    @Body() body: { base64?: string }
+  ) {
+    if (!user?.isSuperAdmin) {
+      throw new HttpException('Chỉ quản trị hệ thống mới đổi được.', 403);
+    }
+    const b64 = String(body?.base64 || '');
+    if (!b64 || b64.length > 7_000_000) {
+      throw new HttpException('Ảnh trống hoặc quá 5MB.', 400);
+    }
+    const buf = Buffer.from(b64, 'base64');
+    const isPng = buf[0] === 0x89 && buf[1] === 0x50;
+    const isJpg = buf[0] === 0xff && buf[1] === 0xd8;
+    if (!isPng && !isJpg) {
+      throw new HttpException('Chỉ nhận PNG hoặc JPEG (spec Spotify).', 400);
+    }
+    saveCover(buf);
+    return { ok: true, ...getPodcastStatus() };
+  }
+
+  @Delete('/podcast-config/cover')
+  removePodcastCover(@GetUserFromRequest() user: User) {
+    if (!user?.isSuperAdmin) {
+      throw new HttpException('Chỉ quản trị hệ thống mới đổi được.', 403);
+    }
+    deleteCover();
+    return { ok: true, ...getPodcastStatus() };
+  }
+
+  // Phát hành/gỡ 1 sản phẩm podcast lên feed RSS (kèm tiêu đề/mô tả tập).
+  @Post('/products/:id/rss')
+  async setProductRss(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string,
+    @Body() body: { on: boolean; title?: string; description?: string }
+  ) {
+    this.assertCanModerate(org);
+    try {
+      return await this._service.setProductRss(org.id, id, {
+        on: !!body?.on,
+        title: body?.title,
+        description: body?.description,
+      });
+    } catch (e: any) {
+      throw new HttpException(e?.message || 'Không phát hành được.', 400);
+    }
   }
 
   // Nhạc nền podcast: upload mp3 (base64) / xoá — lưu CONFIG_DIR, bền Docker.

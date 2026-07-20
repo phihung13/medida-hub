@@ -12,6 +12,11 @@ import {
   hasBgm,
   bgmPath,
 } from '@gitroom/nestjs-libraries/viral/viral.keys';
+import { getPodcastConfig } from '@gitroom/nestjs-libraries/viral/podcast.keys';
+import {
+  buildPodcastRss,
+  RssEpisode,
+} from '@gitroom/nestjs-libraries/viral/podcast.rss';
 import {
   VIRAL_PERSONAS,
   VIRAL_RUBRIC,
@@ -2522,6 +2527,11 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
         file.split('/').pop()!,
         file
       );
+      // bytes + durationSec lưu sẵn cho feed RSS (enclosure length là BẮT BUỘC
+      // theo spec Spotify; duration đo ffprobe, hỏng thì ước từ est_minutes)
+      const durationSec =
+        (await this.probeDurationSec(buf).catch(() => null)) ??
+        (script.est_minutes ? Math.round(script.est_minutes * 60) : null);
       await this._repo.updateProduct(product.id, {
         status: 'done',
         title: String(script.title || input.topic).slice(0, 300),
@@ -2530,6 +2540,8 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
         meta: JSON.stringify({
           est_minutes: script.est_minutes || null,
           bgm: bgmMixed,
+          bytes: buf.length,
+          durationSec,
         }),
         error: null,
       });
@@ -2689,6 +2701,146 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
 
   listProducts(orgId: string) {
     return this._repo.listProducts(orgId);
+  }
+
+  // ── KÊNH PODCAST RSS (Spotify/Apple) ────────────────────────────────────
+  // Bật/tắt phát hành 1 sản phẩm podcast lên feed + tiêu đề/mô tả TẬP.
+  async setProductRss(
+    orgId: string,
+    id: string,
+    body: { on: boolean; title?: string; description?: string }
+  ) {
+    const p = await this._repo.getProduct(orgId, id);
+    if (!p || p.format !== 'podcast' || p.status !== 'done' || !p.mediaPath) {
+      throw new Error('Chỉ phát hành được sản phẩm podcast đã sản xuất xong.');
+    }
+    let meta: any = {};
+    try {
+      meta = JSON.parse(p.meta || '{}');
+    } catch {
+      /* meta hỏng — dựng lại */
+    }
+    if (body.on) {
+      // enclosure length (BYTE) là BẮT BUỘC theo spec Spotify — tập cũ chưa
+      // lưu bytes thì đo bù: ưu tiên stat file local, fallback HTTP HEAD.
+      if (!meta.bytes) {
+        meta.bytes = await this.resolveAudioBytes(p.mediaPath);
+        if (!meta.bytes) {
+          throw new Error(
+            'Không đo được dung lượng file audio (enclosure length bắt buộc theo spec Spotify) — bấm "↻ Tạo lại" sản phẩm rồi phát hành lại.'
+          );
+        }
+      }
+      meta.rss = {
+        on: true,
+        title: String(body.title || meta.rss?.title || p.title || 'Tập podcast')
+          .trim()
+          .slice(0, 300),
+        description: String(
+          body.description || meta.rss?.description || p.textContent || ''
+        )
+          .trim()
+          .slice(0, 3900),
+        // giữ pubDate lần phát hành ĐẦU — Spotify xếp thứ tự tập theo mốc này
+        publishedAt: meta.rss?.publishedAt || new Date().toISOString(),
+      };
+    } else if (meta.rss) {
+      meta.rss = { ...meta.rss, on: false };
+    }
+    await this._repo.updateProduct(id, { meta: JSON.stringify(meta) });
+    return { ok: true, rss: meta.rss || null };
+  }
+
+  private async resolveAudioBytes(url: string): Promise<number> {
+    try {
+      const marker = '/uploads/';
+      const i = url.indexOf(marker);
+      const dir = process.env.UPLOAD_DIRECTORY || '';
+      if (i >= 0 && dir) {
+        const fs = await import('fs');
+        const path = await import('path');
+        const st = fs.statSync(path.join(dir, url.slice(i + marker.length)));
+        if (st.size > 0) return st.size;
+      }
+    } catch {
+      /* không có file local — thử HEAD */
+    }
+    try {
+      const r = await fetch(url, {
+        method: 'HEAD',
+        signal: AbortSignal.timeout(15000),
+      });
+      const len = parseInt(r.headers.get('content-length') || '0', 10);
+      if (r.ok && len > 0) return len;
+    } catch {
+      /* chịu — trả 0 để nơi gọi báo lỗi rõ */
+    }
+    return 0;
+  }
+
+  // XML feed công khai — gom sản phẩm podcast đã bật 📡 trên TOÀN instance
+  // (Hub một tổ chức; kiểm soát tập nào lên sóng = nút Phát hành từng sản phẩm).
+  async podcastFeedXml(): Promise<string> {
+    const cfg = getPodcastConfig();
+    const base = (
+      process.env.NEXT_PUBLIC_BACKEND_URL ||
+      `${process.env.FRONTEND_URL || ''}/api`
+    ).replace(/\/$/, '');
+    const rows = await this._repo.listRssPodcastCandidates();
+    const eps: RssEpisode[] = [];
+    for (const r of rows) {
+      let meta: any = {};
+      try {
+        meta = JSON.parse(r.meta || '{}');
+      } catch {
+        continue;
+      }
+      if (!meta?.rss?.on || !r.mediaPath || !meta?.bytes) continue;
+      eps.push({
+        id: r.id,
+        title: meta.rss.title || r.title || 'Tập podcast',
+        description: meta.rss.description || '',
+        audioUrl: r.mediaPath,
+        bytes: Number(meta.bytes) || 0,
+        durationSec: Number(meta.durationSec) || null,
+        publishedAt: meta.rss.publishedAt || (r as any).createdAt,
+      });
+    }
+    eps.sort(
+      (a, b) =>
+        new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
+    );
+    return buildPodcastRss(cfg, `${base}/public/podcast/cover`, eps);
+  }
+
+  // Đo thời lượng mp3 bằng ffprobe (giây, làm tròn) — hỏng trả null.
+  private async probeDurationSec(buf: Buffer): Promise<number | null> {
+    const fs = await import('fs');
+    const os = await import('os');
+    const path = await import('path');
+    const { execFile } = await import('child_process');
+    const p = path.join(os.tmpdir(), `viral-dur-${makeId(6)}.mp3`);
+    try {
+      fs.writeFileSync(p, buf);
+      const out = await new Promise<string>((resolve, reject) =>
+        execFile(
+          'ffprobe',
+          ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', p],
+          { timeout: 30000 },
+          (e, so) => (e ? reject(e) : resolve(String(so)))
+        )
+      );
+      const d = parseFloat(out.trim());
+      return Number.isFinite(d) && d > 0 ? Math.round(d) : null;
+    } catch {
+      return null;
+    } finally {
+      try {
+        fs.unlinkSync(p);
+      } catch {
+        /* dọn tmp */
+      }
+    }
   }
 
   deleteProduct(orgId: string, id: string) {

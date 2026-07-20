@@ -367,6 +367,21 @@ export class ViralRepository {
   }
 
   // Chủ đề nào (trong danh sách) đã có sản phẩm — duyệt lại không sản xuất trùng.
+  // Ứng viên feed podcast RSS — quét TOÀN instance (Hub 1 tổ chức; quyền chọn
+  // tập nằm ở nút Phát hành từng sản phẩm), lọc meta.rss.on thật ở service.
+  listRssPodcastCandidates() {
+    return this._products.model.viralProduct.findMany({
+      where: {
+        format: 'podcast',
+        status: 'done',
+        deletedAt: null,
+        meta: { contains: '"rss"' },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 300,
+    });
+  }
+
   async topicIdsWithProducts(orgId: string, topicIds: string[]): Promise<string[]> {
     if (!topicIds.length) return [];
     const rows = await this._products.model.viralProduct.findMany({

@@ -27,6 +27,8 @@ import { promisify } from 'util';
 import { OnlyURL } from '@gitroom/nestjs-libraries/dtos/webhooks/webhooks.dto';
 import { isSafePublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/webhooks/webhook.url.validator';
 import { ssrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
+import { ViralService } from '@gitroom/nestjs-libraries/database/prisma/viral/viral.service';
+import { readCover } from '@gitroom/nestjs-libraries/viral/podcast.keys';
 
 const pump = promisify(pipeline);
 
@@ -37,7 +39,8 @@ export class PublicController {
     private _trackService: TrackService,
     private _agentGraphInsertService: AgentGraphInsertService,
     private _postsService: PostsService,
-    private _subscriptionService: SubscriptionService
+    private _subscriptionService: SubscriptionService,
+    private _viralService: ViralService
   ) {}
   @Post('/agent')
   async createAgent(@Body() body: { text: string; apiKey: string }) {
@@ -49,6 +52,33 @@ export class PublicController {
       return;
     }
     return this._agentGraphInsertService.newPost(body.text);
+  }
+
+  // ── KÊNH PODCAST RSS — Spotify/Apple kéo feed này qua HTTP KHÔNG auth ────
+  // (spec Spotify v1.9: XML UTF-8, application/rss+xml; Spotify tự quét lại
+  // vài lần mỗi giờ sau khi nộp — tập mới bật 📡 tự xuất hiện.)
+  @Get('/podcast/feed.xml')
+  async podcastFeed(@Res() res: Response) {
+    const xml = await this._viralService.podcastFeedXml();
+    res
+      .status(200)
+      .setHeader('Content-Type', 'application/rss+xml; charset=utf-8')
+      .setHeader('Cache-Control', 'public, max-age=300')
+      .send(xml);
+  }
+
+  @Get('/podcast/cover')
+  async podcastCover(@Res() res: Response) {
+    const cover = readCover();
+    if (!cover) {
+      res.status(404).send('no cover');
+      return;
+    }
+    res
+      .status(200)
+      .setHeader('Content-Type', cover.contentType)
+      .setHeader('Cache-Control', 'public, max-age=3600')
+      .send(cover.buf);
   }
 
   @Get(`/posts/:id`)

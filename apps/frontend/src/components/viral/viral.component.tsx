@@ -601,6 +601,25 @@ const ConfigModal: FC = () => {
     if (typeof data.minimaxModel === 'string') setMmModel(data.minimaxModel);
     if (typeof data.minimaxSpeed === 'number') setMmSpeed(data.minimaxSpeed);
   }, [data]);
+  // 🎧 Kênh Podcast RSS (Spotify): cấu hình show + ảnh bìa + URL feed
+  const { data: pc, mutate: mutatePc } = useSWR('viral-podcast-config', async () => (await fetch('/viral/podcast-config')).json());
+  const [pcTitle, setPcTitle] = useState('');
+  const [pcDesc, setPcDesc] = useState('');
+  const [pcAuthor, setPcAuthor] = useState('');
+  const [pcEmail, setPcEmail] = useState('');
+  const [pcLink, setPcLink] = useState('');
+  const [pcCategory, setPcCategory] = useState('Education');
+  const [pcLanguage, setPcLanguage] = useState('vi');
+  useEffect(() => {
+    if (!pc) return;
+    if (typeof pc.title === 'string') setPcTitle(pc.title);
+    if (typeof pc.description === 'string') setPcDesc(pc.description);
+    if (typeof pc.author === 'string') setPcAuthor(pc.author);
+    if (typeof pc.email === 'string') setPcEmail(pc.email);
+    if (typeof pc.link === 'string') setPcLink(pc.link);
+    if (typeof pc.category === 'string' && pc.category) setPcCategory(pc.category);
+    if (typeof pc.language === 'string' && pc.language) setPcLanguage(pc.language);
+  }, [pc]);
   // Mục nào THIẾU thì mở sẵn, mục đủ ✓ thì gập lại cho gọn (chỉ tính 1 lần khi
   // config về, sau đó tôn trọng thao tác gập/mở của user).
   const [open, setOpen] = useState<Record<string, boolean>>({});
@@ -690,10 +709,24 @@ const ConfigModal: FC = () => {
       toast.show(t('viral_need_admin', 'System administrator permission required.'), 'warning');
       return;
     }
+    // 🎧 lưu luôn cấu hình kênh podcast (đã qua được chốt superadmin ở trên)
+    await fetch('/viral/podcast-config', {
+      method: 'POST',
+      body: JSON.stringify({
+        title: pcTitle.trim(),
+        description: pcDesc.trim(),
+        author: pcAuthor.trim(),
+        email: pcEmail.trim(),
+        link: pcLink.trim(),
+        category: pcCategory,
+        language: pcLanguage,
+      }),
+    }).catch(() => null);
     toast.show(t('viral_config_saved', 'Configuration saved.'), 'success');
     mutateCfg();
+    mutatePc();
     modal.closeCurrent();
-  }, [apify, yt, mmKey, mmGroup, voiceId, mmModel, mmSpeed, hours, zaloThread, clusterMode, approveMin, skipMax, maxRounds, autoProduce, pauseApprove, pauseProduce]);
+  }, [apify, yt, mmKey, mmGroup, voiceId, mmModel, mmSpeed, hours, zaloThread, clusterMode, approveMin, skipMax, maxRounds, autoProduce, pauseApprove, pauseProduce, pcTitle, pcDesc, pcAuthor, pcEmail, pcLink, pcCategory, pcLanguage]);
 
   return (
     <div className="flex flex-col gap-[10px]">
@@ -778,6 +811,131 @@ const ConfigModal: FC = () => {
               </button>
             )}
           </div>
+        </Field>
+      </CfgSection>
+
+      {/* ── 🎧 Kênh Podcast — RSS nộp Spotify/Apple (spec Delivery v1.9) ── */}
+      <CfgSection
+        icon="🎧"
+        title={t('viral_sec_rss', 'Kênh Podcast — RSS Spotify')}
+        state={pc?.ready ? 'ok' : 'warn'}
+        note={
+          pc?.ready
+            ? t('viral_sec_rss_ok', 'Đủ — dán feed vào Spotify')
+            : `${t('viral_sec_rss_miss', 'Thiếu')}: ${[
+                !pc?.title && t('viral_rss_m_title', 'tên'),
+                !pc?.description && t('viral_rss_m_desc', 'mô tả'),
+                !pc?.author && t('viral_rss_m_author', 'tác giả'),
+                !pc?.email && 'email',
+                !pc?.hasCover && t('viral_rss_m_cover', 'ảnh bìa'),
+              ]
+                .filter(Boolean)
+                .join(', ')}`
+        }
+        open={!!open.rss}
+        onToggle={() => toggle('rss')}
+      >
+        <Field label={t('viral_rss_title', 'Tên show (channel title)')}>
+          <input value={pcTitle} onChange={(e) => setPcTitle(e.target.value)} placeholder="Podcast Trường Việt Anh" className={inputCls} />
+        </Field>
+        <Field label={t('viral_rss_desc', 'Mô tả show (description)')}>
+          <textarea
+            value={pcDesc}
+            onChange={(e) => setPcDesc(e.target.value)}
+            rows={3}
+            placeholder={t('viral_rss_desc_ph', 'Vài câu giới thiệu kênh podcast cho phụ huynh…')}
+            className="bg-input border border-fifth rounded-[8px] px-[12px] py-[8px] text-[13px] text-inputText outline-none w-full"
+          />
+        </Field>
+        <div className="flex gap-[8px]">
+          <div className="flex-1">
+            <Field label={t('viral_rss_author', 'Tác giả (itunes:author)')}>
+              <input value={pcAuthor} onChange={(e) => setPcAuthor(e.target.value)} placeholder="Trường Việt Anh" className={inputCls} />
+            </Field>
+          </div>
+          <div className="flex-1">
+            <Field label={t('viral_rss_email', 'Email chủ kênh — Spotify gửi mã xác minh')}>
+              <input value={pcEmail} onChange={(e) => setPcEmail(e.target.value)} placeholder="podcast@truongvietanh.com" className={inputCls} />
+            </Field>
+          </div>
+        </div>
+        <div className="flex gap-[8px]">
+          <div className="flex-1">
+            <Field label={t('viral_rss_link', 'Website (link)')}>
+              <input value={pcLink} onChange={(e) => setPcLink(e.target.value)} placeholder="https://truongvietanh.com" className={inputCls} />
+            </Field>
+          </div>
+          <div className="w-[170px]">
+            <Field label={t('viral_rss_category', 'Thể loại')}>
+              <select value={pcCategory} onChange={(e) => setPcCategory(e.target.value)} className={inputCls}>
+                <option value="Education">Education</option>
+                <option value="Kids & Family">Kids &amp; Family</option>
+                <option value="Society & Culture">Society &amp; Culture</option>
+                <option value="Business">Business</option>
+                <option value="Health & Fitness">Health &amp; Fitness</option>
+              </select>
+            </Field>
+          </div>
+          <div className="w-[92px]">
+            <Field label={t('viral_rss_lang', 'Ngôn ngữ')}>
+              <select value={pcLanguage} onChange={(e) => setPcLanguage(e.target.value)} className={inputCls}>
+                <option value="vi">vi</option>
+                <option value="en">en</option>
+              </select>
+            </Field>
+          </div>
+        </div>
+        <Field label={`${t('viral_rss_cover', 'Ảnh bìa show — VUÔNG 1:1, PNG/JPEG, nên ≥1400px')} ${pc?.hasCover ? '— ✓' : ''}`}>
+          <div className="flex gap-[8px] items-center">
+            <input
+              type="file"
+              accept="image/png,image/jpeg"
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                const b64 = await new Promise<string>((res) => {
+                  const r = new FileReader();
+                  r.onload = () => res(String(r.result).split(',')[1] || '');
+                  r.readAsDataURL(f);
+                });
+                const resp = await fetch('/viral/podcast-config/cover', { method: 'POST', body: JSON.stringify({ base64: b64 }) });
+                toast.show(resp.ok ? t('viral_rss_cover_ok', 'Đã lưu ảnh bìa.') : t('viral_rss_cover_fail', 'Upload lỗi (admin, PNG/JPEG ≤5MB).'), resp.ok ? 'success' : 'warning');
+                mutatePc();
+              }}
+              className="text-[12px] text-textItemBlur file:mr-[8px] file:py-[6px] file:px-[10px] file:rounded-[7px] file:border-0 file:bg-btnPrimary/15 file:text-btnPrimary"
+            />
+            {pc?.hasCover && (
+              <button
+                onClick={async () => {
+                  await fetch('/viral/podcast-config/cover', { method: 'DELETE' });
+                  mutatePc();
+                }}
+                className="text-[12px] text-[#FF5A52] hover:underline"
+              >
+                ✕ {t('viral_bgm_remove', 'Remove')}
+              </button>
+            )}
+          </div>
+        </Field>
+        <Field label={t('viral_rss_feed', 'URL feed — dán vào Spotify for Creators (Add your podcast → I have a podcast)')}>
+          <div className="flex gap-[8px] items-center">
+            <input readOnly value={pc?.feedUrl || ''} className={clsx(inputCls, 'opacity-80')} onFocus={(e) => e.currentTarget.select()} />
+            <button
+              onClick={() => {
+                navigator.clipboard?.writeText(pc?.feedUrl || '');
+                toast.show(t('viral_rss_copied', 'Đã copy URL feed.'), 'success');
+              }}
+              className="px-[12px] h-[42px] rounded-[8px] text-[12.5px] font-[700] border border-newBgLineColor text-textItemBlur hover:text-textColor whitespace-nowrap"
+            >
+              📋 Copy
+            </button>
+          </div>
+          <span className="text-[11px] text-textItemBlur mt-[4px] block">
+            {t(
+              'viral_rss_feed_hint',
+              'Cần ≥1 tập đã bật 📡 Phát hành (tab Chờ đăng) trước khi nộp. Cùng feed này nộp được Apple Podcasts & YouTube Music. Spotify quét lại vài lần mỗi giờ.'
+            )}
+          </span>
         </Field>
       </CfgSection>
 
@@ -1684,6 +1842,140 @@ const BulkPostReadyModal: FC<{
 };
 
 // Thẻ sản phẩm trong tab "Sản phẩm".
+// ── ZIP thuần JS (STORE, không nén) — tải CẢ BỘ ảnh carousel thành 1 .zip ───
+// Tự viết theo cấu trúc ZIP chuẩn (local header + central directory + EOCD,
+// CRC-32) để không kéo thư viện ngoài; ảnh JPEG/PNG đã nén sẵn nên STORE là
+// đúng bài (nén thêm chỉ tốn CPU, không nhỏ đi).
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+const crc32 = (buf: Uint8Array) => {
+  let c = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+};
+const makeZip = (files: { name: string; data: Uint8Array }[]): Blob => {
+  const enc = new TextEncoder();
+  const u16 = (v: number) => new Uint8Array([v & 0xff, (v >>> 8) & 0xff]);
+  const u32 = (v: number) =>
+    new Uint8Array([v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff]);
+  const cat = (...as: Uint8Array[]) => {
+    const o = new Uint8Array(as.reduce((s, a) => s + a.length, 0));
+    let p = 0;
+    for (const a of as) {
+      o.set(a, p);
+      p += a.length;
+    }
+    return o;
+  };
+  const now = new Date();
+  const dosTime =
+    (now.getHours() << 11) | (now.getMinutes() << 5) | Math.floor(now.getSeconds() / 2);
+  const dosDate =
+    ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+  const parts: Uint8Array[] = [];
+  const central: Uint8Array[] = [];
+  let offset = 0;
+  for (const f of files) {
+    const name = enc.encode(f.name);
+    const crc = crc32(f.data);
+    // flag 0x0800 = tên file UTF-8
+    const local = cat(
+      u32(0x04034b50), u16(20), u16(0x0800), u16(0), u16(dosTime), u16(dosDate),
+      u32(crc), u32(f.data.length), u32(f.data.length), u16(name.length), u16(0),
+      name, f.data
+    );
+    central.push(
+      cat(
+        u32(0x02014b50), u16(20), u16(20), u16(0x0800), u16(0), u16(dosTime), u16(dosDate),
+        u32(crc), u32(f.data.length), u32(f.data.length), u16(name.length), u16(0),
+        u16(0), u16(0), u16(0), u32(0), u32(offset), name
+      )
+    );
+    parts.push(local);
+    offset += local.length;
+  }
+  const cd = cat(...central);
+  const eocd = cat(
+    u32(0x06054b50), u16(0), u16(0), u16(files.length), u16(files.length),
+    u32(cd.length), u32(offset), u16(0)
+  );
+  return new Blob([...parts, cd, eocd] as BlobPart[], { type: 'application/zip' });
+};
+
+// ── 📡 Phát hành 1 tập podcast lên feed RSS (Spotify quét tự động) ──────────
+const RssPublishModal: FC<{ product: any; onDone: () => void }> = ({ product, onDone }) => {
+  const t = useT();
+  const fetch = useFetch();
+  const toast = useToaster();
+  const modal = useModals();
+  let meta: any = {};
+  try { meta = JSON.parse(product.meta || '{}'); } catch { /* meta hỏng */ }
+  const cur = meta?.rss || {};
+  const [title, setTitle] = useState<string>(cur.title || product.title || '');
+  const [desc, setDesc] = useState<string>(cur.description || String(product.textContent || '').slice(0, 600));
+  const [busy, setBusy] = useState(false);
+  const submit = async (on: boolean) => {
+    setBusy(true);
+    try {
+      const res = await fetch(`/viral/products/${product.id}/rss`, { method: 'POST', body: JSON.stringify({ on, title, description: desc }) });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        toast.show(j?.message || t('viral_rss_fail', 'Không phát hành được.'), 'warning');
+        return;
+      }
+      toast.show(
+        on
+          ? t('viral_rss_on', '📡 Đã phát hành — Spotify tự quét feed trong ~1 giờ.')
+          : t('viral_rss_off', 'Đã gỡ tập khỏi feed.'),
+        'success'
+      );
+      onDone();
+      modal.closeCurrent();
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex flex-col gap-[12px]">
+      <Field label={t('viral_rss_ep_title', 'Tiêu đề tập')}>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} className={inputCls} />
+      </Field>
+      <Field label={t('viral_rss_ep_desc', 'Mô tả tập')}>
+        <textarea
+          value={desc}
+          onChange={(e) => setDesc(e.target.value)}
+          rows={6}
+          className="bg-input border border-fifth rounded-[8px] px-[12px] py-[8px] text-[13px] text-inputText outline-none w-full"
+        />
+      </Field>
+      <div className="text-[11.5px] text-textItemBlur">
+        {t('viral_rss_hint', 'Tập bật 📡 nằm trong feed RSS của kênh (URL feed ở Cài đặt → mục 🎧). Spotify quét lại feed vài lần mỗi giờ — tập mới tự xuất hiện.')}
+      </div>
+      <div className="flex gap-[8px]">
+        <Button onClick={() => submit(true)} disabled={busy} className="flex-1">
+          📡 {cur.on ? t('viral_rss_update', 'Cập nhật tập') : t('viral_rss_publish', 'Phát hành')}
+        </Button>
+        {cur.on && (
+          <button
+            onClick={() => submit(false)}
+            disabled={busy}
+            className="px-[14px] rounded-[8px] text-[12.5px] font-[700] border border-[#FF5A52]/40 text-[#FF5A52] hover:bg-[#FF5A52]/10"
+          >
+            {t('viral_rss_remove', 'Gỡ khỏi feed')}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const ProductCard: FC<{
   product: any;
   onDone: () => void;
@@ -1699,6 +1991,51 @@ const ProductCard: FC<{
   const canModerate = useCanModerate();
   const [busy, setBusy] = useState(false);
   const fm = FORMAT_META[product.format] || { icon: '📦', label: product.format };
+  // meta: 📡 rss đã phát hành? + bộ slides carousel (mới [{id,path}], cũ string)
+  let rssOn = false;
+  let slides: string[] = [];
+  try {
+    const m = JSON.parse(product.meta || '{}');
+    rssOn = !!m?.rss?.on;
+    slides = Array.isArray(m?.slides)
+      ? m.slides.map((s: any) => (typeof s === 'string' ? s : s?.path)).filter(Boolean)
+      : [];
+  } catch { /* meta hỏng */ }
+  const [zipProg, setZipProg] = useState('');
+  // Tải CẢ BỘ ảnh về 1 file .zip (kèm caption.txt) — trước đây link ⬇ chỉ tải
+  // được 1 ảnh bìa trong khi bộ carousel có tới cả chục hình.
+  const downloadSet = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setBusy(true);
+    try {
+      const files: { name: string; data: Uint8Array }[] = [];
+      for (let i = 0; i < slides.length; i++) {
+        setZipProg(`${i + 1}/${slides.length}`);
+        const r = await window.fetch(slides[i]);
+        if (!r.ok) throw new Error(`slide ${i + 1}`);
+        const ext = ((slides[i].split('?')[0].split('.').pop() || 'jpg').slice(0, 4)) || 'jpg';
+        files.push({
+          name: `${String(i + 1).padStart(2, '0')}.${ext}`,
+          data: new Uint8Array(await r.arrayBuffer()),
+        });
+      }
+      if (product.textContent) {
+        files.push({ name: 'caption.txt', data: new TextEncoder().encode(String(product.textContent)) });
+      }
+      const blob = makeZip(files);
+      const safe = String(product.title || 'bo-anh').slice(0, 40).replace(/[\\/:*?"<>|]/g, '').trim() || 'bo-anh';
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${safe}.zip`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch {
+      toast.show(t('viral_zip_fail', 'Không tải được đủ bộ ảnh — thử lại.'), 'warning');
+    } finally {
+      setBusy(false);
+      setZipProg('');
+    }
+  };
   const openDetail = () =>
     modal.openModal({ title: `${fm.icon} ${fm.label}`, withCloseButton: true, classNames: { modal: 'w-[100%] max-w-[680px]' }, children: <ProductDetailModal product={product} /> });
   const downloadDocx = async (e: React.MouseEvent) => {
@@ -1823,6 +2160,9 @@ const ProductCard: FC<{
           {product.status === 'done' && (
             <span className="text-[11px] font-[700] px-[9px] py-[3px] rounded-full bg-[#57D9A3]/15 text-[#57D9A3]">✓ {t('viral_produce_done', 'Done')}</span>
           )}
+          {product.format === 'podcast' && rssOn && (
+            <span className="text-[11px] font-[700] px-[9px] py-[3px] rounded-full bg-[#57D9A3]/15 text-[#57D9A3]">📡 RSS</span>
+          )}
         </div>
         <div className="text-[13.5px] font-[600] leading-[1.4] line-clamp-2">{product.title || product.topic || '—'}</div>
         {product.status === 'error' && product.error && (
@@ -1854,10 +2194,43 @@ const ProductCard: FC<{
               📤 {t('viral_post_calendar', 'Post to Calendar')}
             </button>
           )}
-          {product.status === 'done' && product.format !== 'blog' && product.mediaPath && (
-            <a href={product.mediaPath} download onClick={(e) => e.stopPropagation()} className="flex-1 py-[6px] rounded-[7px] text-[11.5px] font-[700] text-center bg-btnPrimary/15 text-btnPrimary hover:bg-btnPrimary/25">
-              ⬇ {t('viral_download', 'Download')}
-            </a>
+          {/* Bộ carousel ≥2 ảnh → tải TRỌN BỘ .zip; còn lại giữ link 1 file */}
+          {product.status === 'done' && product.format === 'infographic' && slides.length > 1 ? (
+            <button
+              onClick={downloadSet}
+              disabled={busy}
+              className="flex-1 py-[6px] rounded-[7px] text-[11.5px] font-[700] bg-btnPrimary/15 text-btnPrimary hover:bg-btnPrimary/25 disabled:opacity-60"
+            >
+              ⬇ {zipProg ? `${t('viral_zip_progress', 'Đang gom')} ${zipProg}…` : `${t('viral_zip_all', 'Tải bộ')} ${slides.length} ${t('viral_zip_imgs', 'ảnh (.zip)')}`}
+            </button>
+          ) : (
+            product.status === 'done' && product.format !== 'blog' && product.mediaPath && (
+              <a href={product.mediaPath} download onClick={(e) => e.stopPropagation()} className="flex-1 py-[6px] rounded-[7px] text-[11.5px] font-[700] text-center bg-btnPrimary/15 text-btnPrimary hover:bg-btnPrimary/25">
+                ⬇ {t('viral_download', 'Download')}
+              </a>
+            )
+          )}
+          {/* 📡 Phát hành tập lên feed RSS (Spotify) — chỉ podcast đã xong */}
+          {canModerate && product.status === 'done' && product.format === 'podcast' && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                modal.openModal({
+                  title: t('viral_rss_modal_title', '📡 Phát hành podcast (RSS → Spotify)'),
+                  withCloseButton: true,
+                  classNames: { modal: 'w-[100%] max-w-[540px]' },
+                  children: <RssPublishModal product={product} onDone={onDone} />,
+                });
+              }}
+              className={clsx(
+                'flex-1 py-[6px] rounded-[7px] text-[11.5px] font-[700]',
+                rssOn
+                  ? 'bg-[#57D9A3]/15 text-[#57D9A3] hover:bg-[#57D9A3]/25'
+                  : 'bg-btnPrimary/15 text-btnPrimary hover:bg-btnPrimary/25'
+              )}
+            >
+              📡 {rssOn ? t('viral_rss_published', 'Đã phát hành') : t('viral_rss_publish_btn', 'Phát hành RSS')}
+            </button>
           )}
           {canModerate && product.status === 'error' && (
             <button onClick={retry} disabled={busy} className="flex-1 py-[6px] rounded-[7px] text-[11.5px] font-[700] text-[#FFC53D] border border-[#FFC53D]/40 hover:bg-[#FFC53D]/10 disabled:opacity-50">
