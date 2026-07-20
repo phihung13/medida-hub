@@ -2002,8 +2002,11 @@ const ProductCard: FC<{
       : [];
   } catch { /* meta hỏng */ }
   const [zipProg, setZipProg] = useState('');
-  // Tải CẢ BỘ ảnh về 1 file .zip (kèm caption.txt) — trước đây link ⬇ chỉ tải
-  // được 1 ảnh bìa trong khi bộ carousel có tới cả chục hình.
+  // Tải CẢ BỘ ảnh — trước đây link ⬇ chỉ tải được 1 ảnh bìa trong khi bộ
+  // carousel có cả chục hình. Ưu tiên GHI THẲNG VÀO THƯ MỤC THẬT (File System
+  // Access API — Chrome/Edge desktop: chọn nơi lưu 1 lần → tạo thư mục tên bài
+  // chứa 01.jpg…N + caption.txt, KHÔNG cần giải nén); trình duyệt không hỗ trợ
+  // (Safari/Firefox/mobile) → rơi về 1 file .zip như cũ.
   const downloadSet = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setBusy(true);
@@ -2022,8 +2025,32 @@ const ProductCard: FC<{
       if (product.textContent) {
         files.push({ name: 'caption.txt', data: new TextEncoder().encode(String(product.textContent)) });
       }
-      const blob = makeZip(files);
       const safe = String(product.title || 'bo-anh').slice(0, 40).replace(/[\\/:*?"<>|]/g, '').trim() || 'bo-anh';
+      // ── Đường 1: ghi thẳng thư mục (Chrome/Edge) ──
+      const picker = (window as any).showDirectoryPicker;
+      if (typeof picker === 'function') {
+        try {
+          const root = await picker.call(window, { mode: 'readwrite' });
+          const dir = await root.getDirectoryHandle(safe, { create: true });
+          for (const f of files) {
+            const fh = await dir.getFileHandle(f.name, { create: true });
+            const w = await fh.createWritable();
+            await w.write(f.data);
+            await w.close();
+          }
+          toast.show(
+            `📁 ${t('viral_folder_saved', 'Đã lưu')} ${files.length} ${t('viral_folder_saved2', 'file vào thư mục')} "${safe}".`,
+            'success'
+          );
+          return;
+        } catch (err: any) {
+          // user bấm Huỷ ở hộp chọn thư mục → thôi luôn, không ép tải zip
+          if (err?.name === 'AbortError') return;
+          /* lỗi quyền/ghi khác → rơi xuống đường .zip */
+        }
+      }
+      // ── Đường 2 (fallback): 1 file .zip ──
+      const blob = makeZip(files);
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = `${safe}.zip`;
@@ -2199,9 +2226,13 @@ const ProductCard: FC<{
             <button
               onClick={downloadSet}
               disabled={busy}
+              title={t(
+                'viral_zip_tooltip',
+                'Chrome/Edge: chọn nơi lưu → cả bộ vào 1 THƯ MỤC (khỏi giải nén). Trình duyệt khác: tải 1 file .zip.'
+              )}
               className="flex-1 py-[6px] rounded-[7px] text-[11.5px] font-[700] bg-btnPrimary/15 text-btnPrimary hover:bg-btnPrimary/25 disabled:opacity-60"
             >
-              ⬇ {zipProg ? `${t('viral_zip_progress', 'Đang gom')} ${zipProg}…` : `${t('viral_zip_all', 'Tải bộ')} ${slides.length} ${t('viral_zip_imgs', 'ảnh (.zip)')}`}
+              ⬇ {zipProg ? `${t('viral_zip_progress', 'Đang gom')} ${zipProg}…` : `${t('viral_zip_all', 'Tải bộ')} ${slides.length} ${t('viral_zip_imgs2', 'ảnh')}`}
             </button>
           ) : (
             product.status === 'done' && product.format !== 'blog' && product.mediaPath && (
