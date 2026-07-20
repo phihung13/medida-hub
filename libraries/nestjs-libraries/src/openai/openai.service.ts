@@ -974,20 +974,28 @@ CHI tra JSON array: [{"profile_id","moi_quan_tam","tam_ly","hanh_vi","insights"}
   }
 
   // KHỐI-CÓ-NHÃN: full_script dài từng làm JSON gãy. Trần 12k.
+  // CLIMAX = câu trích nguyên văn ở đoạn cao trào — mixBgm dùng để canh chỗ
+  // nhạc nền dâng lên (như n8n climax_quote).
   async viralProducePodcast(
     system: string,
     user: string
-  ): Promise<{ title: string; full_script: string; est_minutes: number }> {
+  ): Promise<{
+    title: string;
+    full_script: string;
+    est_minutes: number;
+    climax_quote: string;
+  }> {
     const r = await claudeBlockStrict(
       system,
       user,
-      ['TITLE', 'MINUTES', 'SCRIPT'],
+      ['TITLE', 'MINUTES', 'SCRIPT', 'CLIMAX'],
       12000
     );
     return {
       title: r.TITLE,
       full_script: r.SCRIPT,
       est_minutes: Math.max(1, Math.min(30, parseInt(r.MINUTES, 10) || 3)),
+      climax_quote: String(r.CLIMAX || '').trim(),
     };
   }
 

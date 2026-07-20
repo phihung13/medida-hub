@@ -286,6 +286,7 @@ export class ViralController {
   @Post('/config')
   setConfig(
     @GetUserFromRequest() user: User,
+    @GetOrgFromRequest() org: Organization,
     @Body()
     body: {
       apifyToken?: string;
@@ -304,7 +305,8 @@ export class ViralController {
       autoSkipMax?: number;
       rewriteMaxRounds?: number;
       autoProduce?: boolean;
-      productionPaused?: boolean;
+      pauseApprove?: boolean;
+      pauseProduce?: boolean;
       reportRecipients?: { threadId: string; type: string; name: string }[];
       reportAutoSend?: boolean;
       reportSendHour?: number;
@@ -313,6 +315,9 @@ export class ViralController {
     if (!user?.isSuperAdmin) {
       throw new HttpException('Chỉ quản trị hệ thống mới đổi được.', 403);
     }
+    // Bắt khoảnh khắc MỞ phanh ② (true→false) để chạy bù các thẻ đã duyệt kẹt
+    // ở "Đã duyệt" (duyệt trong lúc phanh đóng nên chưa có lệnh sản xuất nào).
+    const produceWasPaused = getViralStatus().pauseProduce;
     setViralConfig({
       ...(typeof body.apifyToken === 'string' ? { apifyToken: body.apifyToken } : {}),
       ...(typeof body.youtubeKey === 'string' ? { youtubeKey: body.youtubeKey } : {}),
@@ -356,8 +361,11 @@ export class ViralController {
       ...(typeof body.autoProduce === 'boolean'
         ? { autoProduce: body.autoProduce }
         : {}),
-      ...(typeof body.productionPaused === 'boolean'
-        ? { productionPaused: body.productionPaused }
+      ...(typeof body.pauseApprove === 'boolean'
+        ? { pauseApprove: body.pauseApprove }
+        : {}),
+      ...(typeof body.pauseProduce === 'boolean'
+        ? { pauseProduce: body.pauseProduce }
         : {}),
       ...(Array.isArray(body.reportRecipients)
         ? { reportRecipients: body.reportRecipients as any }
@@ -369,6 +377,10 @@ export class ViralController {
         ? { reportSendHour: body.reportSendHour }
         : {}),
     });
+    // Mở phanh ② → chạy bù nền (không chờ AI, không chặn response)
+    if (produceWasPaused && body.pauseProduce === false) {
+      this._service.produceApprovedBacklog(org.id).catch(() => null);
+    }
     return { ok: true, ...getViralStatus() };
   }
 

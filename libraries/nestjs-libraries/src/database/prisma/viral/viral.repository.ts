@@ -377,6 +377,16 @@ export class ViralRepository {
     return rows.map((r) => r.topicId as string);
   }
 
+  // Mọi chủ đề ĐÃ DUYỆT còn sống — cho lượt chạy bù khi mở phanh ② (thẻ duyệt
+  // trong lúc phanh đóng bị kẹt ở Đã duyệt, không có lệnh sản xuất nào bắn ra).
+  async approvedTopicIds(orgId: string): Promise<string[]> {
+    const rows = await this._topics.model.viralTopic.findMany({
+      where: { organizationId: orgId, status: 'approved', deletedAt: null },
+      select: { id: true },
+    });
+    return rows.map((r) => r.id);
+  }
+
   // Chủ đề (distinct) của một nhóm bài — cho luồng "duyệt bài = duyệt chủ đề".
   async topicIdsOfPosts(orgId: string, postIds: string[]): Promise<string[]> {
     if (!postIds.length) return [];

@@ -743,7 +743,7 @@ export class ViralService implements OnModuleInit {
     if (
       status === 'approved' &&
       getViralConfig().autoProduce &&
-      !getViralConfig().productionPaused
+      !getViralConfig().pauseProduce
     ) {
       this._repo
         .topicIdsOfPosts(orgId, ids)
@@ -1203,10 +1203,10 @@ export class ViralService implements OnModuleInit {
     // đa N vòng. Đạt ngưỡng duyệt → dừng sớm; hết vòng chưa đạt → chờ người.
     const cfg = getViralConfig();
     let rounds = 0;
-    // ⏸ Dừng sản xuất: bỏ vòng viết lại (mục đích của nó là đẩy điểm lên
-    // ngưỡng tự duyệt — đang dừng thì viết lại chỉ tốn tiền AI vô ích).
+    // ⏸① Phanh TỰ DUYỆT: bỏ vòng viết lại (mục đích của nó là đẩy điểm lên
+    // ngưỡng tự duyệt — đang chặn duyệt thì viết lại chỉ tốn tiền AI vô ích).
     while (
-      !cfg.productionPaused &&
+      !cfg.pauseApprove &&
       rounds < cfg.rewriteMaxRounds &&
       score < cfg.autoApproveMin &&
       score >= cfg.autoSkipMax
@@ -1238,13 +1238,13 @@ export class ViralService implements OnModuleInit {
         reason = rw.reason || reason;
       }
     }
-    // ⏸ Dừng sản xuất: KHÔNG tự duyệt — điểm cao đến mấy cũng đứng ở Chờ duyệt
+    // ⏸① Phanh TỰ DUYỆT: điểm cao đến mấy cũng đứng ở Chờ duyệt
     // (điểm thấp vẫn tự bỏ như thường để khỏi ngập rác).
     let status = viralStatusForScore(score, {
       approveMin: cfg.autoApproveMin,
       skipMax: cfg.autoSkipMax,
     });
-    if (cfg.productionPaused && status === 'approved') status = 'pending';
+    if (cfg.pauseApprove && status === 'approved') status = 'pending';
     await this._repo.updateTopic(topic.id, {
       label,
       synthesis: JSON.stringify(res.synthesis || {}).slice(0, 8000),
@@ -1272,10 +1272,21 @@ export class ViralService implements OnModuleInit {
     // DUYỆT = TỰ SẢN XUẤT (tắt được trong Cài đặt): đạt ngưỡng tự duyệt → sản
     // xuất ngay định dạng AI đề xuất, sản phẩm chờ ở tab Sản phẩm (không tự
     // lên Lịch — người kéo tay theo quyết định vận hành).
-    if (status === 'approved' && cfg.autoProduce && !cfg.productionPaused) {
+    if (status === 'approved' && cfg.autoProduce && !cfg.pauseProduce) {
       await this.autoProduceTopics(orgId, [topic.id]).catch(() => null);
     }
     return true;
+  }
+
+  // Chạy bù khi MỞ PHANH ② (Đã duyệt → Chờ đăng): thẻ được duyệt trong lúc
+  // phanh đóng chưa từng có lệnh sản xuất — quét mọi topic approved, giao cho
+  // autoProduceTopics (tự bỏ qua topic đã có sản phẩm nên không tạo trùng).
+  async produceApprovedBacklog(orgId: string) {
+    const cfg = getViralConfig();
+    if (!cfg.autoProduce || cfg.pauseProduce) return { kicked: 0 };
+    const ids = await this._repo.approvedTopicIds(orgId).catch(() => []);
+    if (ids.length) this.autoProduceTopics(orgId, ids).catch(() => null);
+    return { kicked: ids.length };
   }
 
   // Tự sản xuất cho chủ đề vừa duyệt: định dạng chính theo content_type AI đề
@@ -1515,7 +1526,7 @@ export class ViralService implements OnModuleInit {
     if (
       status === 'approved' &&
       getViralConfig().autoProduce &&
-      !getViralConfig().productionPaused
+      !getViralConfig().pauseProduce
     ) {
       this.autoProduceTopics(orgId, ids).catch(() => null);
     }
@@ -1736,13 +1747,13 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
                   ? Math.max(0, Math.min(100, Math.round(r.podcast_score)))
                   : null,
             }).slice(0, 3000),
-            // ⏸ Dừng sản xuất: bài lẻ cũng không tự duyệt — đứng ở chờ duyệt.
+            // ⏸① Phanh TỰ DUYỆT: bài lẻ cũng không tự duyệt — đứng ở chờ duyệt.
             status: (() => {
               const st = viralStatusForScore(score, {
                 approveMin: cfg.autoApproveMin,
                 skipMax: cfg.autoSkipMax,
               });
-              return cfg.productionPaused && st === 'approved' ? 'pending' : st;
+              return cfg.pauseApprove && st === 'approved' ? 'pending' : st;
             })(),
           })
           .catch(() => null);
@@ -2492,7 +2503,12 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
         /* meta hỏng — không trộn */
       }
       if (wantBgm && hasBgm()) {
-        const mixed = await this.mixBgm(buf).catch(() => null);
+        // truyền câu [[CLIMAX]] + script để nhạc dâng đúng đoạn cao trào
+        const mixed = await this.mixBgm(
+          buf,
+          String((script as any).climax_quote || ''),
+          String(script.full_script || '')
+        ).catch(() => null);
         if (mixed) {
           buf = mixed;
           bgmMixed = true;
@@ -2523,24 +2539,65 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
     throw new Error('Định dạng không hỗ trợ.');
   }
 
-  // Trộn nhạc nền vào giọng đọc bằng ffmpeg — port tham số node n8n
-  // "🎚️ Trộn nhạc": nhạc solo 6s đầu / 8s cuối, fade in 3s / out 5s, nền 0.18,
-  // duck nhạc dưới voice bằng sidechaincompress. Trả null nếu thiếu ffmpeg/lỗi.
-  private async mixBgm(voice: Buffer): Promise<Buffer | null> {
+  // Trộn nhạc nền vào giọng đọc bằng ffmpeg — CÔNG THỨC 2.0 (nền n8n "🎚️ Trộn
+  // nhạc" + 4 nâng cấp studio; số n8n gốc ghi cạnh từng chỗ):
+  //   GIỮ cấu trúc n8n: nhạc solo 6s đầu / 8s cuối, fade in 3s / out 5s, CAO
+  //   TRÀO nhạc dâng ~+3.5dB tại câu AI đánh dấu [[CLIMAX]] (không khớp → auto
+  //   75–90%), nhạc LẶP vô hạn khi voice dài hơn (-stream_loop -1).
+  //   ① VOICE tiền xử lý: highpass 80Hz cắt ù + ĐO loudness rồi bù gain TĨNH về
+  //      -16 LUFS (tuyến tính, không đổi sắc) → tập nào cũng duck đều nhau.
+  //   ② DUCK MỀM: ratio 6, release 800ms (n8n 16/400 gây "bơm hơi" ở ngắt câu).
+  //   ③ KHOÉT EQ nhạc -4dB quanh 2.5kHz (dải trí tuệ giọng nói) → nền nhạc nâng
+  //      0.18 → 0.22 mà lời vẫn rõ (mẹo radio/broadcast).
+  //   ④ LOUDNORM 2-PASS TUYẾN TÍNH về -14 LUFS / TP -1dB (đo premix → áp
+  //      measured_* + linear=true; 1-pass là normalize ĐỘNG, dễ phập phồng).
+  //      Premix ghi WAV để không nén mp3 hai lần. Đo lỗi → fallback 1-pass.
+  //   Voice tách asplit 2 nhánh: [v1] kích duck, [v2] vào mix (ffmpeg cấm tái
+  //   dùng 1 nhãn 2 lần — bản đầu dùng [v] 2 chỗ nên filter lỗi, luôn rơi về
+  //   giọng thuần). Trả null nếu thiếu ffmpeg/lỗi → phát hành giọng thuần.
+  private async mixBgm(
+    voice: Buffer,
+    climaxQuote = '',
+    fullScript = ''
+  ): Promise<Buffer | null> {
     const fs = await import('fs');
     const os = await import('os');
     const path = await import('path');
     const { execFile } = await import('child_process');
-    const INTRO = 6, OUTRO = 8, FADEIN = 3, FADEOUT = 5, MUSIC_BASE = 0.18;
+    const INTRO = 6, OUTRO = 8, FADEIN = 3, FADEOUT = 5;
+    const MUSIC_BASE = 0.22; // n8n: 0.18 — nâng được nhờ khoét EQ ③
+    const SC = 'threshold=0.03:ratio=6:attack=20:release=800'; // n8n: ratio=16:release=400
+    const MUSIC_EQ = 'equalizer=f=2500:t=q:w=1.0:g=-4'; // ③ khoét dải 1–4kHz
+    const VOICE_TARGET = -16; // ① LUFS đích của voice trước khi mix
+    const BOOST = 0.5, RAMP = 2.5, C_START = 0.75, C_END = 0.9;
     const id = makeId(8);
     const vPath = path.join(os.tmpdir(), `viral-voice-${id}.mp3`);
+    const pPath = path.join(os.tmpdir(), `viral-premix-${id}.wav`);
     const oPath = path.join(os.tmpdir(), `viral-mix-${id}.mp3`);
+    // loudnorm print_format=json in kết quả đo ra STDERR ngay cả khi exit 0
+    // → resolve gộp cả stdout lẫn stderr để bóc được JSON.
     const run = (cmd: string, args: string[], timeout = 180000) =>
       new Promise<string>((resolve, reject) => {
         execFile(cmd, args, { timeout, maxBuffer: 8 * 1024 * 1024 }, (err, stdout, stderr) =>
-          err ? reject(new Error(String(stderr || err.message).slice(0, 300))) : resolve(String(stdout))
+          err
+            ? reject(new Error(String(stderr || err.message).slice(0, 300)))
+            : resolve(String(stdout) + '\n' + String(stderr))
         );
       });
+    // bóc khối JSON CUỐI CÙNG trong output (loudnorm in ra stderr, SAU nó vẫn
+    // còn log đuôi → phải cắt đúng từ '{' tới '}' — JSON loudnorm phẳng, không
+    // có ngoặc lồng; parse cả đuôi sẽ văng "Extra data" và mất số đo).
+    const lastJson = (s: string): any => {
+      const i = s.lastIndexOf('{');
+      if (i < 0) return null;
+      const e = s.indexOf('}', i);
+      if (e < 0) return null;
+      try {
+        return JSON.parse(s.slice(i, e + 1));
+      } catch {
+        return null;
+      }
+    };
     try {
       fs.writeFileSync(vPath, voice);
       // thời lượng voice → tổng = intro + voice + outro
@@ -2549,22 +2606,83 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
       ]);
       const dur = parseFloat(probe.trim());
       if (!Number.isFinite(dur) || dur <= 0) return null;
-      const total = INTRO + dur + OUTRO;
+      // ① đo loudness voice → bù gain TĨNH về VOICE_TARGET (kẹp ±12dB an toàn)
+      let vGain = 0;
+      try {
+        const m = await run('ffmpeg', [
+          '-hide_banner', '-i', vPath,
+          '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json',
+          '-f', 'null', '-',
+        ]);
+        const inI = parseFloat(lastJson(m)?.input_i);
+        if (Number.isFinite(inI)) {
+          vGain = Math.max(-12, Math.min(12, VOICE_TARGET - inI));
+        }
+      } catch {
+        /* không đo được → giữ gain 0 */
+      }
+      const total = Math.round((INTRO + dur + OUTRO) * 100) / 100;
+      const fadeOutStart = Math.max(0, total - FADEOUT).toFixed(2);
+      // Cao trào: vị trí câu trích ≈ tỷ lệ ký tự trong script (như n8n);
+      // không có/không khớp câu → auto 75–90% thời lượng voice.
+      let cs = C_START * dur;
+      let ce = C_END * dur;
+      if (climaxQuote && fullScript) {
+        const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+        const F = norm(fullScript);
+        const Q = norm(climaxQuote);
+        const idx = Q ? F.indexOf(Q) : -1;
+        if (idx >= 0 && F.length) {
+          cs = (idx / F.length) * dur;
+          ce = ((idx + Q.length) / F.length) * dur;
+        }
+      }
+      if (ce - cs < 8) ce = Math.min(dur, cs + 8); // cửa sổ đủ rộng để nhạc kịp dâng
+      const CS = (INTRO + Math.max(0, cs)).toFixed(2);
+      const CE = (INTRO + Math.min(ce, dur)).toFixed(2);
+      const swell = `1+${BOOST}*max(0,min(1,(t-${CS})/${RAMP}))*max(0,min(1,(${CE}-t)/${RAMP}))`;
       const filter =
-        `[0:a]adelay=${INTRO * 1000}|${INTRO * 1000}[v];` +
-        `[1:a]volume=${MUSIC_BASE},afade=t=in:d=${FADEIN}[m];` +
-        `[m][v]sidechaincompress=threshold=0.03:ratio=16:attack=20:release=400[md];` +
-        `[md][v]amix=inputs=2:duration=longest:dropout_transition=3,` +
-        `afade=t=out:st=${Math.max(0, total - FADEOUT)}:d=${FADEOUT}[out]`;
+        `[0:a]highpass=f=80,volume=${vGain.toFixed(1)}dB,aformat=sample_rates=44100:channel_layouts=stereo,adelay=${INTRO * 1000}|${INTRO * 1000},apad,aformat=sample_rates=44100:channel_layouts=stereo,asplit=2[v1][v2];` +
+        `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,${MUSIC_EQ},volume=${MUSIC_BASE}[mraw];` +
+        `[mraw][v1]sidechaincompress=${SC}[mduck];` +
+        `[mduck]volume=eval=frame:volume='${swell}'[mclimax];` +
+        `[v2][mclimax]amix=inputs=2:duration=longest,` +
+        `afade=t=in:st=0:d=${FADEIN},afade=t=out:st=${fadeOutStart}:d=${FADEOUT}[out]`;
+      // render PREMIX (wav, CHƯA loudnorm — để đo chính xác rồi áp tuyến tính)
       await run('ffmpeg', [
-        '-y', '-i', vPath, '-stream_loop', '-1', '-i', bgmPath(),
+        '-hide_banner', '-y', '-i', vPath, '-stream_loop', '-1', '-i', bgmPath(),
         '-filter_complex', filter, '-map', '[out]',
-        '-t', String(total), '-c:a', 'libmp3lame', '-b:a', '128k', oPath,
+        '-t', String(total), '-c:a', 'pcm_s16le', pPath,
+      ]);
+      // ④ loudnorm 2-pass: đo premix → áp measured_* + linear=true
+      let lnFilter = 'loudnorm=I=-14:TP=-1:LRA=11'; // fallback 1-pass nếu đo hỏng
+      try {
+        const meas = await run('ffmpeg', [
+          '-hide_banner', '-i', pPath,
+          '-af', 'loudnorm=I=-14:TP=-1:LRA=11:print_format=json',
+          '-f', 'null', '-',
+        ]);
+        const j = lastJson(meas);
+        const nums = [
+          j?.input_i, j?.input_tp, j?.input_lra, j?.input_thresh, j?.target_offset,
+        ].map((x: any) => parseFloat(x));
+        if (nums.every((n: number) => Number.isFinite(n))) {
+          lnFilter =
+            `loudnorm=I=-14:TP=-1:LRA=11:measured_i=${nums[0]}:measured_tp=${nums[1]}` +
+            `:measured_lra=${nums[2]}:measured_thresh=${nums[3]}:offset=${nums[4]}:linear=true`;
+        }
+      } catch {
+        /* đo lỗi → dùng 1-pass */
+      }
+      await run('ffmpeg', [
+        '-hide_banner', '-y', '-i', pPath, '-af', lnFilter,
+        '-ar', '44100', '-c:a', 'libmp3lame', '-b:a', '128k', oPath,
       ]);
       const out = fs.readFileSync(oPath);
       return out.length > 1000 ? out : null;
     } finally {
       try { fs.unlinkSync(vPath); } catch { /* dọn tmp */ }
+      try { fs.unlinkSync(pPath); } catch { /* dọn tmp */ }
       try { fs.unlinkSync(oPath); } catch { /* dọn tmp */ }
     }
   }

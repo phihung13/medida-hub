@@ -610,7 +610,7 @@ const ConfigModal: FC = () => {
     setOpen({
       podcast: !data.hasMinimax,
       crawl: !data.hasYoutube,
-      funnel: !!data.productionPaused,
+      funnel: !!(data.pauseApprove || data.pauseProduce),
       report: false,
     });
     setOpenInit(true);
@@ -628,14 +628,17 @@ const ConfigModal: FC = () => {
   const [skipMax, setSkipMax] = useState<number>(70);
   const [maxRounds, setMaxRounds] = useState<number>(3);
   const [autoProduce, setAutoProduce] = useState<boolean>(true);
-  const [paused, setPaused] = useState<boolean>(false);
+  // 2 phanh độc lập trên 2 mũi tên luồng (thay productionPaused cũ chặn cả 2)
+  const [pauseApprove, setPauseApprove] = useState<boolean>(false);
+  const [pauseProduce, setPauseProduce] = useState<boolean>(false);
   useEffect(() => {
     if (!data) return;
     if (typeof data.autoApproveMin === 'number') setApproveMin(data.autoApproveMin);
     if (typeof data.autoSkipMax === 'number') setSkipMax(data.autoSkipMax);
     if (typeof data.rewriteMaxRounds === 'number') setMaxRounds(data.rewriteMaxRounds);
     if (typeof data.autoProduce === 'boolean') setAutoProduce(data.autoProduce);
-    if (typeof data.productionPaused === 'boolean') setPaused(data.productionPaused);
+    if (typeof data.pauseApprove === 'boolean') setPauseApprove(data.pauseApprove);
+    if (typeof data.pauseProduce === 'boolean') setPauseProduce(data.pauseProduce);
   }, [data]);
   // Nhóm Zalo nhận bản tin tuần — danh sách lấy từ bot qua proxy /botapi
   // (same-origin, cookie đăng nhập Hub đi kèm; KHÔNG qua useFetch backend).
@@ -670,7 +673,8 @@ const ConfigModal: FC = () => {
       autoSkipMax: Number(skipMax),
       rewriteMaxRounds: Number(maxRounds),
       autoProduce,
-      productionPaused: paused,
+      pauseApprove,
+      pauseProduce,
     };
     if (apify.trim()) body.apifyToken = apify.trim();
     if (yt.trim()) body.youtubeKey = yt.trim();
@@ -689,7 +693,7 @@ const ConfigModal: FC = () => {
     toast.show(t('viral_config_saved', 'Configuration saved.'), 'success');
     mutateCfg();
     modal.closeCurrent();
-  }, [apify, yt, mmKey, mmGroup, voiceId, mmModel, mmSpeed, hours, zaloThread, clusterMode, approveMin, skipMax, maxRounds, autoProduce, paused]);
+  }, [apify, yt, mmKey, mmGroup, voiceId, mmModel, mmSpeed, hours, zaloThread, clusterMode, approveMin, skipMax, maxRounds, autoProduce, pauseApprove, pauseProduce]);
 
   return (
     <div className="flex flex-col gap-[10px]">
@@ -819,10 +823,14 @@ const ConfigModal: FC = () => {
       <CfgSection
         icon="🧲"
         title={t('viral_sec_funnel', 'Gom cụm & Phễu duyệt tự động')}
-        state={paused ? 'warn' : 'ok'}
+        state={pauseApprove || pauseProduce ? 'warn' : 'ok'}
         note={
-          paused
-            ? t('viral_sec_paused', 'ĐANG DỪNG SẢN XUẤT')
+          pauseApprove && pauseProduce
+            ? t('viral_sec_paused_both', 'ĐANG CHẶN ① duyệt + ② sản xuất')
+            : pauseApprove
+            ? t('viral_sec_paused_approve', 'ĐANG CHẶN ① tự duyệt')
+            : pauseProduce
+            ? t('viral_sec_paused_produce', 'ĐANG CHẶN ② tự sản xuất')
             : t('viral_sec_ok', 'Đã đủ')
         }
         open={!!open.funnel}
@@ -859,9 +867,13 @@ const ConfigModal: FC = () => {
           <input type="checkbox" checked={autoProduce} onChange={(e) => setAutoProduce(e.target.checked)} />
           🏭 {t('viral_funnel_autoproduce', 'Approve = auto-produce the AI-suggested format (products wait in the Products tab, nothing is scheduled automatically)')}
         </label>
-        <label className={clsx('flex items-center gap-[6px] text-[11.5px] cursor-pointer mt-[6px] font-[700]', paused ? 'text-amber-400' : 'text-textItemBlur')}>
-          <input type="checkbox" checked={paused} onChange={(e) => setPaused(e.target.checked)} />
-          ⏸ {t('viral_funnel_paused', 'DỪNG SẢN XUẤT — không tự duyệt (điểm cao đến mấy cũng đứng ở Chờ duyệt), không viết lại, duyệt tay cũng không tự sản xuất. Điểm quá thấp vẫn tự bỏ.')}
+        <label className={clsx('flex items-center gap-[6px] text-[11.5px] cursor-pointer mt-[6px] font-[700]', pauseApprove ? 'text-amber-400' : 'text-textItemBlur')}>
+          <input type="checkbox" checked={pauseApprove} onChange={(e) => setPauseApprove(e.target.checked)} />
+          ⏸① {t('viral_funnel_pause_approve', 'Chặn TỰ DUYỆT (mũi tên Chờ duyệt → Đã duyệt): content dồn ở Chờ duyệt, không viết lại; điểm quá thấp vẫn tự bỏ. Duyệt TAY vẫn được.')}
+        </label>
+        <label className={clsx('flex items-center gap-[6px] text-[11.5px] cursor-pointer mt-[6px] font-[700]', pauseProduce ? 'text-amber-400' : 'text-textItemBlur')}>
+          <input type="checkbox" checked={pauseProduce} onChange={(e) => setPauseProduce(e.target.checked)} />
+          ⏸② {t('viral_funnel_pause_produce', 'Chặn TỰ SẢN XUẤT (mũi tên Đã duyệt → Chờ đăng): duyệt xong thẻ nằm ở Đã duyệt, không chạy AI. Mở lại phanh = thẻ kẹt tự sản xuất bù.')}
         </label>
         <span className="text-[11px] text-textItemBlur mt-[4px] block">
           {t('viral_funnel_hint', 'Between the two thresholds the AI rewrites and re-scores up to N rounds (keeping the better version); if still short, the content waits for manual review.')}
@@ -2644,15 +2656,29 @@ export const ViralComponent: FC = () => {
     });
   }, [selected, mineData, productsData, refreshAll, t]);
 
-  const resumeProduction = useCallback(async () => {
-    const res = await fetch('/viral/config', { method: 'POST', body: JSON.stringify({ productionPaused: false }) });
-    if (res.status >= 400) {
-      toast.show(t('viral_need_admin', 'System administrator permission required.'), 'warning');
-      return;
-    }
-    toast.show(t('viral_production_resumed', 'Production resumed — the funnel auto-approves and produces again.'), 'success');
-    mutateCfgMain();
-  }, [mutateCfgMain, t]);
+  // Gạt 1 trong 2 phanh trên mũi tên luồng (① tự duyệt / ② tự sản xuất).
+  // Mở phanh ② → backend tự chạy bù các thẻ đã duyệt đang kẹt ở "Đã duyệt".
+  const togglePause = useCallback(
+    async (key: 'pauseApprove' | 'pauseProduce', value: boolean) => {
+      const res = await fetch('/viral/config', { method: 'POST', body: JSON.stringify({ [key]: value }) });
+      if (res.status >= 400) {
+        toast.show(t('viral_need_admin', 'System administrator permission required.'), 'warning');
+        return;
+      }
+      toast.show(
+        value
+          ? key === 'pauseApprove'
+            ? t('viral_pause_approve_on', '⏸① Đã chặn TỰ DUYỆT — content mới sẽ dồn ở Chờ duyệt (duyệt tay vẫn được).')
+            : t('viral_pause_produce_on', '⏸② Đã chặn TỰ SẢN XUẤT — duyệt xong thẻ nằm ở Đã duyệt.')
+          : key === 'pauseApprove'
+          ? t('viral_pause_approve_off', '▶① Tự duyệt chạy lại từ mẻ cào tới.')
+          : t('viral_pause_produce_off', '▶② Tự sản xuất chạy lại — thẻ đã duyệt đang kẹt sẽ được sản xuất bù.'),
+        'success'
+      );
+      mutateCfgMain();
+    },
+    [mutateCfgMain, t]
+  );
 
   const purgeArchive = useCallback(async () => {
     if (!(await deleteDialog(t('viral_purge_all_confirm', 'Permanently delete the ENTIRE archive from the database?'), t('viral_delete_all', 'Delete all')))) return;
@@ -2860,7 +2886,43 @@ export const ViralComponent: FC = () => {
           ['ready', t('viral_tab_ready', 'Ready to post'), (data?.statusCounts?.mine || 0) + (data?.statusCounts?.products || 0)],
         ].map(([k, l, count], i) => (
           <Fragment key={k as string}>
-            {i > 0 && <span className="text-textItemBlur/50 text-[14px] font-[700] select-none px-[1px] mobile:hidden">→</span>}
+            {/* Mũi tên = NÚT PHANH bước đó: ①(pauseApprove) chặn tự duyệt,
+                ②(pauseProduce) chặn tự sản xuất. → = đang chạy, ⏸ vàng = đang
+                chặn. Chỉ superadmin gạt được (config toàn instance). */}
+            {i > 0 &&
+              (() => {
+                const pk = i === 1 ? 'pauseApprove' : 'pauseProduce';
+                const pausedHere = !!(cfgData as any)?.[pk];
+                return (
+                  <button
+                    type="button"
+                    disabled={!isSuperAdmin}
+                    onClick={() => togglePause(pk as any, !pausedHere)}
+                    title={
+                      pk === 'pauseApprove'
+                        ? pausedHere
+                          ? t('viral_arrow1_paused', '⏸ Đang CHẶN tự duyệt — content dồn ở Chờ duyệt (duyệt tay vẫn được). Bấm để chạy lại.')
+                          : t('viral_arrow1_running', 'Tự duyệt đang chạy (Chờ duyệt → Đã duyệt). Bấm để tạm dừng bước này.')
+                        : pausedHere
+                        ? t('viral_arrow2_paused', '⏸ Đang CHẶN tự sản xuất — thẻ duyệt xong nằm ở Đã duyệt. Bấm để chạy lại (thẻ kẹt sẽ sản xuất bù).')
+                        : t('viral_arrow2_running', 'Tự sản xuất đang chạy (Đã duyệt → Chờ đăng). Bấm để tạm dừng bước này.')
+                    }
+                    className={clsx(
+                      'h-[26px] min-w-[30px] px-[7px] rounded-full text-[13px] font-[800] border grid place-items-center select-none shrink-0 tap-shrink transition-colors',
+                      pausedHere
+                        ? 'bg-amber-400/15 border-amber-400/50 text-amber-400'
+                        : 'border-transparent text-textItemBlur/60',
+                      isSuperAdmin
+                        ? pausedHere
+                          ? 'hover:bg-amber-400/25'
+                          : 'hover:border-newBgLineColor hover:text-textColor'
+                        : 'cursor-default'
+                    )}
+                  >
+                    {pausedHere ? '⏸' : '→'}
+                  </button>
+                );
+              })()}
             <button
               onClick={() => setTab(k as string)}
               className={clsx(
@@ -2949,22 +3011,8 @@ export const ViralComponent: FC = () => {
             <span className="ms-[6px] tabular-nums opacity-80">{topicsData?.counts?.archive ?? data?.statusCounts?.archive}</span>
           )}
         </button>
-        {/* ⏸ Đang tạm dừng — dấu hiệu gọn, mô tả nằm trong tooltip */}
-        {cfgData?.productionPaused && (
-          <div className="flex items-center gap-[8px] h-[34px] bg-amber-400/10 border border-amber-400/40 rounded-full px-[12px] mobile:shrink-0">
-            <span className="text-[12px] font-[700] text-amber-400 whitespace-nowrap" title={t('viral_paused_title', 'Đang tạm dừng sản xuất — bài dừng ở "Chờ duyệt", duyệt không tự sản xuất.')}>
-              ⏸ {t('viral_paused_short', 'Đang tạm dừng')}
-            </span>
-            {isSuperAdmin && (
-              <button
-                onClick={resumeProduction}
-                className="h-[24px] px-[10px] rounded-full text-[12px] font-[700] bg-[#57D9A3]/15 text-[#57D9A3] hover:bg-[#57D9A3]/25 whitespace-nowrap"
-              >
-                ▶ {t('viral_resume_production_btn', 'Resume')}
-              </button>
-            )}
-          </div>
-        )}
+        {/* Trạng thái phanh giờ hiện NGAY TRÊN 2 mũi tên của luồng (hàng 1) —
+            pill "Đang tạm dừng" cũ đã gỡ. */}
         <div className="flex-1 mobile:min-w-[8px]" />
         {(isTopicTab || isReady) && selectModeBtn}
         {isTopicTab && (

@@ -40,9 +40,15 @@ interface ViralConfig {
   rewriteMaxRounds: number;
   // Duyệt (tự động hoặc tay) → tự sản xuất định dạng AI đề xuất.
   autoProduce: boolean;
-  // ⏸ DỪNG SẢN XUẤT: bật = KHÔNG tự duyệt (mọi content dừng ở Chờ duyệt dù
-  // điểm cao đến mấy) và KHÔNG tự sản xuất (kể cả khi duyệt tay). Bỏ vẫn tự bỏ.
-  productionPaused: boolean;
+  // ⏸ 2 PHANH ĐỘC LẬP trên 2 mũi tên của luồng ①Chờ duyệt → ②Đã duyệt → ③Chờ đăng
+  // (thay cho productionPaused cũ chặn cả 2):
+  // - pauseApprove (mũi tên ①→②): chặn TỰ DUYỆT — content dồn ở Chờ duyệt,
+  //   không chạy vòng viết lại (tốn AI vô ích); điểm quá thấp VẪN tự bỏ;
+  //   duyệt TAY vẫn được và vẫn kích sản xuất nếu phanh ② đang mở.
+  // - pauseProduce (mũi tên ②→③): chặn TỰ SẢN XUẤT — duyệt (tay/tự) xong thẻ
+  //   nằm ở Đã duyệt, không chạy AI sản xuất.
+  pauseApprove: boolean;
+  pauseProduce: boolean;
   // GỬI BẢN TIN: danh sách người nhận. type 'user'/'group' = Zalo (bạn bè/nhóm),
   // 'email' = địa chỉ email (threadId chứa email). Toggle tự gửi sau mỗi bản
   // tin, và giờ gửi (-1 = ngay khi có bản tin, 0-23 = gom gửi vào giờ đó).
@@ -72,7 +78,8 @@ const config: ViralConfig = {
   autoSkipMax: 70,
   rewriteMaxRounds: 3,
   autoProduce: true,
-  productionPaused: false,
+  pauseApprove: false,
+  pauseProduce: false,
   reportRecipients: [],
   reportAutoSend: true,
   reportSendHour: -1,
@@ -131,8 +138,14 @@ try {
     typeof raw?.rewriteMaxRounds === 'number' ? raw.rewriteMaxRounds : 3;
   config.autoProduce =
     typeof raw?.autoProduce === 'boolean' ? raw.autoProduce : true;
-  config.productionPaused =
-    typeof raw?.productionPaused === 'boolean' ? raw.productionPaused : false;
+  // Di trú từ phanh cũ: productionPaused=true (chặn cả 2) → bật cả 2 phanh mới.
+  {
+    const legacyPaused = raw?.productionPaused === true;
+    config.pauseApprove =
+      typeof raw?.pauseApprove === 'boolean' ? raw.pauseApprove : legacyPaused;
+    config.pauseProduce =
+      typeof raw?.pauseProduce === 'boolean' ? raw.pauseProduce : legacyPaused;
+  }
   config.reportRecipients = sanitizeRecipients(raw?.reportRecipients);
   config.reportAutoSend =
     typeof raw?.reportAutoSend === 'boolean' ? raw.reportAutoSend : true;
@@ -198,7 +211,8 @@ export function getViralStatus() {
     autoSkipMax: config.autoSkipMax,
     rewriteMaxRounds: config.rewriteMaxRounds,
     autoProduce: config.autoProduce,
-    productionPaused: config.productionPaused,
+    pauseApprove: config.pauseApprove,
+    pauseProduce: config.pauseProduce,
     reportRecipients: config.reportRecipients,
     reportAutoSend: config.reportAutoSend,
     reportSendHour: config.reportSendHour,
@@ -239,8 +253,15 @@ export function setViralConfig(patch: Partial<ViralConfig>) {
   if (typeof patch.rewriteMaxRounds === 'number')
     config.rewriteMaxRounds = Math.max(0, Math.min(5, Math.round(patch.rewriteMaxRounds)));
   if (typeof patch.autoProduce === 'boolean') config.autoProduce = patch.autoProduce;
-  if (typeof patch.productionPaused === 'boolean')
-    config.productionPaused = patch.productionPaused;
+  if (typeof patch.pauseApprove === 'boolean')
+    config.pauseApprove = patch.pauseApprove;
+  if (typeof patch.pauseProduce === 'boolean')
+    config.pauseProduce = patch.pauseProduce;
+  // Tương thích client cũ còn gửi productionPaused: gạt CẢ 2 phanh như cũ.
+  if (typeof (patch as any).productionPaused === 'boolean') {
+    config.pauseApprove = (patch as any).productionPaused;
+    config.pauseProduce = (patch as any).productionPaused;
+  }
   if (patch.reportRecipients !== undefined)
     config.reportRecipients = sanitizeRecipients(patch.reportRecipients);
   if (typeof patch.reportAutoSend === 'boolean')

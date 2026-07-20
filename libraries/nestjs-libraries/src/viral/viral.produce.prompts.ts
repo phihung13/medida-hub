@@ -85,10 +85,11 @@ export function buildPodcastPrompt(r: ProduceInput): { system: string; user: str
   sys += '\n\n' + diversityBlock(evMode, '- TỐI ĐA 1 điểm tựa cho CẢ TẬP.');
   sys += '\n\n' + getSkill('cta-that');
   sys +=
-    '\n\nTRẢ VỀ theo 3 khối, mỗi nhãn trên MỘT DÒNG RIÊNG, nội dung ngay dòng dưới (KHÔNG dùng JSON, KHÔNG bọc ```):\n' +
+    '\n\nTRẢ VỀ theo 4 khối, mỗi nhãn trên MỘT DÒNG RIÊNG, nội dung ngay dòng dưới (KHÔNG dùng JSON, KHÔNG bọc ```):\n' +
     '[[TITLE]]\ntên tập ngắn, hấp dẫn\n' +
     '[[MINUTES]]\nsố phút ước lượng (chỉ con số, vd 3)\n' +
-    '[[SCRIPT]]\ntoàn bộ lời đọc liền mạch, văn bản thuần, KHÔNG ký hiệu/gạch đầu dòng';
+    '[[SCRIPT]]\ntoàn bộ lời đọc liền mạch, văn bản thuần, KHÔNG ký hiệu/gạch đầu dòng\n' +
+    '[[CLIMAX]]\n1 câu trích NGUYÊN VĂN từ SCRIPT ở đoạn cao trào cảm xúc nhất (nhạc nền sẽ dâng lên đúng chỗ câu này)';
   const user =
     'Chủ đề: ' + (r.topic || '') +
     '\nNội dung định hướng (đã tối ưu cho nhóm khách): ' + (r.idea || '') +
