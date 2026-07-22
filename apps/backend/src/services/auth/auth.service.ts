@@ -122,13 +122,22 @@ export class AuthService {
               )
             : false;
 
+        // Người được MỜI: kích hoạt NGAY (link mời = bằng chứng email) và KHÔNG
+        // gửi email xác thực — vào thẳng. Người tự đăng ký thì vẫn xác thực email.
+        if (invited) {
+          await this._userService.activateUser(create.users[0].user.id);
+          create.users[0].user.activated = true;
+        }
+
         const obj = { addedOrg, jwt: await this.jwt(create.users[0].user) };
-        await this._emailService.sendEmail(
-          body.email,
-          'Activate your account',
-          `Click <a href="${process.env.FRONTEND_URL}/auth/activate/${obj.jwt}">here</a> to activate your account`,
-          'top'
-        );
+        if (!invited) {
+          await this._emailService.sendEmail(
+            body.email,
+            'Activate your account',
+            `Click <a href="${process.env.FRONTEND_URL}/auth/activate/${obj.jwt}">here</a> to activate your account`,
+            'top'
+          );
+        }
         return obj;
       }
 
@@ -282,7 +291,7 @@ export class AuthService {
     );
   }
 
-  forgotReturn(body: ForgotReturnPasswordDto) {
+  async forgotReturn(body: ForgotReturnPasswordDto) {
     const user = AuthChecker.verifyJWT(body.token) as {
       id: string;
       expires: string;
@@ -291,7 +300,16 @@ export class AuthService {
       return false;
     }
 
-    return this._userService.updatePassword(user.id, body.password);
+    const updated = await this._userService.updatePassword(
+      user.id,
+      body.password
+    );
+    // Đặt lại mật khẩu qua link ĐÃ KÝ (admin "Đặt lại mật khẩu" / quên mật khẩu)
+    // = bằng chứng sở hữu → kích hoạt luôn, để gỡ kẹt tài khoản được mời trước
+    // đây bị tạo mà chưa kích hoạt (nếu không sẽ đổi được mật khẩu mà vẫn không
+    // đăng nhập được vì "User is not activated").
+    await this._userService.activateUser(user.id).catch(() => null);
+    return updated;
   }
 
   async activate(code: string, tracking: string) {

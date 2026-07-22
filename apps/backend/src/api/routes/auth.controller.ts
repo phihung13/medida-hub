@@ -60,8 +60,14 @@ export class AuthController {
         getOrgFromCookie
       );
 
+      // Người được MỜI qua link admin (cookie `org` hợp lệ) KHÔNG phải xác thực
+      // email — lời mời đã là bằng chứng email. Trước đây khi có cấu hình email
+      // thì mọi đăng ký (kể cả người được mời) đều bị đẩy ra màn "activate your
+      // account" → email không tới là kẹt, đăng nhập lại báo "đã trong nhóm".
       const activationRequired =
-        body.provider === 'LOCAL' && this._emailService.hasProvider();
+        body.provider === 'LOCAL' &&
+        this._emailService.hasProvider() &&
+        !getOrgFromCookie;
 
       if (activationRequired) {
         response.header('activate', 'true');
