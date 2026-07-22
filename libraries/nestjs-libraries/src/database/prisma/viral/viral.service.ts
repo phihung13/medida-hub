@@ -2629,24 +2629,35 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
       });
       if (!audioRes.ok) throw new Error(`Không tải được audio (HTTP ${audioRes.status}).`);
       let buf = Buffer.from(await audioRes.arrayBuffer());
-      // trộn nhạc nền nếu job chọn + có file nhạc + có ffmpeg (lỗi → giọng thuần)
+      // trộn nhạc nền nếu job chọn + có file nhạc + có ffmpeg (lỗi → giọng thuần
+      // nhưng GHI LÝ DO vào meta.bgmNote để chẩn đoán, không nuốt im lặng nữa)
       let bgmMixed = false;
+      let bgmNote = '';
       let wantBgm = false;
       try {
         wantBgm = !!JSON.parse(product.meta || '{}')?.bgm;
       } catch {
         /* meta hỏng — không trộn */
       }
-      if (wantBgm && hasBgm()) {
+      if (!wantBgm) {
+        bgmNote = 'không chọn ghép nhạc';
+      } else if (!hasBgm()) {
+        bgmNote = 'chưa upload file nhạc nền (viral-bgm.mp3)';
+      } else {
         // truyền câu [[CLIMAX]] + script để nhạc dâng đúng đoạn cao trào
         const mixed = await this.mixBgm(
           buf,
           String((script as any).climax_quote || ''),
           String(script.full_script || '')
-        ).catch(() => null);
+        ).catch((e: any) => {
+          bgmNote = 'lỗi ffmpeg: ' + String(e?.message || e).slice(0, 200);
+          return null;
+        });
         if (mixed) {
           buf = mixed;
           bgmMixed = true;
+        } else if (!bgmNote) {
+          bgmNote = 'ffmpeg không tạo được bản trộn (kiểm tra ffmpeg/ffprobe trong PATH)';
         }
       }
       const file = await this.storage.uploadSimple(
@@ -2670,6 +2681,7 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
         meta: JSON.stringify({
           est_minutes: script.est_minutes || null,
           bgm: bgmMixed,
+          bgmNote: bgmMixed ? '' : bgmNote,
           bytes: buf.length,
           durationSec,
         }),

@@ -1099,6 +1099,8 @@
   "viral_chan_tip": "Chấm bộ ảnh này nên đăng lên (những) kênh Facebook nào",
   "viral_site_ok": "Đã gợi ý kênh đăng.",
   "viral_site_fail": "Chưa gợi ý được kênh — thử lại sau.",
+  "viral_pod_has_bgm": "Đã ghép nhạc nền (intro/outro + tự hạ nhạc dưới lời)",
+  "viral_pod_no_bgm": "Giọng thuần — chưa ghép nhạc nền",
   "viral_bgm_remove": "Xoá",
   "viral_import_sources": "Nhập bộ nguồn n8n",
   "viral_import_sources_hint": "KOL, trường đối thủ, group phụ huynh (cần Apify) + 10 từ khoá Google News (free)",

@@ -1544,9 +1544,12 @@ const ProduceModal: FC<{ ids: string[]; source: 'post' | 'clone' | 'topic'; onDo
     if (!formats.size) return;
     setBusy(true);
     try {
+      // Gửi ĐÚNG ý muốn của user (toggle nhạc); backend tự quyết bằng hasBgm()
+      // — KHÔNG cổng theo cfg.hasBgm ở đây nữa vì cfg tải bất đồng bộ dễ bị
+      // đóng băng 'undefined' trong closure → trước đây luôn gửi bgm:false.
       const res = await fetch('/viral/produce', {
         method: 'POST',
-        body: JSON.stringify({ ids, source, formats: [...formats], bgm: bgm && !!cfg?.hasBgm }),
+        body: JSON.stringify({ ids, source, formats: [...formats], bgm }),
       });
       const d = await res.json().catch(() => null);
       if (!res.ok) throw new Error(d?.message || '');
@@ -1561,7 +1564,7 @@ const ProduceModal: FC<{ ids: string[]; source: 'post' | 'clone' | 'topic'; onDo
     } finally {
       setBusy(false);
     }
-  }, [ids, source, formats, onDone]);
+  }, [ids, source, formats, bgm, onDone]);
   const OPTIONS = [
     { key: 'blog', desc: t('viral_produce_blog_desc', 'SEO article for the website (EEAT structure) — download as .docx') },
     { key: 'infographic', desc: t('viral_produce_info_desc', 'AI-designed image (Gemini) — saved to Media library') },
@@ -1662,6 +1665,16 @@ const ProductDetailModal: FC<{ product: any }> = ({ product }) => {
       )}
       {product.format === 'podcast' && product.mediaPath && (
         <audio controls src={product.mediaPath} className="w-full" />
+      )}
+      {product.format === 'podcast' && (
+        meta.bgm ? (
+          <div className="text-[11.5px] text-[#57D9A3]">🎵 {t('viral_pod_has_bgm', 'Đã ghép nhạc nền (intro/outro + tự hạ nhạc dưới lời)')}</div>
+        ) : (
+          <div className="text-[11.5px] text-[#FFC53D] leading-[1.5]">
+            🎙 {t('viral_pod_no_bgm', 'Giọng thuần — chưa ghép nhạc nền')}
+            {meta.bgmNote ? ` (${meta.bgmNote})` : ''}
+          </div>
+        )
       )}
       {product.format === 'blog' && product.textContent && (
         <div
