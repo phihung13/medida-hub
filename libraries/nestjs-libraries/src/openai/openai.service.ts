@@ -958,6 +958,49 @@ CHI tra JSON array: [{"profile_id","moi_quan_tam","tam_ly","hanh_vi","insights"}
     };
   }
 
+  // GỢI Ý KÊNH: chấm 1 bài blog nên đăng trang nào (hệ sinh thái 4 website).
+  // Gọi RIÊNG sau khi viết blog, dùng claudeJson (an toàn — trả null nếu lỗi) để
+  // KHÔNG bao giờ làm hỏng bài. Validate site về whitelist, sai thì bỏ gợi ý.
+  async viralSuggestBlogSite(
+    system: string,
+    user: string,
+    whitelist: readonly string[]
+  ): Promise<{ site: string; why: string; angle_note: string } | null> {
+    const r = await claudeJson<{
+      site?: string;
+      why?: string;
+      angle_note?: string;
+    }>(system, user, 500);
+    const site = String(r?.site || '').trim().toLowerCase();
+    if (!site || !whitelist.includes(site)) return null;
+    return {
+      site,
+      why: String(r?.why || '').slice(0, 300),
+      angle_note: String(r?.angle_note || '').slice(0, 300),
+    };
+  }
+
+  // GỢI Ý KÊNH FACEBOOK cho 1 bộ infographic — trả MẢNG (có thể nhiều kênh).
+  // Validate id về danh sách kênh thật; bỏ id bịa/trùng. Lỗi → mảng rỗng.
+  async viralSuggestChannels(
+    system: string,
+    user: string,
+    validIds: string[]
+  ): Promise<{ id: string; why: string }[]> {
+    const r = await claudeJson<{
+      picks?: { id?: string; why?: string }[];
+    }>(system, user, 700);
+    const seen = new Set<string>();
+    const out: { id: string; why: string }[] = [];
+    for (const p of Array.isArray(r?.picks) ? r!.picks! : []) {
+      const id = String(p?.id || '').trim();
+      if (!id || seen.has(id) || !validIds.includes(id)) continue;
+      seen.add(id);
+      out.push({ id, why: String(p?.why || '').slice(0, 300) });
+    }
+    return out;
+  }
+
   // SẢN XUẤT: soạn BỘ SLIDE carousel infographic (như node "Soạn truyện" n8n)
   // — Claude trả json bộ slide, Gemini vẽ từng slide ở viral.service.
   async viralProduceCarousel(

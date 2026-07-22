@@ -69,6 +69,94 @@ export function buildBlogPrompt(r: ProduceInput): { system: string; user: string
   return { system: sys, user };
 }
 
+// ── GỢI Ý KÊNH ĐĂNG BLOG (hệ sinh thái 4 website) ────────────────────────────
+// Sau khi sản xuất 1 bài blog, chấm xem NÊN ĐĂNG Ở TRANG NÀO để dễ viral + lên
+// hạng, không giẫm chân nhau. Quyết định bằng "câu hỏi kiểm tra" của từng trang.
+// Chạy ở 1 lượt gọi RIÊNG, có try/catch — lỗi thì bỏ gợi ý, KHÔNG làm hỏng bài.
+export const ECOSYSTEM_SITES = [
+  'truongvietanh.com',
+  'nguyenmanhduong.com',
+  'schoolfeast.com',
+  'singablemum.com',
+] as const;
+export type EcosystemSite = (typeof ECOSYSTEM_SITES)[number];
+
+const SITE_ROUTING_RUBRIC = `HỆ SINH THÁI 4 WEBSITE — mục tiêu: mỗi dạng bài đăng ĐÚNG TRANG để dễ viral, lên hạng tìm kiếm nhanh, KHÔNG tự cạnh tranh từ khóa của nhau. Quyết định bằng CÂU HỎI KIỂM TRA của từng trang — bài thuộc trang nào phải trả lời "Có" với câu hỏi trang đó.
+
+1) truongvietanh.com — "Phụ huynh có gõ câu này lên Google không?"
+   Kiến thức chuẩn/khách quan: học thuật & phương pháp giáo dục (Montessori, IELTS, GDPT 2018...), hướng dẫn theo mùa (chọn trường, điểm chuẩn lớp 10, chuyển cấp — đăng trước mùa 4–6 tuần), checklist / so sánh trung lập / FAQ (dễ lên Featured Snippet). Vai: cỗ máy SEO kéo phụ huynh vào phễu tuyển sinh.
+   KHÔNG hợp: bài quan điểm gây tranh cãi, PR lộ liễu, so sánh nêu tên trường khác.
+
+2) nguyenmanhduong.com — "Bài này có cần chữ 'tôi' mới hay không?"
+   Quan điểm / trải nghiệm cá nhân của nhà sáng lập, bài "nói ngược" số đông có căn cứ, phản ứng sự kiện giáo dục nóng (trong 48h), chân dung / câu chuyện con người (liều lượng thấp). Vai: xây niềm tin founder, viral qua Facebook.
+   KHÔNG hợp: bài hướng dẫn khô kiểu SEO không có chữ "tôi".
+
+3) schoolfeast.com — "HR / chủ doanh nghiệp có quan tâm không?"
+   An toàn thực phẩm, quy trình bếp, kiểm thực 3 bước, dinh dưỡng dân văn phòng, chi phí suất ăn, guide cho HR, newsjacking vụ ngộ độc (viết kiểu "bài học rút ra", tuyệt đối không hả hê). Vai: B2B suất ăn, kéo khách doanh nghiệp.
+   KHÔNG hợp: nội dung nuôi dạy con, tuyển sinh (lạc tệp B2B).
+
+4) singablemum.com — "Mẹ có con 0–6 tuổi có thấy chính mình trong đó không?"
+   Giáo dục sớm 0–6 tuổi, mốc phát triển theo tháng tuổi, bài hát / ngôn ngữ / cảm xúc cho bé, tâm sự đồng cảm hành trình làm mẹ. Vai: nuôi tệp mẹ bỉm từ đầu phễu.
+   KHÔNG hợp: nội dung tuyển sinh, học thuật cấp 2–3.
+
+VÙNG GIAO NHAU (nuôi dạy con là chủ đề cả nhà cùng chạm): cùng chủ đề nhưng phải KHÁC góc nhìn + KHÁC từ khóa chính để không tự cạnh tranh thứ hạng. Nếu bài chạm nhiều trang, chọn TRANG HỢP NHẤT theo câu hỏi kiểm tra; nếu bài đang viết giọng nhà trường (khách quan) nhưng nội dung hợp trang khác hơn, hãy nêu điều đó ở angle_note kèm gợi ý biến tấu.`;
+
+// Chấm gợi ý kênh cho 1 bài blog ĐÃ CÓ (từ tiêu đề + meta + trích thân bài).
+export function buildSiteRoutingPrompt(x: {
+  topic?: string;
+  idea?: string;
+  title?: string;
+  meta_description?: string;
+  tags?: string[] | string;
+  category?: string;
+}): { system: string; user: string } {
+  const system =
+    'Bạn là biên tập trưởng của hệ sinh thái 4 website dưới đây. Nhiệm vụ: đọc 1 bài blog đã sản xuất và quyết định NÊN ĐĂNG Ở TRANG NÀO cho hiệu quả nhất (dễ viral + lên hạng, không giẫm chân nhau). Chấm theo NỘI DUNG/CHỦ ĐỀ bài, độc lập với giọng văn đã viết.\n\n' +
+    SITE_ROUTING_RUBRIC +
+    '\n\nTRẢ VỀ DUY NHẤT 1 JSON:\n' +
+    '{"site":"<đúng 1 trong: ' +
+    ECOSYSTEM_SITES.join(' / ') +
+    '>","why":"<1 câu NGẮN tiếng Việt: khớp câu hỏi kiểm tra nào + thế mạnh (SEO / viral / B2B)>","angle_note":"<tùy chọn: cảnh báo lệch tệp hoặc gợi ý biến tấu cho trang khác; để chuỗi rỗng nếu không cần>"}';
+  const tags = Array.isArray(x.tags) ? x.tags.join(', ') : x.tags || '';
+  const user =
+    'Tiêu đề: ' + (x.title || x.topic || '') +
+    '\nMeta description: ' + (x.meta_description || '') +
+    '\nTags: ' + tags +
+    '\nChủ đề gốc: ' + (x.topic || '') +
+    '\nNhóm khách (persona): ' + (x.category || '') +
+    '\nTrích nội dung: ' + String(x.idea || '').slice(0, 1500);
+  return { system, user };
+}
+
+// Chấm gợi ý KÊNH FACEBOOK cho 1 bộ infographic. Khác blog (chọn 1 trang cho
+// SEO khỏi cạnh tranh) — social ĐĂNG CHÉO nhiều kênh vô tư, nên cho chọn NHIỀU.
+// Chỉ chấm trong danh sách kênh FB đang kết nối; không hợp kênh nào thì để rỗng.
+export function buildChannelRoutingPrompt(
+  x: { topic?: string; title?: string; caption?: string; category?: string },
+  channels: { id: string; name: string }[]
+): { system: string; user: string } {
+  const list = channels
+    .map((c) => `- id=${c.id} · tên: ${c.name}`)
+    .join('\n');
+  const system =
+    'Bạn là biên tập trưởng mảng mạng xã hội của hệ sinh thái giáo dục dưới đây. Nhiệm vụ: đọc 1 bộ ảnh (infographic/carousel) đã sản xuất và chọn NÊN ĐĂNG LÊN (những) KÊNH FACEBOOK NÀO trong danh sách kênh đang kết nối cho đúng tệp khán giả.\n\n' +
+    SITE_ROUTING_RUBRIC +
+    '\n\nNGUYÊN TẮC CHỌN KÊNH FACEBOOK:\n' +
+    '- Khớp NỘI DUNG bộ ảnh với tệp khán giả của từng kênh (đoán qua TÊN kênh + khung 4 thương hiệu ở trên: Trường Việt Anh = phụ huynh/tuyển sinh · Nguyễn Mạnh Dương = quan điểm founder · School Feast = HR/suất ăn B2B · Singable Mum = mẹ bỉm 0–6 tuổi).\n' +
+    '- ĐĂNG CHÉO thoải mái: 1 bộ ảnh có thể hợp NHIỀU kênh (khác blog — social không lo cạnh tranh SEO). Chọn TẤT CẢ kênh thật sự hợp tệp; đừng gán bừa kênh lệch tệp.\n' +
+    '- CHỈ được chọn trong danh sách id bên dưới; KHÔNG bịa id. Không kênh nào hợp thì trả picks rỗng.\n\n' +
+    'DANH SÁCH KÊNH FACEBOOK ĐANG KẾT NỐI:\n' +
+    (list || '(chưa có kênh Facebook nào)') +
+    '\n\nTRẢ VỀ DUY NHẤT 1 JSON:\n' +
+    '{"picks":[{"id":"<đúng 1 id trong danh sách>","why":"<1 câu NGẮN vì sao hợp kênh này>"}],"note":"<tùy chọn: lưu ý chung, để rỗng nếu không cần>"}';
+  const user =
+    'Tiêu đề bộ ảnh: ' + (x.title || x.topic || '') +
+    '\nChủ đề gốc: ' + (x.topic || '') +
+    '\nNhóm khách (persona): ' + (x.category || '') +
+    '\nCaption đăng kèm: ' + String(x.caption || '').slice(0, 800);
+  return { system, user };
+}
+
 // ── PODCAST ─────────────────────────────────────────────────────────────────
 export function buildPodcastPrompt(r: ProduceInput): { system: string; user: string } {
   const evMode = evidenceMode(r.id, 'pod');

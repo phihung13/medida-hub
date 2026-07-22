@@ -25,8 +25,11 @@ import {
 import {
   buildBlogPrompt,
   buildCarouselPrompt,
+  buildChannelRoutingPrompt,
   buildPodcastPrompt,
+  buildSiteRoutingPrompt,
   carouselSlidePrompt,
+  ECOSYSTEM_SITES,
   ProduceInput,
 } from '@gitroom/nestjs-libraries/viral/viral.produce.prompts';
 import { VIRAL_DEFAULT_SOURCES } from '@gitroom/nestjs-libraries/viral/viral.default.sources';
@@ -2290,6 +2293,103 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
     return null;
   }
 
+  // Chấm 1 bài blog nên đăng trang nào (hệ sinh thái 4 website). Trả null nếu
+  // AI không chắc / lỗi — nơi gọi tự quyết định bỏ qua.
+  private async suggestSiteFor(x: {
+    topic?: string;
+    idea?: string;
+    title?: string;
+    meta_description?: string;
+    tags?: string[] | string;
+    category?: string;
+  }): Promise<{ site: string; why: string; angle_note: string } | null> {
+    const { system, user } = buildSiteRoutingPrompt(x);
+    return this._openai.viralSuggestBlogSite(system, user, ECOSYSTEM_SITES);
+  }
+
+  // Chấm 1 bộ infographic nên đăng lên (những) KÊNH FACEBOOK nào đang kết nối.
+  // Trả [] nếu không có kênh FB / AI không chọn được. Kèm tên kênh để hiện chip.
+  private async suggestChannelsForOrg(
+    orgId: string,
+    x: { topic?: string; title?: string; caption?: string; category?: string }
+  ): Promise<{ id: string; name: string; why: string }[]> {
+    const list = await this._integrationService.getIntegrationsList(orgId);
+    const fb = (list || [])
+      .filter(
+        (i: any) => i.providerIdentifier === 'facebook' && !i.disabled
+      )
+      .map((i: any) => ({ id: i.id, name: i.name }));
+    if (!fb.length) return [];
+    const { system, user } = buildChannelRoutingPrompt(x, fb);
+    const picks = await this._openai.viralSuggestChannels(
+      system,
+      user,
+      fb.map((c) => c.id)
+    );
+    const byId = new Map(fb.map((c) => [c.id, c.name]));
+    return picks.map((p) => ({ id: p.id, name: byId.get(p.id) || '', why: p.why }));
+  }
+
+  // BACKFILL: chấm gợi ý kênh cho 1 sản phẩm ĐÃ SẢN XUẤT (nút "🌐 Gợi ý kênh" ở
+  // các bài cũ chưa có). Blog → gợi ý website; infographic → gợi ý kênh FB.
+  // Dựng đầu vào từ chính product (khỏi phụ thuộc bài nguồn đã có thể bị xóa).
+  async suggestForProduct(orgId: string, id: string) {
+    const product = await this._repo.getProduct(orgId, id);
+    if (!product) throw new Error('Không tìm thấy sản phẩm.');
+    let meta: any = {};
+    try {
+      meta = product.meta ? JSON.parse(product.meta) : {};
+    } catch {
+      meta = {};
+    }
+
+    if (product.format === 'blog') {
+      // trích thân bài (bỏ thẻ HTML) làm ngữ cảnh chấm
+      const excerpt = String(product.textContent || '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 1500);
+      const site = await this.suggestSiteFor({
+        topic: product.topic || product.title,
+        idea: excerpt || meta.meta_description,
+        title: product.title,
+        meta_description: meta.meta_description,
+        tags: meta.tags,
+      });
+      if (!site) throw new Error('AI chưa chấm được trang phù hợp — thử lại sau.');
+      const nextMeta = {
+        ...meta,
+        suggestSite: site.site,
+        suggestSiteWhy: site.why,
+        suggestSiteAngle: site.angle_note,
+      };
+      await this._repo.updateProduct(id, {
+        meta: JSON.stringify(nextMeta).slice(0, 3000),
+      });
+      return { ok: true, format: 'blog', ...site };
+    }
+
+    if (product.format === 'infographic') {
+      const channels = await this.suggestChannelsForOrg(orgId, {
+        topic: product.topic || product.title,
+        title: product.title,
+        caption: product.textContent,
+      });
+      if (!channels.length)
+        throw new Error(
+          'Chưa gợi ý được kênh — cần có kênh Facebook đang kết nối và nội dung phù hợp.'
+        );
+      const nextMeta = { ...meta, suggestChannels: channels };
+      await this._repo.updateProduct(id, {
+        meta: JSON.stringify(nextMeta).slice(0, 8000),
+      });
+      return { ok: true, format: 'infographic', channels };
+    }
+
+    throw new Error('Chỉ gợi ý kênh cho bài blog hoặc bộ infographic.');
+  }
+
   private async produceOne(orgId: string, product: any) {
     const input = await this.produceInput(orgId, product);
     if (!input) throw new Error('Bài nguồn không còn (đã bị xóa?).');
@@ -2299,6 +2399,16 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
       const out = await this._openai.viralProduceBlog(system, user);
       if (!out?.body_html)
         throw new Error('AI trả JSON hợp lệ nhưng thiếu body_html — bấm Thử lại.');
+      // Gợi ý kênh đăng theo hệ sinh thái 4 website — lượt gọi RIÊNG, lỗi thì
+      // bỏ qua chứ KHÔNG làm hỏng bài đã viết xong.
+      const site = await this.suggestSiteFor({
+        topic: input.topic,
+        idea: out.meta_description || input.idea,
+        title: out.title,
+        meta_description: out.meta_description,
+        tags: out.tags,
+        category: input.category,
+      }).catch(() => null);
       await this._repo.updateProduct(product.id, {
         status: 'done',
         title: String(out.title || input.topic).slice(0, 300),
@@ -2307,6 +2417,13 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
           slug: out.slug || 'blog',
           meta_description: out.meta_description || '',
           tags: Array.isArray(out.tags) ? out.tags.slice(0, 12) : [],
+          ...(site
+            ? {
+                suggestSite: site.site,
+                suggestSiteWhy: site.why,
+                suggestSiteAngle: site.angle_note,
+              }
+            : {}),
         }).slice(0, 3000),
         error: null,
       });
@@ -2426,6 +2543,14 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
         // giãn nhịp giữa các slide — model ảnh có hạn mức/phút thấp
         if (i < slides.length - 1) await new Promise((r) => setTimeout(r, 5000));
       }
+      // Gợi ý (những) kênh Facebook nên đăng bộ ảnh này — lượt gọi RIÊNG, lỗi/
+      // thiếu kênh thì bỏ qua, KHÔNG làm hỏng bộ ảnh đã vẽ xong.
+      const channels = await this.suggestChannelsForOrg(orgId, {
+        topic: input.topic,
+        title: story.title,
+        caption: story.fb_caption,
+        category: input.category,
+      }).catch(() => []);
       await this._repo.updateProduct(product.id, {
         status: 'done',
         title: String(story.title || input.topic).slice(0, 300),
@@ -2437,7 +2562,12 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
         // slides = [{id, path}]: id media để nút "Đăng lên Lịch" đính ảnh.
         // Xong bộ thì BỎ kịch bản checkpoint khỏi meta — nó chỉ để vẽ tiếp lúc
         // dở dang, giữ lại sẽ phình meta và có nguy cơ chạm trần cắt 8000.
-        meta: JSON.stringify({ ratio: '1:1', slides: slideItems, total: slideItems.length }).slice(0, 8000),
+        meta: JSON.stringify({
+          ratio: '1:1',
+          slides: slideItems,
+          total: slideItems.length,
+          ...(channels.length ? { suggestChannels: channels } : {}),
+        }).slice(0, 8000),
         error: null,
       });
       return;

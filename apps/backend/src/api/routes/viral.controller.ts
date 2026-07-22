@@ -611,6 +611,21 @@ export class ViralController {
     return res;
   }
 
+  // Gợi ý kênh đăng cho 1 sản phẩm ĐÃ SẢN XUẤT — dùng cho bài cũ chưa có gợi ý
+  // (bài mới đã tự chấm khi sản xuất). Blog → website; infographic → kênh FB.
+  @Post('/products/:id/suggest')
+  async suggestProduct(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string
+  ) {
+    this.assertCanModerate(org);
+    try {
+      return await this._service.suggestForProduct(org.id, id);
+    } catch (e: any) {
+      throw new HttpException(e?.message || 'Không gợi ý được kênh.', 400);
+    }
+  }
+
   // Blog → .docx (base64) — frontend tự tạo file tải về.
   @Get('/products/:id/docx')
   async productDocx(

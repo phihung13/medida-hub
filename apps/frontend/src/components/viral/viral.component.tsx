@@ -1611,6 +1611,32 @@ const ProductDetailModal: FC<{ product: any }> = ({ product }) => {
     <div className="flex flex-col gap-[12px]">
       <div className="text-[15px] font-[700] leading-[1.4]">{product.title || product.topic}</div>
       {meta.meta_description && <div className="text-[12px] italic text-textItemBlur">{meta.meta_description}</div>}
+      {product.format === 'blog' && meta.suggestSite && (
+        <div className="rounded-[10px] bg-btnPrimary/10 border border-btnPrimary/25 p-[10px] flex flex-col gap-[3px]">
+          <div className="text-[12.5px] font-[700] text-btnPrimary">
+            🌐 {t('viral_suggest_site_label', 'Gợi ý đăng trang')}: {meta.suggestSite}
+          </div>
+          {meta.suggestSiteWhy && (
+            <div className="text-[11.5px] text-textItemBlur leading-[1.5]">{meta.suggestSiteWhy}</div>
+          )}
+          {meta.suggestSiteAngle && (
+            <div className="text-[11.5px] text-[#FFC53D] leading-[1.5]">💡 {meta.suggestSiteAngle}</div>
+          )}
+        </div>
+      )}
+      {product.format === 'infographic' && Array.isArray(meta.suggestChannels) && meta.suggestChannels.length > 0 && (
+        <div className="rounded-[10px] bg-[#5EA2FF]/10 border border-[#5EA2FF]/25 p-[10px] flex flex-col gap-[4px]">
+          <div className="text-[12.5px] font-[700] text-[#5EA2FF]">
+            📘 {t('viral_suggest_channels_label', 'Gợi ý đăng kênh Facebook')}
+          </div>
+          {meta.suggestChannels.map((c: any) => (
+            <div key={c.id} className="text-[11.5px] leading-[1.5]">
+              <span className="font-[700]">{c.name}</span>
+              {c.why && <span className="text-textItemBlur"> — {c.why}</span>}
+            </div>
+          ))}
+        </div>
+      )}
       {product.format === 'infographic' && product.mediaPath && (
         // bộ carousel (meta.slides) — hiện đủ cả bộ; bản cũ 1 ảnh vẫn hiện được
         <div className="flex flex-col gap-[8px]">
@@ -1663,7 +1689,18 @@ const PostProductModal: FC<{ product: any; onDone: () => void }> = ({ product, o
   const toast = useToaster();
   const modal = useModals();
   const { data: integrations } = useIntegrationList();
-  const [integrationId, setIntegrationId] = useState('');
+  // Kênh FB do AI gợi ý (meta.suggestChannels) — chọn sẵn kênh đầu + bấm nhanh.
+  const suggestChannels: { id: string; name: string; why: string }[] = (() => {
+    try {
+      const m = product.meta ? JSON.parse(product.meta) : {};
+      return Array.isArray(m?.suggestChannels)
+        ? m.suggestChannels.filter((c: any) => c?.id)
+        : [];
+    } catch {
+      return [];
+    }
+  })();
+  const [integrationId, setIntegrationId] = useState(suggestChannels[0]?.id || '');
   const [busy, setBusy] = useState(false);
   // Bộ ảnh tạo bằng bản CŨ (chưa lưu media id) không đăng được — backend trả cờ
   // needRetry, ta hiện nút "Tạo lại" NGAY trong modal này (đúng chỗ cảnh báo trỏ
@@ -1732,6 +1769,31 @@ const PostProductModal: FC<{ product: any; onDone: () => void }> = ({ product, o
       )}
       {product.textContent && (
         <div className="text-[12.5px] leading-[1.6] whitespace-pre-line max-h-[140px] overflow-auto bg-newColColor rounded-[8px] p-[10px]">{product.textContent}</div>
+      )}
+      {suggestChannels.length > 0 && (
+        <div className="flex flex-col gap-[5px]">
+          <div className="text-[11.5px] font-[700] text-[#5EA2FF]">
+            📘 {t('viral_suggest_channels_label', 'Gợi ý đăng kênh Facebook')}:
+          </div>
+          <div className="flex gap-[6px] flex-wrap">
+            {suggestChannels.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setIntegrationId(c.id)}
+                title={c.why}
+                className={clsx(
+                  'text-[11.5px] font-[700] px-[10px] py-[4px] rounded-full border',
+                  integrationId === c.id
+                    ? 'bg-[#5EA2FF]/20 text-[#5EA2FF] border-[#5EA2FF]/50'
+                    : 'text-[#5EA2FF] border-[#5EA2FF]/30 hover:bg-[#5EA2FF]/10'
+                )}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
       <select value={integrationId} onChange={(e) => setIntegrationId(e.target.value)} className={inputCls}>
         <option value="">{t('viral_write_for_channel', 'Write for channel…')}</option>
@@ -1992,13 +2054,22 @@ const ProductCard: FC<{
   const [busy, setBusy] = useState(false);
   const fm = FORMAT_META[product.format] || { icon: '📦', label: product.format };
   // meta: 📡 rss đã phát hành? + bộ slides carousel (mới [{id,path}], cũ string)
+  // + gợi ý kênh đăng blog (hệ sinh thái 4 website)
   let rssOn = false;
   let slides: string[] = [];
+  let suggestSite = '';
+  let suggestSiteWhy = '';
+  let suggestChannels: { id: string; name: string; why: string }[] = [];
   try {
     const m = JSON.parse(product.meta || '{}');
     rssOn = !!m?.rss?.on;
     slides = Array.isArray(m?.slides)
       ? m.slides.map((s: any) => (typeof s === 'string' ? s : s?.path)).filter(Boolean)
+      : [];
+    suggestSite = String(m?.suggestSite || '');
+    suggestSiteWhy = String(m?.suggestSiteWhy || '');
+    suggestChannels = Array.isArray(m?.suggestChannels)
+      ? m.suggestChannels.filter((c: any) => c?.name)
       : [];
   } catch { /* meta hỏng */ }
   const [zipProg, setZipProg] = useState('');
@@ -2132,6 +2203,23 @@ const ProductCard: FC<{
       setBusy(false);
     }
   };
+  // Chấm gợi ý kênh cho sản phẩm cũ chưa có (bài mới đã tự chấm khi sản xuất).
+  // Blog → gợi ý website; infographic → gợi ý (những) kênh Facebook.
+  const suggestSiteFn = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setBusy(true);
+    try {
+      const res = await fetch(`/viral/products/${product.id}/suggest`, { method: 'POST' });
+      const d = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(d?.message || '');
+      toast.show(t('viral_site_ok', 'Đã gợi ý kênh đăng.'), 'success');
+      onDone();
+    } catch (err: any) {
+      toast.show(err?.message || t('viral_site_fail', 'Chưa gợi ý được kênh — thử lại sau.'), 'warning');
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <div
       ref={cardRef}
@@ -2190,6 +2278,24 @@ const ProductCard: FC<{
           {product.format === 'podcast' && rssOn && (
             <span className="text-[11px] font-[700] px-[9px] py-[3px] rounded-full bg-[#57D9A3]/15 text-[#57D9A3]">📡 RSS</span>
           )}
+          {product.format === 'blog' && suggestSite && (
+            <span
+              title={suggestSiteWhy}
+              className="text-[11px] font-[700] px-[9px] py-[3px] rounded-full bg-btnPrimary/15 text-btnPrimary"
+            >
+              🌐 {suggestSite}
+            </span>
+          )}
+          {product.format === 'infographic' &&
+            suggestChannels.map((c) => (
+              <span
+                key={c.id}
+                title={c.why}
+                className="text-[11px] font-[700] px-[9px] py-[3px] rounded-full bg-[#5EA2FF]/15 text-[#5EA2FF]"
+              >
+                📘 {c.name}
+              </span>
+            ))}
         </div>
         <div className="text-[13.5px] font-[600] leading-[1.4] line-clamp-2">{product.title || product.topic || '—'}</div>
         {product.status === 'error' && product.error && (
@@ -2202,6 +2308,24 @@ const ProductCard: FC<{
           {product.status === 'done' && product.format === 'blog' && (
             <button onClick={downloadDocx} disabled={busy} className="flex-1 py-[6px] rounded-[7px] text-[11.5px] font-[700] bg-btnPrimary/15 text-btnPrimary hover:bg-btnPrimary/25 disabled:opacity-50">
               ⬇ {t('viral_download_docx', 'Download .docx')}
+            </button>
+          )}
+          {/* SP cũ chưa có gợi ý kênh → chấm ngay tại thẻ (tốn 1 lượt AI).
+              Blog → gợi ý website · infographic → gợi ý kênh Facebook */}
+          {canModerate && product.status === 'done' &&
+            ((product.format === 'blog' && !suggestSite) ||
+              (product.format === 'infographic' && !suggestChannels.length)) && (
+            <button
+              onClick={suggestSiteFn}
+              disabled={busy}
+              title={
+                product.format === 'blog'
+                  ? t('viral_site_tip', 'Chấm bài này nên đăng trang nào trong hệ sinh thái 4 website')
+                  : t('viral_chan_tip', 'Chấm bộ ảnh này nên đăng lên (những) kênh Facebook nào')
+              }
+              className="flex-1 py-[6px] rounded-[7px] text-[11.5px] font-[700] text-btnPrimary border border-btnPrimary/40 hover:bg-btnPrimary/10 disabled:opacity-50"
+            >
+              🌐 {t('viral_suggest_site', 'Gợi ý kênh')}
             </button>
           )}
           {/* Member giữ được các nút XEM/TẢI; Đăng/Thử lại/Tạo lại/Xoá = quản trị */}
