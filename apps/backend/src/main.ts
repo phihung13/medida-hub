@@ -86,9 +86,12 @@ async function start() {
     })
   );
 
-  app.use(['/copilot/{*splat}', '/posts'], (req: any, res: any, next: any) => {
-    json({ limit: '50mb' })(req, res, next);
-  });
+  app.use(
+    ['/copilot/{*splat}', '/posts', '/viral/{*splat}'],
+    (req: any, res: any, next: any) => {
+      json({ limit: '50mb' })(req, res, next);
+    }
+  );
 
   app.use(cookieParser());
   app.use(compression());
