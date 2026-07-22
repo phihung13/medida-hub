@@ -2,6 +2,11 @@ import { Injectable } from '@nestjs/common';
 import OpenAI from 'openai';
 import { shuffle } from 'lodash';
 import { getSkill } from '@gitroom/nestjs-libraries/viral/viral.skills';
+import {
+  getTextProvider,
+  getOpenRouterKey,
+  getOpenRouterModel,
+} from '@gitroom/nestjs-libraries/openai/anthropic.key';
 
 // ============================================================================
 //  AI service — Social Hub
@@ -29,12 +34,62 @@ const VIET_ANH_SYSTEM =
 const vietAnhSystem = () =>
   getSkill('he-thong-viet-anh') || VIET_ANH_SYSTEM;
 
-// Gọi Claude, trả về text.
+// Gọi OpenRouter (chuẩn OpenAI chat/completions) — cho DeepSeek… khi user chọn
+// nhà cung cấp OpenRouter trong Settings. Trả cùng shape với claudeRaw để nơi
+// gọi không phải đổi. finish_reason 'length' = bị cắt trần → map 'max_tokens'
+// để claudeBlockStrict báo "vượt trần" như cũ.
+async function openRouterRaw(
+  system: string,
+  user: string,
+  maxTokens = 1024
+): Promise<{ text: string; stopReason: string }> {
+  const key = getOpenRouterKey();
+  if (!key) {
+    throw new Error(
+      'Chưa có OpenRouter API key — vào Settings chọn nhà cung cấp OpenRouter và dán key.'
+    );
+  }
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${key}`,
+      // tuỳ chọn của OpenRouter (xếp hạng ứng dụng) — không bắt buộc
+      'HTTP-Referer': process.env.FRONTEND_URL || 'https://hub.vietanh.org',
+      'X-Title': 'Media Hub Viet Anh',
+    },
+    body: JSON.stringify({
+      model: getOpenRouterModel(),
+      max_tokens: maxTokens,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ],
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`OpenRouter HTTP ${res.status}: ${detail.slice(0, 200)}`);
+  }
+  const data: any = await res.json();
+  const choice = data?.choices?.[0];
+  const finish = String(choice?.finish_reason || '');
+  return {
+    text: String(choice?.message?.content || '').trim(),
+    stopReason: finish === 'length' ? 'max_tokens' : finish,
+  };
+}
+
+// Gọi AI sinh TEXT (Phát hiện/Sản xuất): rẽ theo nhà cung cấp đã chọn ở Settings
+// — OpenRouter (DeepSeek…) hoặc Claude. Vision + Copilot/Chat KHÔNG đi qua đây.
 async function claudeRaw(
   system: string,
   user: string,
   maxTokens = 1024
 ): Promise<{ text: string; stopReason: string }> {
+  if (getTextProvider() === 'openrouter') {
+    return openRouterRaw(system, user, maxTokens);
+  }
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) {
     throw new Error(

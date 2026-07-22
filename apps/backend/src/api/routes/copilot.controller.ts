@@ -16,6 +16,14 @@ import {
   getAnthropicModel,
   setAnthropicKey,
   setAnthropicModel,
+  AI_TEXT_PROVIDERS,
+  OPENROUTER_MODELS,
+  getTextProvider,
+  setTextProvider,
+  getOpenRouterKey,
+  setOpenRouterKey,
+  getOpenRouterModel,
+  setOpenRouterModel,
 } from '@gitroom/nestjs-libraries/openai/anthropic.key';
 import {
   getImageGenStatus,
@@ -70,11 +78,21 @@ export class CopilotController {
   anthropicKeyStatus(@GetUserFromRequest() user: User) {
     this.assertSuperAdmin(user);
     const k = getAnthropicKey();
+    const or = getOpenRouterKey();
     return {
       hasKey: !!k,
       masked: k ? k.slice(0, 12) + '…' : '',
       model: getAnthropicModel(),
       models: ANTHROPIC_MODELS,
+      // Nhà cung cấp text cho khối Phát hiện/Sản xuất (anthropic | openrouter)
+      provider: getTextProvider(),
+      providers: AI_TEXT_PROVIDERS,
+      openrouter: {
+        hasKey: !!or,
+        masked: or ? or.slice(0, 12) + '…' : '',
+        model: getOpenRouterModel(),
+        models: OPENROUTER_MODELS,
+      },
     };
   }
 
@@ -82,9 +100,60 @@ export class CopilotController {
   @Post('/anthropic-key')
   saveAnthropicKey(
     @GetUserFromRequest() user: User,
-    @Body() body: { key?: string; model?: string; clear?: boolean }
+    @Body()
+    body: {
+      key?: string;
+      model?: string;
+      clear?: boolean;
+      provider?: string;
+      openrouterKey?: string;
+      openrouterModel?: string;
+      clearOpenrouter?: boolean;
+    }
   ) {
     this.assertSuperAdmin(user);
+
+    // ── Cấu hình nhà cung cấp text (Phát hiện/Sản xuất): provider + OpenRouter ─
+    if (body?.provider) {
+      if (!(AI_TEXT_PROVIDERS as readonly string[]).includes(body.provider)) {
+        throw new HttpException({ msg: 'Nhà cung cấp không hợp lệ' }, 400);
+      }
+      setTextProvider(body.provider);
+    }
+    if (body?.clearOpenrouter) {
+      setOpenRouterKey('');
+    }
+    if (body?.openrouterModel) {
+      if (
+        !(OPENROUTER_MODELS as readonly string[]).includes(body.openrouterModel)
+      ) {
+        throw new HttpException({ msg: 'Model OpenRouter không hợp lệ' }, 400);
+      }
+      setOpenRouterModel(body.openrouterModel);
+    }
+    const orKey = (body?.openrouterKey || '').trim();
+    if (orKey) {
+      if (!orKey.startsWith('sk-or-')) {
+        throw new HttpException(
+          { msg: 'Key OpenRouter không hợp lệ (phải bắt đầu bằng sk-or-)' },
+          400
+        );
+      }
+      setOpenRouterKey(orKey);
+    }
+    // Nếu chỉ gửi cấu hình OpenRouter/provider (không kèm key/model Claude) → xong.
+    if (
+      (body?.provider ||
+        orKey ||
+        body?.openrouterModel ||
+        body?.clearOpenrouter) &&
+      !body?.key &&
+      !body?.model &&
+      !body?.clear
+    ) {
+      return { ok: true, provider: getTextProvider() };
+    }
+
     if (body?.clear) {
       setAnthropicKey('');
       return { ok: true, cleared: true };
@@ -126,6 +195,38 @@ export class CopilotController {
     model?: string;
     error?: string;
   }> {
+    // Test đúng nhà cung cấp text đang chọn (OpenRouter DeepSeek… hoặc Claude).
+    if (getTextProvider() === 'openrouter') {
+      const orKey = getOpenRouterKey();
+      if (!orKey)
+        return { ok: false, error: 'Chưa có OpenRouter key — hãy Lưu key trước.' };
+      try {
+        const res = await fetch(
+          'https://openrouter.ai/api/v1/chat/completions',
+          {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              authorization: `Bearer ${orKey}`,
+            },
+            body: JSON.stringify({
+              model: getOpenRouterModel(),
+              max_tokens: 8,
+              messages: [{ role: 'user', content: 'ping' }],
+            }),
+            signal: AbortSignal.timeout(15000),
+          }
+        );
+        if (!res.ok) {
+          const detail = await res.text().catch(() => '');
+          return { ok: false, error: `OpenRouter ${res.status}: ${detail.slice(0, 150)}` };
+        }
+        const data: any = await res.json();
+        return { ok: true, model: data?.model || getOpenRouterModel() };
+      } catch (e: any) {
+        return { ok: false, error: e?.message || 'Gọi OpenRouter lỗi' };
+      }
+    }
     const key = getAnthropicKey();
     if (!key) return { ok: false, error: 'Chưa có key — hãy Lưu key trước.' };
     try {
