@@ -2171,10 +2171,14 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
           format,
           topic: decodeEntities((src as any).label || (src as any).title),
         });
-        // podcast: ghi lựa chọn trộn nhạc nền vào meta ngay khi tạo job
-        if (format === 'podcast' && body.bgm) {
+        // podcast: ghi Ý MUỐN trộn nhạc (bgmWant) vào meta ngay khi tạo job —
+        // TÁCH khỏi cờ kết quả 'bgm' (đã ghép hay chưa) để Thử lại/Tạo lại không
+        // mất ý muốn. Mặc định BẬT: chỉ tắt khi frontend gửi bgm:false rõ ràng.
+        if (format === 'podcast') {
           await this._repo
-            .updateProduct(row.id, { meta: JSON.stringify({ bgm: true }) })
+            .updateProduct(row.id, {
+              meta: JSON.stringify({ bgmWant: body.bgm !== false }),
+            })
             .catch(() => null);
         }
         created.push(row);
@@ -2633,14 +2637,16 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
       // nhưng GHI LÝ DO vào meta.bgmNote để chẩn đoán, không nuốt im lặng nữa)
       let bgmMixed = false;
       let bgmNote = '';
-      let wantBgm = false;
+      // bgmWant = ý muốn (mới, tách khỏi cờ kết quả). Mặc định BẬT khi thiếu
+      // trường (job/tập cũ, Tạo lại tập plain trước đây) — chỉ tắt khi = false rõ.
+      let wantBgm = true;
       try {
-        wantBgm = !!JSON.parse(product.meta || '{}')?.bgm;
+        wantBgm = JSON.parse(product.meta || '{}')?.bgmWant !== false;
       } catch {
-        /* meta hỏng — không trộn */
+        /* meta hỏng — giữ mặc định bật */
       }
       if (!wantBgm) {
-        bgmNote = 'không chọn ghép nhạc';
+        bgmNote = 'đã bỏ tick ghép nhạc';
       } else if (!hasBgm()) {
         bgmNote = 'chưa upload file nhạc nền (viral-bgm.mp3)';
       } else {
@@ -2680,7 +2686,8 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
         mediaPath: saved.path,
         meta: JSON.stringify({
           est_minutes: script.est_minutes || null,
-          bgm: bgmMixed,
+          bgm: bgmMixed, // KẾT QUẢ: đã ghép nhạc hay chưa (để hiển thị)
+          bgmWant: wantBgm, // Ý MUỐN: giữ lại cho Tạo lại
           bgmNote: bgmMixed ? '' : bgmNote,
           bytes: buf.length,
           durationSec,
@@ -2999,15 +3006,16 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
     if (!p) return false;
     const data: any = { status: 'processing', error: null };
     if (fresh) {
-      // podcast: cờ trộn nhạc nền được chọn lúc tạo job và chỉ sống trong meta
-      // — giữ lại, phần còn lại bỏ.
-      let bgm = false;
+      // podcast: giữ Ý MUỐN trộn nhạc (bgmWant) khi Tạo lại, phần còn lại bỏ.
+      // Đọc bgmWant (mới); tập cũ chỉ có cờ kết quả 'bgm' hoặc không có gì →
+      // MẶC ĐỊNH BẬT để Tạo lại tập plain trước đây cũng ghép được nhạc.
+      let want = true;
       try {
-        bgm = !!JSON.parse(p.meta || '{}')?.bgm;
+        want = JSON.parse(p.meta || '{}')?.bgmWant !== false;
       } catch {
-        /* meta hỏng — coi như không trộn nhạc */
+        /* meta hỏng — giữ mặc định bật */
       }
-      data.meta = bgm ? JSON.stringify({ bgm: true }) : null;
+      data.meta = JSON.stringify({ bgmWant: want });
     }
     await this._repo.updateProduct(id, data);
     this.runProducts(orgId, [id]).catch(() => null);

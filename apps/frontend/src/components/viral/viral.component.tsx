@@ -1584,10 +1584,15 @@ const ProduceModal: FC<{ ids: string[]; source: 'post' | 'clone' | 'topic'; onDo
             {o.key === 'podcast' && cfg && !cfg.hasMinimax && (
               <span className="text-[11px] text-[#FFC53D]">⚠ {t('viral_minimax_missing', 'MiniMax key not set — add it in Settings or this format will fail.')}</span>
             )}
-            {o.key === 'podcast' && formats.has('podcast') && cfg?.hasBgm && (
-              <label className="flex items-center gap-[6px] text-[11.5px] text-textItemBlur cursor-pointer mt-[4px]" onClick={(e) => e.stopPropagation()}>
-                <input type="checkbox" checked={bgm} onChange={(e) => setBgm(e.target.checked)} />
-                🎵 {t('viral_bgm_mix', 'Mix background music (intro 6s · outro 8s · auto-duck under voice)')}
+            {o.key === 'podcast' && formats.has('podcast') && (
+              <label className="flex items-start gap-[6px] text-[11.5px] text-textItemBlur cursor-pointer mt-[4px]" onClick={(e) => e.stopPropagation()}>
+                <input type="checkbox" checked={bgm} onChange={(e) => setBgm(e.target.checked)} className="mt-[2px]" />
+                <span>
+                  🎵 {t('viral_bgm_mix', 'Mix background music (intro 6s · outro 8s · auto-duck under voice)')}
+                  {cfg && !cfg.hasBgm && (
+                    <span className="text-[#FFC53D]"> — ⚠ {t('viral_bgm_none', 'chưa upload nhạc nền, vào Cấu hình → 🎙 Podcast để tải lên')}</span>
+                  )}
+                </span>
               </label>
             )}
           </span>

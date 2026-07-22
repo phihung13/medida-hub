@@ -1101,6 +1101,7 @@
   "viral_site_fail": "Could not suggest a channel — try again later.",
   "viral_pod_has_bgm": "Background music mixed in (intro/outro + auto-duck under voice)",
   "viral_pod_no_bgm": "Plain voice — no background music",
+  "viral_bgm_none": "no background music uploaded — go to Settings → 🎙 Podcast to upload",
   "viral_bgm_remove": "Remove",
   "viral_import_sources": "Import n8n source pack",
   "viral_import_sources_hint": "KOLs, competitor schools, parent groups (needs Apify) + 10 Google News keywords (free)",
