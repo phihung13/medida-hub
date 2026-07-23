@@ -17,9 +17,16 @@ const MODELS = [
 ];
 // Model DeepSeek trên OpenRouter (khớp OPENROUTER_MODELS phía backend).
 const OR_MODELS = [
-  { id: 'deepseek/deepseek-chat', label: 'DeepSeek V3 (deepseek-chat) — rẻ, tốt (khuyên dùng)' },
-  { id: 'deepseek/deepseek-chat-v3-0324', label: 'DeepSeek V3 0324' },
-  { id: 'deepseek/deepseek-r1', label: 'DeepSeek R1 — suy luận (chậm/đắt hơn)' },
+  { id: 'deepseek/deepseek-v3.2', label: 'DeepSeek V3.2 (12/2025) — rẻ, tốt (khuyên dùng)' },
+  { id: 'deepseek/deepseek-v3.2-speciale', label: 'DeepSeek V3.2 Speciale — bản mạnh hơn cho việc khó' },
+  { id: 'deepseek/deepseek-v3.1-terminus', label: 'DeepSeek V3.1 Terminus (9/2025)' },
+  { id: 'deepseek/deepseek-chat-v3.1', label: 'DeepSeek V3.1 (8/2025)' },
+  { id: 'deepseek/deepseek-r1-0528', label: 'DeepSeek R1 0528 — suy luận, bản mới (5/2025)' },
+  { id: 'deepseek/deepseek-v4-flash', label: 'DeepSeek V4 Flash (4/2026) — nhanh, ngữ cảnh 1M' },
+  { id: 'deepseek/deepseek-v4-pro', label: 'DeepSeek V4 Pro (4/2026) — mạnh nhất, đắt hơn' },
+  { id: 'deepseek/deepseek-chat', label: 'DeepSeek V3 (deepseek-chat) — đời cũ' },
+  { id: 'deepseek/deepseek-chat-v3-0324', label: 'DeepSeek V3 0324 — đời cũ' },
+  { id: 'deepseek/deepseek-r1', label: 'DeepSeek R1 — đời cũ, suy luận chậm/đắt' },
 ];
 
 export const AnthropicComponent: FC = () => {
@@ -212,7 +219,7 @@ export const AnthropicComponent: FC = () => {
           <div className="flex items-center gap-[10px] flex-wrap mt-[12px]">
             <div className="text-[13px] font-[600]">{t('anthropic_model', 'Model')}</div>
             <select
-              value={status.openrouter?.model || 'deepseek/deepseek-chat'}
+              value={status.openrouter?.model || 'deepseek/deepseek-v3.2'}
               onChange={(e) =>
                 postConfig(
                   { openrouterModel: e.target.value },

@@ -79,12 +79,20 @@ export const AI_TEXT_PROVIDERS = ['anthropic', 'openrouter'] as const;
 export type AiTextProvider = (typeof AI_TEXT_PROVIDERS)[number];
 
 // Model DeepSeek phổ biến trên OpenRouter (id đúng slug OpenRouter).
+// Giữ các id đời cũ để không phá cấu hình user đã chọn trước đây — chỉ thêm mới.
 export const OPENROUTER_MODELS = [
+  'deepseek/deepseek-v3.2',
+  'deepseek/deepseek-v3.2-speciale',
+  'deepseek/deepseek-v3.1-terminus',
+  'deepseek/deepseek-chat-v3.1',
+  'deepseek/deepseek-r1-0528',
+  'deepseek/deepseek-v4-flash',
+  'deepseek/deepseek-v4-pro',
   'deepseek/deepseek-chat',
   'deepseek/deepseek-chat-v3-0324',
   'deepseek/deepseek-r1',
 ] as const;
-export const DEFAULT_OPENROUTER_MODEL = 'deepseek/deepseek-chat';
+export const DEFAULT_OPENROUTER_MODEL = 'deepseek/deepseek-v3.2';
 
 // Nạp từ file lúc module load (env thật vẫn ưu tiên nếu đã đặt).
 try {
