@@ -1605,6 +1605,81 @@ const ProduceModal: FC<{ ids: string[]; source: 'post' | 'clone' | 'topic'; onDo
   );
 };
 
+// Nhân bản 1 sản phẩm ĐÃ CÓ sang định dạng khác (vd đang Blog, thấy hay muốn
+// làm thêm Infographic) — dùng lại ĐÚNG nội dung nguồn (post/clone/topic) của
+// sản phẩm, KHÔNG cần quay lại "Đã duyệt" để bấm Sản xuất lại từ đầu.
+const DuplicateFormatModal: FC<{
+  sourceId: string;
+  source: 'post' | 'clone' | 'topic';
+  excludeFormat: string;
+  onDone: () => void;
+}> = ({ sourceId, source, excludeFormat, onDone }) => {
+  const t = useT();
+  const fetch = useFetch();
+  const toast = useToaster();
+  const modal = useModals();
+  const [busyFmt, setBusyFmt] = useState<string | null>(null);
+  const [bgm, setBgm] = useState(true);
+  const { data: cfg } = useSWR('viral-config', async () => (await fetch('/viral/config')).json());
+  const formats = (['blog', 'infographic', 'podcast'] as const).filter((f) => f !== excludeFormat);
+  const DESC: Record<string, string> = {
+    blog: t('viral_produce_blog_desc', 'SEO article for the website (EEAT structure) — download as .docx'),
+    infographic: t('viral_produce_info_desc', 'AI-designed image (Gemini) — saved to Media library'),
+    podcast: t('viral_produce_pod_desc', 'Script + Vietnamese TTS voice (MiniMax) — mp3 audio'),
+  };
+  const go = async (format: string) => {
+    setBusyFmt(format);
+    try {
+      const res = await fetch('/viral/produce', {
+        method: 'POST',
+        body: JSON.stringify({ ids: [sourceId], source, formats: [format], bgm }),
+      });
+      const d = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(d?.message || '');
+      toast.show(
+        `${t('viral_dup_started', 'Đang tạo bản')} ${FORMAT_META[format]?.label} — ${t('viral_dup_started_suffix', 'xem trong "Chờ đăng" sau vài phút.')}`,
+        'success'
+      );
+      onDone();
+      modal.closeCurrent();
+    } catch (e: any) {
+      toast.show(e?.message || t('viral_produce_failed', 'Could not start production.'), 'warning');
+    } finally {
+      setBusyFmt(null);
+    }
+  };
+  return (
+    <div className="flex flex-col gap-[10px]">
+      <div className="text-[12.5px] text-textItemBlur">
+        {t('viral_dup_hint', 'Dùng lại đúng nội dung nguồn — tạo thêm một sản phẩm ở định dạng khác.')}
+      </div>
+      {formats.map((f) => (
+        <button
+          key={f}
+          onClick={() => go(f)}
+          disabled={!!busyFmt}
+          className="flex items-start gap-[10px] p-[12px] rounded-[10px] border border-newBgLineColor hover:border-btnPrimary/60 hover:bg-btnPrimary/10 text-left disabled:opacity-50"
+        >
+          <span className="text-[18px]">{busyFmt === f ? '⏳' : FORMAT_META[f].icon}</span>
+          <span className="flex flex-col gap-[2px]">
+            <b className="text-[13px]">{FORMAT_META[f].label}</b>
+            <span className="text-[11.5px] text-textItemBlur">{DESC[f]}</span>
+            {f === 'podcast' && cfg && !cfg.hasMinimax && (
+              <span className="text-[11px] text-[#FFC53D]">⚠ {t('viral_minimax_missing', 'MiniMax key not set — add it in Settings or this format will fail.')}</span>
+            )}
+          </span>
+        </button>
+      ))}
+      {formats.includes('podcast') && (
+        <label className="flex items-start gap-[6px] text-[11.5px] text-textItemBlur cursor-pointer">
+          <input type="checkbox" checked={bgm} onChange={(e) => setBgm(e.target.checked)} className="mt-[2px]" />
+          <span>{t('viral_bgm_mix', 'Mix background music (intro 6s · outro 8s · auto-duck under voice)')}</span>
+        </label>
+      )}
+    </div>
+  );
+};
+
 // Xem chi tiết sản phẩm: blog đọc được, podcast nghe + kịch bản.
 const ProductDetailModal: FC<{ product: any }> = ({ product }) => {
   const t = useT();
@@ -2071,6 +2146,16 @@ const ProductCard: FC<{
   const canModerate = useCanModerate();
   const [busy, setBusy] = useState(false);
   const fm = FORMAT_META[product.format] || { icon: '📦', label: product.format };
+  // Nguồn để nhân bản sang định dạng khác — sản phẩm luôn gắn ĐÚNG 1 trong 3
+  // (post/clone/topic); không có nguồn nào (SP rất cũ) thì ẩn nút.
+  const dupSource: 'post' | 'clone' | 'topic' | null = product.topicId
+    ? 'topic'
+    : product.cloneId
+    ? 'clone'
+    : product.postId
+    ? 'post'
+    : null;
+  const dupSourceId: string | null = product.topicId || product.cloneId || product.postId || null;
   // meta: 📡 rss đã phát hành? + bộ slides carousel (mới [{id,path}], cũ string)
   // + gợi ý kênh đăng blog (hệ sinh thái 4 website)
   let rssOn = false;
@@ -2408,6 +2493,30 @@ const ProductCard: FC<{
           {canModerate && product.status === 'error' && (
             <button onClick={retry} disabled={busy} className="flex-1 py-[6px] rounded-[7px] text-[11.5px] font-[700] text-[#FFC53D] border border-[#FFC53D]/40 hover:bg-[#FFC53D]/10 disabled:opacity-50">
               ↻ {t('viral_retry', 'Retry')}
+            </button>
+          )}
+          {canModerate && product.status === 'done' && dupSourceId && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                modal.openModal({
+                  title: t('viral_dup_modal_title', '⧉ Thêm định dạng khác'),
+                  withCloseButton: true,
+                  classNames: { modal: 'w-[100%] max-w-[440px]' },
+                  children: (
+                    <DuplicateFormatModal
+                      sourceId={dupSourceId}
+                      source={dupSource!}
+                      excludeFormat={product.format}
+                      onDone={onDone}
+                    />
+                  ),
+                });
+              }}
+              title={t('viral_dup_tip', 'Giữ nội dung này, làm thêm bản ở định dạng khác (VD: đang Blog → làm thêm Infographic)')}
+              className="px-[10px] py-[6px] rounded-[7px] text-[11.5px] text-textItemBlur hover:text-textColor mobile:min-h-[40px]"
+            >
+              ⧉
             </button>
           )}
           {canModerate && product.status === 'done' && (

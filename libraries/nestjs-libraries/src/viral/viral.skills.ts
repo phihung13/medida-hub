@@ -114,6 +114,9 @@ VIẾT CHO TAI NGHE, KHÔNG CHO MẮT ĐỌC (vì TTS sẽ đọc):
 • TUYỆT ĐỐI không dùng ký hiệu, gạch đầu dòng, emoji, dấu ngoặc đóng/mở phức tạp, URL, số thứ tự "1. 2. 3." trong lời đọc — viết liền mạch như nói.
 • Số liệu đọc được tự nhiên (vd "hơn một nghìn học sinh mỗi năm", "chín mươi chín phần trăm").
 • Giọng người thật, có nhịp thở, có chỗ ngừng tự nhiên bằng dấu chấm/phẩy.
+• TUYỆT ĐỐI KHÔNG viết tắt BẤT KỲ cụm từ nào trong SCRIPT — TTS đọc tách từng chữ cái nghe rất sai (vd "THPT" bị đọc thành "tê hát pê tê" thay vì "trung học phổ thông"). Luôn viết ra chữ ĐẦY ĐỦ: "THPT" → "trung học phổ thông"; "THCS" → "trung học cơ sở"; "TH" → "tiểu học"; "MN" → "mầm non"; "TP.HCM" → "thành phố Hồ Chí Minh"; "GDPT" → "giáo dục phổ thông". Áp dụng ĐÚNG quy tắc này (viết đầy đủ, không viết tắt) cho MỌI chữ viết tắt khác xuất hiện trong nội dung định hướng, kể cả chữ không có trong danh sách trên.
+• Từ/thuật ngữ/tên riêng tiếng Anh (vd IELTS, STEM, TOEFL, Oxford, Montessori, K-12, ICDL...) — TTS tiếng Việt đọc sai vì đánh vần theo kiểu tiếng Việt. Viết lại thành cách ĐỌC tự nhiên mà người Việt vẫn nói khi trò chuyện (phiên âm gần đúng bằng chữ Việt, có gạch nối), ví dụ: "IELTS" → "ai-eo", "STEM" → "xì-tem", "TOEFL" → "tô-phồ". Nếu không chắc cách đọc đúng của một tên riêng, MÔ TẢ bằng tiếng Việt thay vì giữ nguyên chữ tiếng Anh (vd thay "chương trình Leader in Me" bằng "chương trình rèn bảy thói quen lãnh đạo").
+• TRƯỚC KHI TRẢ KẾT QUẢ: đọc thầm lại toàn bộ SCRIPT đúng như người dẫn chương trình sẽ đọc thành tiếng, tìm MỌI cụm chữ IN HOA liên tiếp (viết tắt) hoặc chữ/cụm từ tiếng Anh còn sót lại — sửa hết theo 2 quy tắc trên rồi mới trả kết quả. Không được để sót dù chỉ một chữ viết tắt hay một từ tiếng Anh chưa phiên âm.
 
 5 NHÓM TỪ CẤM (như blog): sáo rỗng (xuất sắc, đỉnh cao, vượt trội, đột phá); trang trọng giả; marketing nhảm (cơ hội vàng, đừng bỏ lỡ); dạy đời (Cha mẹ phải, Bạn nên); mơ hồ (rất, vô cùng không kèm dẫn chứng).
 
