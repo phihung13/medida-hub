@@ -7,6 +7,7 @@ import {
   getOpenRouterKey,
   getOpenRouterModel,
 } from '@gitroom/nestjs-libraries/openai/anthropic.key';
+import { describeOpenRouterError } from '@gitroom/nestjs-libraries/openai/openrouter.error';
 
 // ============================================================================
 //  AI service — Social Hub
@@ -49,6 +50,7 @@ async function openRouterRaw(
       'Chưa có OpenRouter API key — vào Settings chọn nhà cung cấp OpenRouter và dán key.'
     );
   }
+  const model = getOpenRouterModel();
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -59,8 +61,12 @@ async function openRouterRaw(
       'X-Title': 'Media Hub Viet Anh',
     },
     body: JSON.stringify({
-      model: getOpenRouterModel(),
+      model,
       max_tokens: maxTokens,
+      // Định tuyến: cho phép OpenRouter tự nhảy sang provider khác khi provider
+      // đang chọn không phục vụ được. Đây là trường hợp lệ của REST API
+      // OpenRouter (ta gọi thẳng bằng fetch, không qua SDK nào bó field).
+      provider: { allow_fallbacks: true },
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user },
@@ -69,7 +75,7 @@ async function openRouterRaw(
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
-    throw new Error(`OpenRouter HTTP ${res.status}: ${detail.slice(0, 200)}`);
+    throw new Error(describeOpenRouterError(res.status, detail, model));
   }
   const data: any = await res.json();
   const choice = data?.choices?.[0];

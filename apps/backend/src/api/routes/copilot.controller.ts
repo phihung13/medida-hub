@@ -25,6 +25,7 @@ import {
   getOpenRouterModel,
   setOpenRouterModel,
 } from '@gitroom/nestjs-libraries/openai/anthropic.key';
+import { describeOpenRouterError } from '@gitroom/nestjs-libraries/openai/openrouter.error';
 import {
   getImageGenStatus,
   setImageGenConfig,
@@ -212,6 +213,9 @@ export class CopilotController {
             body: JSON.stringify({
               model: getOpenRouterModel(),
               max_tokens: 8,
+              // cùng chính sách định tuyến với luồng sinh text thật, để nút
+              // "Kiểm tra" phản ánh đúng điều kiện chạy production
+              provider: { allow_fallbacks: true },
               messages: [{ role: 'user', content: 'ping' }],
             }),
             signal: AbortSignal.timeout(15000),
@@ -219,7 +223,14 @@ export class CopilotController {
         );
         if (!res.ok) {
           const detail = await res.text().catch(() => '');
-          return { ok: false, error: `OpenRouter ${res.status}: ${detail.slice(0, 150)}` };
+          return {
+            ok: false,
+            error: describeOpenRouterError(
+              res.status,
+              detail,
+              getOpenRouterModel()
+            ),
+          };
         }
         const data: any = await res.json();
         return { ok: true, model: data?.model || getOpenRouterModel() };

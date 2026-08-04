@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ViralRepository } from '@gitroom/nestjs-libraries/database/prisma/viral/viral.repository';
 import { OpenaiService } from '@gitroom/nestjs-libraries/openai/openai.service';
 import { GeminiService } from '@gitroom/nestjs-libraries/openai/gemini.service';
+import { isQuotaLikeError } from '@gitroom/nestjs-libraries/openai/openrouter.error';
 import { MediaService } from '@gitroom/nestjs-libraries/database/prisma/media/media.service';
 import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
@@ -2209,15 +2210,21 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
           .catch(() => null);
       }
     }
-    // SX lỗi (thường hết hạn mức AI): thẻ content GIỮ NGUYÊN ở "Đã duyệt",
-    // sản phẩm lỗi nằm tab Chờ đăng + badge ❌ trên thẻ — báo chuông 1 lần/mẻ
-    // để người vào xử lý (nạp tiền/key) rồi bấm "Thử lại".
+    // SX lỗi: thẻ content GIỮ NGUYÊN ở "Đã duyệt", sản phẩm lỗi nằm tab Chờ
+    // đăng + badge ❌ trên thẻ — báo chuông 1 lần/mẻ để người vào xử lý rồi bấm
+    // "Thử lại". Gợi ý "hết hạn mức" CHỈ gắn khi lý do thật sự có dáng dấp
+    // quota/hết tiền (429/402/credit…) — lỗi khác (vd OpenRouter không có
+    // provider khả dụng) phải giữ nguyên nguyên nhân thật, không quy về quota.
     if (failed.length) {
+      const reason = failed[0].slice(0, 300);
+      const hint = isQuotaLikeError(reason)
+        ? 'Thường do hết hạn mức AI (Claude/Gemini/MiniMax) — xử lý xong bấm "↻ Thử lại" trên sản phẩm lỗi.'
+        : 'Xử lý theo đúng lý do trên rồi bấm "↻ Thử lại" trên sản phẩm lỗi.';
       await this._notification
         .inAppNotification(
           orgId,
           'Phát hiện: sản xuất thất bại',
-          `❌ ${failed.length} sản phẩm lỗi — thẻ content vẫn giữ nguyên, KHÔNG bị xóa. Lý do: ${failed[0].slice(0, 200)}. Thường do hết hạn mức AI (Claude/Gemini/MiniMax) — xử lý xong bấm "↻ Thử lại" trên sản phẩm lỗi.`,
+          `❌ ${failed.length} sản phẩm lỗi — thẻ content vẫn giữ nguyên, KHÔNG bị xóa. Lý do: ${reason}. ${hint}`,
           false
         )
         .catch(() => null);
