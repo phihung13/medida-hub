@@ -3052,11 +3052,19 @@ const ReportCard: FC<{ report: any; onDone: () => void }> = ({ report, onDone })
       {open && (
         <div className="px-[16px] pb-[16px] flex flex-col gap-[12px] border-t border-newBgLineColor/60 pt-[12px]">
           {meta.summary && <div className="text-[13px] leading-[1.6]">{meta.summary}</div>}
-          {(meta.highlights || []).length > 0 && (
+          {/* CHỦ ĐỀ NÓNG trên MXH (1 chủ đề = nhiều bài) — mục chính của bản
+              tin mới. Bản tin CŨ chỉ có 'highlights' nên vẫn hiện được ở đây. */}
+          {((meta.themes || []).length > 0 || (meta.highlights || []).length > 0) && (
             <div>
-              <div className="text-[11px] font-[800] uppercase tracking-[0.06em] text-[#FF7A00] mb-[6px]">🔥 {t('viral_report_hot', 'Hot this week')}</div>
+              <div className="text-[11px] font-[800] uppercase tracking-[0.06em] text-[#FF7A00] mb-[6px]">
+                🔥 {(meta.themes || []).length > 0
+                  ? t('viral_report_themes', 'Hot topics on social')
+                  : t('viral_report_hot', 'Hot this week')}
+              </div>
               <ol className="flex flex-col gap-[5px] list-decimal ml-[18px] text-[12.5px] leading-[1.55]">
-                {(meta.highlights || []).map((h: string, i: number) => <li key={i}>{h}</li>)}
+                {((meta.themes || []).length > 0 ? meta.themes : meta.highlights).map(
+                  (h: string, i: number) => <li key={i}>{h}</li>
+                )}
               </ol>
             </div>
           )}
@@ -3065,6 +3073,14 @@ const ReportCard: FC<{ report: any; onDone: () => void }> = ({ report, onDone })
               <div className="text-[11px] font-[800] uppercase tracking-[0.06em] text-btnPrimary mb-[6px]">📈 {t('viral_report_market', 'Market moves')}</div>
               <ul className="flex flex-col gap-[5px] list-disc ml-[18px] text-[12.5px] leading-[1.55]">
                 {(meta.market || []).map((m: string, i: number) => <li key={i}>{m}</li>)}
+              </ul>
+            </div>
+          )}
+          {(meta.press || []).length > 0 && (
+            <div>
+              <div className="text-[11px] font-[800] uppercase tracking-[0.06em] text-textItemBlur mb-[6px]">📰 {t('viral_report_press', 'Press (secondary)')}</div>
+              <ul className="flex flex-col gap-[5px] list-disc ml-[18px] text-[12.5px] leading-[1.55]">
+                {(meta.press || []).map((p: string, i: number) => <li key={i}>{p}</li>)}
               </ul>
             </div>
           )}

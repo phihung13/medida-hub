@@ -949,25 +949,31 @@ CHI tra JSON array: [{"profile_id","moi_quan_tam","tam_ly","hanh_vi","insights"}
   // diễn biến thị trường/đối thủ, và TODO LIST hành động tuần này. Gửi về
   // Zalo/email sau mỗi lần cào theo lịch T2-4-6 + tổng kết CN.
   async viralWeeklyBrief(input: {
-    trendText: string; // tin báo chí nổi bật (đã chấm điểm cao)
-    winningText: string; // bài đối thủ/KOL share cao
+    trendText: string; // tin báo chí nổi bật (đã chấm điểm cao) — phần PHỤ (~15%)
+    winningText: string; // bài MXH tương tác cao (share/like/comment/view)
     statsText: string; // số liệu 7 ngày (cào/duyệt/sản xuất/chờ duyệt)
-    competitorText?: string; // động tĩnh từng nguồn đối thủ (KOL + trường) đang theo dõi
+    competitorText?: string; // động tĩnh từng nguồn (KOL + trường + hội nhóm)
+    topicText?: string; // CHỦ ĐỀ đã gom cụm (1 content = nhiều bài) — phần CHÍNH
   }): Promise<{
     summary: string;
-    highlights: string[];
+    themes?: string[];
+    highlights?: string[]; // bản cũ — giữ để bản tin lưu trước đây vẫn đọc được
     market: string[];
+    press?: string[];
     todos: { title: string; action: string }[];
   } | null> {
     const system =
       getSkill('skill-ban-tin-tuan') +
-      '\nTrả CHỈ JSON: {"summary","highlights":[],"market":[],"todos":[{"title","action"}]}';
+      '\nTrả CHỈ JSON: {"summary","themes":[],"market":[],"press":[],"todos":[{"title","action"}]}';
+    // Thứ tự các khối = thứ tự ưu tiên ta muốn AI viết: chủ đề MXH trước,
+    // báo chí xuống cuối cùng (trước đây báo đứng đầu nên AI viết nhiều báo).
     const user =
-      `TIN GIÁO DỤC NÓNG (7 ngày):\n${input.trendText || '(không có)'}\n\n` +
-      `BÀI THẮNG CỦA ĐỐI THỦ/KOL:\n${input.winningText || '(không có)'}\n\n` +
-      `ĐỘNG TĨNH ĐỐI THỦ ĐANG THEO DÕI (KOL + trường — số bài đăng tuần qua, chủ đề):\n${input.competitorText || '(chưa có dữ liệu — cần bật Apify cào FB/TikTok đối thủ)'}\n\n` +
+      `CHỦ ĐỀ ĐÃ GOM CỤM TRÊN MXH (1 chủ đề = nhiều bài — ĐÂY LÀ PHẦN CHÍNH):\n${input.topicText || '(chưa gom được chủ đề nào tuần này)'}\n\n` +
+      `BÀI MXH TƯƠNG TÁC CAO (Facebook/TikTok/YouTube — ưu tiên share):\n${input.winningText || '(không có)'}\n\n` +
+      `ĐỘNG TĨNH TỪNG NGUỒN THEO DÕI (KOL + trường đối thủ + HỘI NHÓM phụ huynh):\n${input.competitorText || '(chưa có dữ liệu nguồn MXH nào tuần này)'}\n\n` +
+      `TIN BÁO CHÍ (PHẦN PHỤ — chỉ dùng cho mục "press", tối đa ~15% bản tin):\n${input.trendText || '(không có)'}\n\n` +
       `SỐ LIỆU VẬN HÀNH:\n${input.statsText}\n\n` +
-      `Trong "market", HÃY nêu rõ đối thủ nào đang đẩy mạnh chủ đề gì và chủ đề nào đối thủ đánh mà ta chưa làm; "todos" gợi ý cách ta phản ứng.`;
+      `Nhắc lại: "themes" và "market" CHỈ nói về mạng xã hội, luôn kèm số share/like/comment thật; tin báo dồn hết vào "press" và giữ ngắn. "todos" gợi ý cách ta phản ứng với chủ đề nóng + khe hở đối thủ bỏ trống.`;
     // 8000 token (was 3000): prompt tuỳ chỉnh của user đòi nhiều mục (5-10 tin +
     // 7-10 thị trường + 5-7 việc, tiếng Việt tốn token) → 3000 TRÀN, JSON bị cắt.
     // claudeJsonStrict: cắt trần/parse hỏng → NÉM lỗi chẩn đoán (thay claudeJson

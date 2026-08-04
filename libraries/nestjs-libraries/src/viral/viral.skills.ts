@@ -222,12 +222,24 @@ BƯỚC 3 — VIẾT BẢN ĐĂNG ("rewritten"): bài đăng mạng xã hội c�
 
 BƯỚC 4 — CHẤM "rewritten" theo rubric + gán "content_type" (blog/infographic/video) và "podcast_score" (0-100).`;
 
-const SKILL_BAN_TIN_TUAN = `Bạn là trợ lý chiến lược nội dung của Trường Việt Anh (K-12, TP.HCM). Từ dữ liệu cào 7 ngày (tin giáo dục nóng + bài đối thủ/KOL thắng + số liệu vận hành), viết BẢN TIN TUẦN NGẮN GỌN cho đội marketing:
-- "summary": 2-3 câu nắm bắt tuần này có gì đáng chú ý nhất (nóng hổi, thiết thực, tiếng Việt tự nhiên).
-- "highlights": 3-5 tin NÓNG nhất tuần (mỗi dòng: tin gì + vì sao phụ huynh quan tâm — ngắn, 1 câu/dòng).
-- "market": 2-4 diễn biến thị trường/đối thủ đáng để ý (đối thủ đang đánh chủ đề gì, format nào đang thắng).
-- "todos": 4-7 việc CỤ THỂ tuần này cho đội content (mỗi việc: "title" ngắn + "action" 1 câu làm gì — vd viết blog chủ đề X cho nhóm THPT, sản xuất podcast Y, bám sự kiện Z). Ưu tiên việc ăn theo tin nóng + lỗ hổng đối thủ chưa làm.
-KHÔNG bịa số liệu, KHÔNG nhắc tên trường đối thủ trong todos (chỉ trong market).`;
+const SKILL_BAN_TIN_TUAN = `Bạn là trợ lý chiến lược nội dung của Trường Việt Anh (K-12, TP.HCM). Viết BẢN TIN TUẦN cho đội marketing từ dữ liệu cào 7 ngày.
+
+TRỌNG TÂM (quan trọng nhất, tuân thủ tuyệt đối): bản tin này nói về MẠNG XÃ HỘI — Facebook (fanpage đối thủ, KOL, HỘI NHÓM phụ huynh), TikTok, YouTube. Người đọc KHÔNG tự cào được Facebook nên trông cậy hoàn toàn vào bản tin để biết trên MXH đang bàn gì.
+- ~85% dung lượng dành cho MXH. Tin báo chí CHỈ ~15%, gói gọn trong "press".
+- TUYỆT ĐỐI KHÔNG kể lể tin báo trong "themes", "market" hay "summary". Tin báo chỉ được nhắc ở đó khi nó ĐANG được bàn tán trên MXH, và phải nói rõ nó nóng tới mức nào trên MXH (share/like/comment).
+
+ĐƠN VỊ PHÂN TÍCH LÀ CHỦ ĐỀ (1 content = NHIỀU bài), không phải từng bài lẻ. Dữ liệu đã gom cụm sẵn — hãy dùng đúng cụm đó, đừng tự tách nhỏ ra thành từng bài.
+
+CHỈ SỐ: luôn kèm số thật lấy từ dữ liệu. SHARE là chỉ số quan trọng nhất — share càng cao chủ đề càng nổi bật, hãy xếp và nhấn theo share TRƯỚC, rồi mới tới like, comment, view. Ghi dạng "340 share · 1.2k like · 87 comment".
+
+Các mục phải viết:
+- "summary": 3-4 câu — tuần này TRÊN MXH đang nóng chuyện gì, ai đang dẫn dắt, phụ huynh đang lo/quan tâm điều gì. Nêu 1-2 con số share tiêu biểu.
+- "themes": 5-8 CHỦ ĐỀ nóng nhất trên MXH, xếp theo tổng share giảm dần. MỖI DÒNG phải đủ: tên chủ đề — số bài trong cụm · tổng share (+ like/comment/view nếu có) · AI đang đẩy (tên fanpage/KOL/hội nhóm, kèm số bài của họ) · bài mạnh nhất và số share của nó · một câu vì sao phụ huynh quan tâm. Nếu Trường Việt Anh chưa có nội dung về chủ đề đó thì nói rõ "ta chưa có bài".
+- "market": 5-8 dòng điểm danh TỪNG đối thủ/KOL/hội nhóm: họ đăng bao nhiêu bài, tổng share, đang tập trung vào chủ đề nào, format nào đang thắng (video/ảnh/bài dài/poll). Chỉ ra rõ KHE HỞ: chủ đề nào họ đánh mạnh mà ta chưa làm, hoặc chủ đề nóng mà chưa ai đánh.
+- "press": 2-4 dòng tin báo chí đáng chú ý (mỗi dòng 1 câu). Ngắn thôi — đây là phần phụ.
+- "todos": 5-7 việc CỤ THỂ tuần này cho đội content (mỗi việc: "title" ngắn + "action" 1 câu làm gì). Ưu tiên bám chủ đề đang nóng trên MXH và khe hở đối thủ bỏ trống. Nêu rõ nên đăng kênh nào (Facebook/TikTok/YouTube/blog).
+
+KHÔNG bịa số liệu — chỉ dùng số có trong dữ liệu; chủ đề nào thiếu số thì bỏ trống chứ đừng đoán. KHÔNG nhắc tên trường đối thủ trong "todos" (chỉ trong "market"). Viết tiếng Việt tự nhiên, ngắn gọn, mỗi dòng 1 ý.`;
 
 // Prompt VẼ 1 SLIDE gửi cho Gemini (node "Tách slide" của n8n). Đây là thứ quyết
 // định ẢNH trông thế nào + chữ render ra sao. Dạng TEMPLATE — code thay các
@@ -305,6 +317,39 @@ export function resetSkill(key: string): boolean {
     /* chưa có file — coi như đã reset */
   }
   return true;
+}
+
+// THU HỒI override MỘT LẦN cho 1 skill khi bản mặc định trong code thay đổi
+// về CHẤT (không chỉ sửa câu chữ). Lý do: getSkill() ưu tiên file override
+// trong CONFIG_DIR, nên bản tuỳ chỉnh cũ trên VPS sẽ ĐÈ bản mặc định mới và
+// người dùng tưởng deploy không ăn.
+//   - chạy ĐÚNG 1 LẦN mỗi tag: đánh dấu bằng file .reset-<tag> cạnh đó, nên
+//     restart container nhiều lần cũng không thu hồi lại bản user vừa sửa;
+//   - KHÔNG xoá trắng: đổi tên thành <key>.md.bak-<tag> để còn đường lấy lại.
+export function retireSkillOverride(key: string, tag: string): boolean {
+  if (!DEF_BY_KEY.has(key)) return false;
+  const marker = path.join(DIR(), `.reset-${key}-${tag}`);
+  try {
+    if (fs.existsSync(marker)) return false; // đã thu hồi trước đó
+  } catch {
+    return false;
+  }
+  let moved = false;
+  try {
+    const src = fileOf(key);
+    if (fs.existsSync(src) && fs.statSync(src).size > 0) {
+      fs.renameSync(src, `${src}.bak-${tag}`);
+      moved = true;
+    }
+  } catch {
+    /* không đổi tên được — vẫn ghi marker để khỏi thử lại mỗi lần khởi động */
+  }
+  try {
+    fs.writeFileSync(marker, new Date().toISOString(), 'utf8');
+  } catch {
+    /* không ghi được marker — lần sau thử lại, không sao */
+  }
+  return moved;
 }
 
 export function listSkills() {

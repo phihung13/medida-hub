@@ -35,7 +35,10 @@ import {
 } from '@gitroom/nestjs-libraries/viral/viral.produce.prompts';
 import { VIRAL_DEFAULT_SOURCES } from '@gitroom/nestjs-libraries/viral/viral.default.sources';
 import { VIRAL_PERSONA_SEEDS } from '@gitroom/nestjs-libraries/viral/viral.personas.seed';
-import { getSkill } from '@gitroom/nestjs-libraries/viral/viral.skills';
+import {
+  getSkill,
+  retireSkillOverride,
+} from '@gitroom/nestjs-libraries/viral/viral.skills';
 import { NotificationService } from '@gitroom/nestjs-libraries/database/prisma/notifications/notification.service';
 import { blogHtmlToDocx } from '@gitroom/nestjs-libraries/viral/viral.docx';
 
@@ -116,6 +119,12 @@ export class ViralService implements OnModuleInit {
   // Scheduler cào định kỳ — CHỈ chạy ở tiến trình backend (main.ts set cờ),
   // không chạy ở orchestrator để tránh cào 2 lần.
   onModuleInit() {
+    // Bản tin tuần đổi CHẤT (báo → mạng xã hội, thêm mục chủ đề/press) nên
+    // prompt tuỳ chỉnh cũ lưu trong CONFIG_DIR phải nhường chỗ, nếu không
+    // getSkill() vẫn trả bản cũ và deploy coi như không ăn. Chạy đúng 1 lần,
+    // bản cũ được giữ lại dưới dạng .bak-social-first nếu cần xem lại.
+    // Đặt TRƯỚC lệnh return bên dưới: máy không chạy crawler vẫn phải thu hồi.
+    retireSkillOverride('skill-ban-tin-tuan', 'social-first');
     if (process.env.RUN_VIRAL_CRAWLER !== '1') return;
     const tick = async () => {
       const hours = getViralConfig().crawlEveryHours;
@@ -3200,35 +3209,77 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
   // nhóm Zalo (nếu cấu hình). kind: 'crawl' = sau cào theo lịch T2-4-6 ·
   // 'sunday' = tổng kết CN · 'manual' = bấm nút tạo ngay.
   async sendWeeklyReport(orgId: string, kind: 'crawl' | 'sunday' | 'manual') {
-    const [d, counts, { trend, winning }, competitors] = await Promise.all([
-      this._repo.weeklyDigest(orgId),
-      this._repo.statusCounts(orgId),
-      this._repo.weeklyBriefPosts(orgId),
-      this._repo.weeklyCompetitorActivity(orgId),
-    ]);
-    // Động tĩnh từng đối thủ (KOL + trường) đang theo dõi — cho AI phân tích +
-    // hiện thành mục riêng trong bản tin.
-    const competitorText = (competitors as any[])
-      .map((c) => {
-        const tag = c.type === 'kol' ? 'KOL' : 'Trường';
-        const top = c.top
-          ? ` · bài nổi nhất: "${decodeEntities(c.top.title).slice(0, 90)}"${c.top.shares ? ` (${c.top.shares} share)` : c.top.views ? ` (${c.top.views} view)` : ''}`
+    const [d, counts, { trend, winning }, competitors, hotTopics] =
+      await Promise.all([
+        this._repo.weeklyDigest(orgId),
+        this._repo.statusCounts(orgId),
+        this._repo.weeklyBriefPosts(orgId),
+        this._repo.weeklyCompetitorActivity(orgId),
+        this._repo.weeklyHotTopics(orgId),
+      ]);
+    // Nhãn loại nguồn cho dễ đọc — 'group' = hội nhóm phụ huynh trên FB.
+    const typeTag = (t?: string) =>
+      t === 'kol' ? 'KOL' : t === 'group' ? 'Hội nhóm' : t === 'news' ? 'Báo' : 'Trường';
+    // Chuỗi chỉ số: SHARE đứng trước (chỉ số quan trọng nhất), bỏ số 0.
+    const metrics = (p: any) =>
+      [
+        p.shares ? `${p.shares} share` : '',
+        p.likes ? `${p.likes} like` : '',
+        p.comments ? `${p.comments} comment` : '',
+        p.views ? `${p.views} view` : '',
+      ]
+        .filter(Boolean)
+        .join(' · ');
+    // CHỦ ĐỀ NÓNG (1 content = nhiều bài) — phần CHÍNH của bản tin. Kèm ai đang
+    // đẩy chủ đề đó để AI chỉ ra được khe hở đối thủ.
+    const topicText = (hotTopics as any[])
+      .map((t) => {
+        const drivers = (t.drivers || [])
+          .map((dv: any) => `${dv.name} [${typeTag(dv.type)}] ${dv.count} bài`)
+          .join(', ');
+        const top = t.top
+          ? ` · bài mạnh nhất: "${decodeEntities(t.top.title).slice(0, 90)}" (${metrics(t.top) || 'chưa có số'})`
           : '';
-        return `- [${tag} · ${c.platform}] ${c.name}: ${c.count} bài${c.totalShares ? ` · ${c.totalShares} share` : ''}${top}`;
+        const plat = (() => {
+          try {
+            const arr = JSON.parse(t.platforms || '[]');
+            return Array.isArray(arr) && arr.length ? arr.join('/') : '';
+          } catch {
+            return '';
+          }
+        })();
+        const mine = t.status === 'approved' ? ' · TA ĐÃ DUYỆT chủ đề này' : '';
+        return `- "${decodeEntities(t.label)}"${plat ? ` [${plat}]` : ''}: ${t.postCount} bài · ${t.sourceCount} nguồn · ${metrics(
+          { shares: t.totalShares, likes: t.totalLikes, comments: t.totalComments, views: t.totalViews }
+        ) || 'chưa có số'}${drivers ? ` · đang đẩy: ${drivers}` : ''}${top}${mine}`;
       })
       .join('\n')
-      .slice(0, 5000);
+      .slice(0, 7000);
+    // Động tĩnh từng nguồn (KOL + trường + HỘI NHÓM) — cho AI phân tích + hiện
+    // thành mục riêng trong bản tin.
+    const competitorText = (competitors as any[])
+      .map((c) => {
+        const top = c.top
+          ? ` · bài nổi nhất: "${decodeEntities(c.top.title).slice(0, 90)}"${metrics(c.top) ? ` (${metrics(c.top)})` : ''}`
+          : '';
+        return `- [${typeTag(c.type)} · ${c.platform}] ${c.name}: ${c.count} bài · ${metrics(
+          { shares: c.totalShares, likes: c.totalLikes, comments: c.totalComments }
+        ) || 'chưa có số'}${top}`;
+      })
+      .join('\n')
+      .slice(0, 6000);
+    // Tin báo: phần PHỤ (~15%) → cắt ngắn hạn mức ký tự để không lấn át MXH.
     const trendText = trend
       .map((t: any) => `- [${t.persona || '?'} · ${t.score ?? '-'}đ] ${decodeEntities(t.title)} (${t.sourceName || ''})`)
       .join('\n')
-      .slice(0, 6000);
+      .slice(0, 2000);
     const winningText = winning
       .map(
         (w: any) =>
-          `- [${w.platform}${w.shares ? ` · ${w.shares} share` : w.views ? ` · ${w.views} view` : ''}] ${decodeEntities(w.title)} (${w.sourceName || ''})`
+          `- [${w.platform}${w.sourceType ? ` · ${typeTag(w.sourceType)}` : ''}] ${decodeEntities(w.title)} (${w.sourceName || ''})${metrics(w) ? ` — ${metrics(w)}` : ''}`
       )
       .join('\n')
-      .slice(0, 4000);
+      .slice(0, 8000);
     const statsText = `7 ngày qua: cào ${d.crawled} bài mới · duyệt ${d.approved} · sản xuất ${d.produced} sản phẩm · đang chờ duyệt ${counts.pending} bài.`;
     // Trước đây .catch(() => null) NUỐT mọi lỗi AI → bản tin lặng lẽ rớt sạch
     // phần AI (summary/tin nóng/thị trường/việc), chỉ còn số liệu thô → user
@@ -3242,6 +3293,7 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
         winningText,
         statsText,
         competitorText,
+        topicText,
       });
     } catch (e: any) {
       briefError = e?.message || String(e);
@@ -3260,26 +3312,41 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
     if (briefError)
       lines.push(`⚠️ Phần phân tích AI chưa tạo được: ${briefError}`, '');
     if (brief?.summary) lines.push(brief.summary, '');
-    if (brief?.highlights?.length) {
+    // Thứ tự MỚI: chủ đề MXH → đối thủ/hội nhóm → báo chí (phụ) → việc cần làm.
+    if (brief?.themes?.length) {
+      lines.push('🔥 CHỦ ĐỀ NÓNG TRÊN MẠNG XÃ HỘI (1 chủ đề = nhiều bài):');
+      brief.themes.slice(0, 10).forEach((h, i) => lines.push(`${i + 1}. ${h}`));
+      lines.push('');
+    } else if (brief?.highlights?.length) {
+      // bản tin do prompt CŨ sinh ra (chỉ có highlights) — vẫn hiện được.
       lines.push('🔥 TIN NÓNG TUẦN:');
-      // cắt 10 (was 6): prompt user đòi 5-10 tin — cap 6 làm rớt bớt dù AI viết đủ.
       brief.highlights.slice(0, 10).forEach((h, i) => lines.push(`${i + 1}. ${h}`));
       lines.push('');
     }
     if (brief?.market?.length) {
-      lines.push('📈 DIỄN BIẾN THỊ TRƯỜNG:');
-      // cắt 10 (was 5): prompt user đòi 7-10 diễn biến.
+      lines.push('📈 ĐỐI THỦ / KOL / HỘI NHÓM ĐANG ĐẨY GÌ:');
       brief.market.slice(0, 10).forEach((m) => lines.push(`• ${m}`));
       lines.push('');
     }
     if (competitorText) {
-      lines.push('🏫 ĐỘNG TĨNH ĐỐI THỦ (tuần qua):');
-      (competitors as any[]).slice(0, 12).forEach((c) => {
-        const tag = c.type === 'kol' ? 'KOL' : 'Trường';
+      lines.push('🏫 ĐIỂM DANH NGUỒN THEO DÕI (tuần qua):');
+      (competitors as any[]).slice(0, 15).forEach((c) => {
+        const num = [
+          c.totalShares ? `${c.totalShares} share` : '',
+          c.totalLikes ? `${c.totalLikes} like` : '',
+          c.totalComments ? `${c.totalComments} comment` : '',
+        ]
+          .filter(Boolean)
+          .join(' · ');
         lines.push(
-          `• ${c.name} [${tag}]: ${c.count} bài${c.totalShares ? ` · ${c.totalShares} share` : ''}`
+          `• ${c.name} [${typeTag(c.type)} · ${c.platform}]: ${c.count} bài${num ? ` · ${num}` : ''}`
         );
       });
+      lines.push('');
+    }
+    if (brief?.press?.length) {
+      lines.push('📰 MẶT BÁO (phụ):');
+      brief.press.slice(0, 5).forEach((p) => lines.push(`• ${p}`));
       lines.push('');
     }
     if (brief?.todos?.length) {
@@ -3301,15 +3368,27 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
         content: text,
         meta: JSON.stringify({
           summary: brief?.summary || '',
+          themes: brief?.themes || [],
           highlights: brief?.highlights || [],
           market: brief?.market || [],
+          press: brief?.press || [],
           todos: brief?.todos || [],
-          competitors: (competitors as any[]).slice(0, 12).map((c) => ({
+          competitors: (competitors as any[]).slice(0, 15).map((c) => ({
             name: c.name,
             type: c.type,
             platform: c.platform,
             count: c.count,
             totalShares: c.totalShares,
+            totalLikes: c.totalLikes,
+            totalComments: c.totalComments,
+          })),
+          topics: (hotTopics as any[]).slice(0, 10).map((t) => ({
+            label: t.label,
+            postCount: t.postCount,
+            sourceCount: t.sourceCount,
+            totalShares: t.totalShares,
+            totalLikes: t.totalLikes,
+            totalComments: t.totalComments,
           })),
           stats: statsText,
         }),

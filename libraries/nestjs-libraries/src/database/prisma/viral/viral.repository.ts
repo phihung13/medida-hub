@@ -608,6 +608,8 @@ export class ViralRepository {
   async weeklyBriefPosts(orgId: string) {
     const since = new Date(Date.now() - 7 * 24 * 3600 * 1000);
     const [trend, winning] = await Promise.all([
+      // Tin BÁO: bản tin mới chỉ dành ~15% cho báo → 25 bài là thừa, AI đọc
+      // nhiều báo rồi viết nhiều báo. Cắt còn 10 tin điểm cao nhất.
       this._posts.model.viralPost.findMany({
         where: {
           organizationId: orgId,
@@ -617,37 +619,153 @@ export class ViralRepository {
           status: { not: 'skipped' },
         },
         orderBy: [{ score: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
-        take: 25,
+        take: 10,
         select: { title: true, sourceName: true, score: true, persona: true },
       }),
+      // Bài MXH (FB/TikTok/YouTube…): đây mới là phần chính của bản tin →
+      // 15 bài là quá ít để thấy chủ đề nào đang nóng. Nâng lên 60 và lấy ĐỦ
+      // 4 chỉ số (trước chỉ có shares/views nên like/comment không tới AI).
       this._posts.model.viralPost.findMany({
         where: {
           organizationId: orgId,
           platform: { not: 'news' },
+          kind: 'content', // loại tín hiệu nhân khẩu (purpose='profile')
           createdAt: { gte: since },
           deletedAt: null,
         },
-        orderBy: [{ shares: { sort: 'desc', nulls: 'last' } }, { views: { sort: 'desc', nulls: 'last' } }],
-        take: 15,
-        select: { title: true, sourceName: true, platform: true, shares: true, views: true, persona: true },
+        orderBy: [
+          { shares: { sort: 'desc', nulls: 'last' } },
+          { likes: { sort: 'desc', nulls: 'last' } },
+          { views: { sort: 'desc', nulls: 'last' } },
+        ],
+        take: 60,
+        select: {
+          title: true,
+          sourceName: true,
+          sourceType: true,
+          platform: true,
+          shares: true,
+          likes: true,
+          comments: true,
+          views: true,
+          persona: true,
+        },
       }),
     ]);
     return { trend, winning };
   }
 
-  // ĐỘNG TĨNH ĐỐI THỦ (bản tin tuần): với các nguồn ĐỐI THỦ (type ∈ kol/school)
-  // đã bật theo dõi → đếm bài cào được 7 ngày qua theo từng nguồn + bài tương tác
-  // cao nhất. Khớp bài với nguồn qua sourceName (Apify lưu đúng name của nguồn).
+  // CHỦ ĐỀ NÓNG trên MXH (bản tin tuần) — "1 content = nhiều bài": lấy thẳng
+  // các cụm ViralTopic (đã gom bằng embeddings) hoạt động trong 7 ngày, xếp
+  // theo tổng share. Trước đây bản tin KHÔNG hề đọc bảng này nên chỉ kể được
+  // từng bài lẻ, không thấy được chủ đề nào đang được cả thị trường đẩy.
+  // Kèm số nguồn khác nhau (sourceCount) — chủ đề nhiều nguồn cùng nói = thật
+  // sự nóng, không phải 1 trang tự đẩy.
+  async weeklyHotTopics(orgId: string) {
+    const since = new Date(Date.now() - 7 * 24 * 3600 * 1000);
+    const topics = await this._topics.model.viralTopic.findMany({
+      where: {
+        organizationId: orgId,
+        deletedAt: null,
+        status: { not: 'skipped' },
+        OR: [{ lastSeenAt: { gte: since } }, { firstSeenAt: { gte: since } }],
+      },
+      orderBy: [
+        { totalShares: 'desc' },
+        { postCount: 'desc' },
+        { sourceCount: 'desc' },
+      ],
+      take: 15,
+      select: {
+        id: true,
+        label: true,
+        platforms: true,
+        postCount: true,
+        sourceCount: true,
+        totalShares: true,
+        totalViews: true,
+        topShare: true,
+        score: true,
+        persona: true,
+        status: true,
+      },
+    });
+    if (!topics.length) return [];
+    // Ai đang ĐẨY chủ đề đó + like/comment (ViralTopic chỉ tổng hợp share/view)
+    // → gom từ chính các bài thuộc cụm. Một truy vấn cho tất cả chủ đề.
+    const posts = await this._posts.model.viralPost.findMany({
+      where: {
+        organizationId: orgId,
+        deletedAt: null,
+        topicId: { in: topics.map((t) => t.id) },
+      },
+      select: {
+        topicId: true,
+        title: true,
+        sourceName: true,
+        sourceType: true,
+        platform: true,
+        shares: true,
+        likes: true,
+        comments: true,
+        views: true,
+      },
+    });
+    const byTopic = new Map<string, any[]>();
+    for (const p of posts) {
+      const k = p.topicId as string;
+      if (!byTopic.has(k)) byTopic.set(k, []);
+      byTopic.get(k)!.push(p);
+    }
+    const eng = (p: any) =>
+      (Number(p.shares) || 0) * 3 +
+      (Number(p.likes) || 0) +
+      (Number(p.comments) || 0) * 2 +
+      (Number(p.views) || 0) / 1000;
+    return topics.map((t) => {
+      const list = byTopic.get(t.id) || [];
+      const drivers: Record<string, { name: string; type: string; count: number; shares: number }> = {};
+      let likes = 0;
+      let comments = 0;
+      for (const p of list) {
+        likes += Number(p.likes) || 0;
+        comments += Number(p.comments) || 0;
+        const name = p.sourceName || '(không rõ nguồn)';
+        if (!drivers[name])
+          drivers[name] = { name, type: p.sourceType || 'other', count: 0, shares: 0 };
+        drivers[name].count++;
+        drivers[name].shares += Number(p.shares) || 0;
+      }
+      const top = list.slice().sort((a, b) => eng(b) - eng(a))[0] || null;
+      return {
+        ...t,
+        totalLikes: likes,
+        totalComments: comments,
+        // nguồn đẩy mạnh nhất trước (nhiều bài → nhiều share)
+        drivers: Object.values(drivers)
+          .sort((a, b) => b.count - a.count || b.shares - a.shares)
+          .slice(0, 5),
+        top,
+      };
+    });
+  }
+
+  // ĐỘNG TĨNH ĐỐI THỦ + HỘI NHÓM (bản tin tuần): với các nguồn theo dõi
+  // (type ∈ kol/school/group) → đếm bài cào được 7 ngày qua theo từng nguồn +
+  // bài tương tác cao nhất. Khớp bài với nguồn qua sourceName.
+  // 'group' (hội nhóm phụ huynh trên FB) TRƯỚC ĐÂY BỊ LOẠI khỏi truy vấn này,
+  // nên toàn bộ insight hội nhóm không bao giờ tới được bản tin — nay đưa vào.
   async weeklyCompetitorActivity(orgId: string) {
     const since = new Date(Date.now() - 7 * 24 * 3600 * 1000);
-    // Nguồn chính: bài TỰ MANG nhãn sourceType (đối tác cào gắn kol/school) —
-    // không cần danh bạ ViralSource nữa. Danh bạ (nếu còn) chỉ là fallback cho
-    // bài cũ chưa có nhãn.
+    const TYPES = ['kol', 'school', 'group'];
+    // Nguồn chính: bài TỰ MANG nhãn sourceType (đối tác cào gắn kol/school/
+    // group) — không cần danh bạ ViralSource nữa. Danh bạ (nếu còn) chỉ là
+    // fallback cho bài cũ chưa có nhãn.
     const comps = await this._sources.model.viralSource.findMany({
       where: {
         organizationId: orgId,
         deletedAt: null,
-        type: { in: ['kol', 'school'] },
+        type: { in: TYPES },
       },
       select: { name: true, type: true, platform: true },
     });
@@ -659,7 +777,7 @@ export class ViralRepository {
         deletedAt: null,
         createdAt: { gte: since },
         OR: [
-          { sourceType: { in: ['kol', 'school'] } },
+          { sourceType: { in: TYPES } },
           ...(names.length ? [{ sourceName: { in: names } }] : []),
         ],
       },
@@ -670,6 +788,7 @@ export class ViralRepository {
         platform: true,
         shares: true,
         likes: true,
+        comments: true,
         views: true,
       },
     });
@@ -677,7 +796,10 @@ export class ViralRepository {
     // gom theo tên nguồn — loại lấy từ nhãn trên bài, thiếu thì tra danh bạ
     const byName: Record<string, any> = {};
     const eng = (p: any) =>
-      (Number(p.shares) || 0) * 3 + (Number(p.views) || 0) / 1000 + (Number(p.likes) || 0);
+      (Number(p.shares) || 0) * 3 +
+      (Number(p.views) || 0) / 1000 +
+      (Number(p.likes) || 0) +
+      (Number(p.comments) || 0) * 2;
     for (const p of posts) {
       const name = p.sourceName || '(không rõ nguồn)';
       if (!byName[name]) {
@@ -687,12 +809,16 @@ export class ViralRepository {
           platform: p.platform,
           count: 0,
           totalShares: 0,
+          totalLikes: 0,
+          totalComments: 0,
           top: null as any,
         };
       }
       const b = byName[name];
       b.count++;
       b.totalShares += Number(p.shares) || 0;
+      b.totalLikes += Number(p.likes) || 0;
+      b.totalComments += Number(p.comments) || 0;
       if (!b.top || eng(p) > eng(b.top)) b.top = p;
     }
     // chỉ nguồn có hoạt động, xếp nhiều bài trước
