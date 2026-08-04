@@ -87,7 +87,6 @@ export const OPENROUTER_MODELS = [
   'deepseek/deepseek-v3.2-speciale',
   'deepseek/deepseek-v3.1-terminus',
   'deepseek/deepseek-chat-v3.1',
-  'deepseek/deepseek-r1-0528',
   'deepseek/deepseek-chat',
   'deepseek/deepseek-chat-v3-0324',
 ] as const;
@@ -99,7 +98,12 @@ export const DEFAULT_OPENROUTER_MODEL = 'deepseek/deepseek-v4-flash';
 //   deepseek/deepseek-r1: OpenRouter định tuyến sang endpoint Azure đang hỏng,
 //   trả 404 no_callers ("No callers satisfying location tag 'us'") và KHÔNG tự
 //   thử provider khác (Attempts=1 trong Logs) → sản xuất chết hàng loạt.
-export const RETIRED_OPENROUTER_MODELS = ['deepseek/deepseek-r1'] as const;
+//   deepseek/deepseek-r1-0528: cùng họ R1, gỡ luôn để phòng dính đúng endpoint
+//   Azure đó về sau — dòng R1 không còn cần cho việc viết bài.
+export const RETIRED_OPENROUTER_MODELS = [
+  'deepseek/deepseek-r1',
+  'deepseek/deepseek-r1-0528',
+] as const;
 
 // Nạp từ file lúc module load (env thật vẫn ưu tiên nếu đã đặt).
 try {

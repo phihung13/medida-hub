@@ -16,8 +16,9 @@ const MODELS = [
   { id: 'claude-opus-4-8', label: 'Opus 4.8 — mạnh nhất' },
 ];
 // Model DeepSeek trên OpenRouter (khớp OPENROUTER_MODELS phía backend).
-// (bỏ 'deepseek/deepseek-r1': OpenRouter đẩy sang endpoint Azure hỏng, 404
-//  no_callers, không tự đổi provider — xem RETIRED_OPENROUTER_MODELS backend)
+// (bỏ cả dòng R1 — 'deepseek-r1' và 'deepseek-r1-0528': OpenRouter đẩy sang
+//  endpoint Azure hỏng, 404 no_callers, không tự đổi provider — xem
+//  RETIRED_OPENROUTER_MODELS bên backend)
 const OR_MODELS = [
   { id: 'deepseek/deepseek-v4-flash', label: 'DeepSeek V4 Flash (4/2026) — nhanh, ngữ cảnh 1M (khuyên dùng)' },
   { id: 'deepseek/deepseek-v4-pro', label: 'DeepSeek V4 Pro (4/2026) — mạnh nhất, đắt hơn' },
@@ -25,7 +26,6 @@ const OR_MODELS = [
   { id: 'deepseek/deepseek-v3.2-speciale', label: 'DeepSeek V3.2 Speciale — bản mạnh hơn cho việc khó' },
   { id: 'deepseek/deepseek-v3.1-terminus', label: 'DeepSeek V3.1 Terminus (9/2025)' },
   { id: 'deepseek/deepseek-chat-v3.1', label: 'DeepSeek V3.1 (8/2025)' },
-  { id: 'deepseek/deepseek-r1-0528', label: 'DeepSeek R1 0528 — suy luận, bản mới (5/2025)' },
   { id: 'deepseek/deepseek-chat', label: 'DeepSeek V3 (deepseek-chat) — đời cũ' },
   { id: 'deepseek/deepseek-chat-v3-0324', label: 'DeepSeek V3 0324 — đời cũ' },
 ];
