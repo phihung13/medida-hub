@@ -81,18 +81,25 @@ export type AiTextProvider = (typeof AI_TEXT_PROVIDERS)[number];
 // Model DeepSeek phổ biến trên OpenRouter (id đúng slug OpenRouter).
 // Giữ các id đời cũ để không phá cấu hình user đã chọn trước đây — chỉ thêm mới.
 export const OPENROUTER_MODELS = [
+  'deepseek/deepseek-v4-flash',
+  'deepseek/deepseek-v4-pro',
   'deepseek/deepseek-v3.2',
   'deepseek/deepseek-v3.2-speciale',
   'deepseek/deepseek-v3.1-terminus',
   'deepseek/deepseek-chat-v3.1',
   'deepseek/deepseek-r1-0528',
-  'deepseek/deepseek-v4-flash',
-  'deepseek/deepseek-v4-pro',
   'deepseek/deepseek-chat',
   'deepseek/deepseek-chat-v3-0324',
-  'deepseek/deepseek-r1',
 ] as const;
-export const DEFAULT_OPENROUTER_MODEL = 'deepseek/deepseek-v3.2';
+export const DEFAULT_OPENROUTER_MODEL = 'deepseek/deepseek-v4-flash';
+
+// Model đã GỠ khỏi danh sách chọn. Cấu hình cũ đang trỏ vào đây sẽ tự nhảy về
+// DEFAULT_OPENROUTER_MODEL — xoá khỏi OPENROUTER_MODELS thôi là chưa đủ, vì
+// model đang dùng nằm ở env/file bền (CONFIG_DIR) nên vẫn được nạp như cũ.
+//   deepseek/deepseek-r1: OpenRouter định tuyến sang endpoint Azure đang hỏng,
+//   trả 404 no_callers ("No callers satisfying location tag 'us'") và KHÔNG tự
+//   thử provider khác (Attempts=1 trong Logs) → sản xuất chết hàng loạt.
+export const RETIRED_OPENROUTER_MODELS = ['deepseek/deepseek-r1'] as const;
 
 // Nạp từ file lúc module load (env thật vẫn ưu tiên nếu đã đặt).
 try {
@@ -152,7 +159,20 @@ export function setOpenRouterKey(key: string): void {
 }
 
 export function getOpenRouterModel(): string {
-  return process.env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL;
+  const current = process.env.OPENROUTER_MODEL || '';
+  if (!current) return DEFAULT_OPENROUTER_MODEL;
+  // Cấu hình cũ trỏ model đã gỡ → chuyển về mặc định và GHI ĐÈ file bền, để
+  // lần sau không phải chuyển lại và UI cũng hiển thị đúng model thật đang chạy.
+  if ((RETIRED_OPENROUTER_MODELS as readonly string[]).includes(current)) {
+    process.env.OPENROUTER_MODEL = DEFAULT_OPENROUTER_MODEL;
+    try {
+      fs.writeFileSync(OPENROUTER_MODEL_FILE, DEFAULT_OPENROUTER_MODEL);
+    } catch {
+      /* ghi file lỗi — vẫn dùng mặc định cho phiên hiện tại */
+    }
+    return DEFAULT_OPENROUTER_MODEL;
+  }
+  return current;
 }
 
 export function setOpenRouterModel(model: string): void {
