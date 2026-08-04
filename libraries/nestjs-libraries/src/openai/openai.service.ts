@@ -241,6 +241,47 @@ function tryParseJson<T>(raw: string): T | null {
   return null;
 }
 
+// Ép 1 giá trị bất kỳ do model trả về thành MỘT DÒNG chữ đọc được. Model hay
+// trả object cho các mục "mỗi dòng gồm nhiều thành phần" (chủ đề + số bài +
+// share + ai đẩy); object lọt xuống React sẽ làm hỏng cả trang bản tin.
+// Ghép các giá trị vô hướng theo thứ tự xuất hiện, giữ nhãn khi khoá có nghĩa.
+function flattenToLine(v: any): string {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'string') return v.trim();
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  if (Array.isArray(v)) return v.map(flattenToLine).filter(Boolean).join(' · ');
+  if (typeof v === 'object') {
+    // khoá "tiêu đề" đứng trước, phần còn lại ghép sau dạng "nhãn: giá trị"
+    const HEAD = ['label', 'title', 'name', 'theme', 'topic', 'chu_de', 'text', 'line'];
+    const head = HEAD.map((k) => v[k]).find((x) => typeof x === 'string' && x.trim());
+    const rest = Object.entries(v)
+      .filter(([k]) => !HEAD.includes(k))
+      .map(([k, val]) => {
+        const s = flattenToLine(val);
+        return s ? `${k}: ${s}` : '';
+      })
+      .filter(Boolean)
+      .join(' · ');
+    return [head ? String(head).trim() : '', rest].filter(Boolean).join(' — ');
+  }
+  return '';
+}
+
+// Ép về MẢNG CHUỖI: nhận mảng chuỗi, mảng object, hoặc 1 chuỗi nhiều dòng.
+function toLineList(v: any): string[] {
+  if (!v) return [];
+  if (typeof v === 'string')
+    return v
+      .split('\n')
+      .map((s) => s.replace(/^[-•*\d.)\s]+/, '').trim())
+      .filter(Boolean);
+  if (!Array.isArray(v)) {
+    const one = flattenToLine(v);
+    return one ? [one] : [];
+  }
+  return v.map(flattenToLine).filter(Boolean);
+}
+
 // Bản STRICT cho dây chuyền SẢN XUẤT: parse hỏng thì NÉM LỖI CHẨN ĐOÁN rõ
 // (bị cắt vì chạm trần token? model trả JSON lỗi?) thay vì nuốt thành null —
 // thẻ sản phẩm hiện đúng lý do thật, hết cảnh "AI chưa viết được bài" mù mờ.
@@ -945,6 +986,7 @@ CHI tra JSON array: [{"profile_id","moi_quan_tam","tam_ly","hanh_vi","insights"}
     return claudeJson(sys, `8 nhom persona va tin hieu hom nay:\n\n${blocks}`, 4000);
   }
 
+  // (helper cho viralWeeklyBrief — xem chú thích ở chỗ gọi)
   // BẢN TIN TUẦN cho trang Phát hiện: từ bài đã cào/chấm 7 ngày → tin nóng,
   // diễn biến thị trường/đối thủ, và TODO LIST hành động tuần này. Gửi về
   // Zalo/email sau mỗi lần cào theo lịch T2-4-6 + tổng kết CN.
@@ -978,7 +1020,30 @@ CHI tra JSON array: [{"profile_id","moi_quan_tam","tam_ly","hanh_vi","insights"}
     // 7-10 thị trường + 5-7 việc, tiếng Việt tốn token) → 3000 TRÀN, JSON bị cắt.
     // claudeJsonStrict: cắt trần/parse hỏng → NÉM lỗi chẩn đoán (thay claudeJson
     // trả null IM LẶNG khiến bản tin rớt sạch phần AI, user tưởng AI bỏ prompt).
-    return claudeJsonStrict(system, user, 8000);
+    const out: any = await claudeJsonStrict(system, user, 8000);
+    if (!out) return out;
+    // CHUẨN HOÁ: prompt mô tả mỗi dòng gồm nhiều thành phần (tên chủ đề, số
+    // bài, share, ai đẩy…) nên model hay "chiều" bằng cách trả MẢNG OBJECT thay
+    // vì mảng chuỗi. Object lọt xuống frontend làm React văng "Objects are not
+    // valid as a React child" (cả bản tin không xem được), còn bản gửi Zalo/
+    // email thì in ra "[object Object]". Ép về chuỗi ngay tại nguồn.
+    out.themes = toLineList(out.themes);
+    out.market = toLineList(out.market);
+    out.press = toLineList(out.press);
+    out.highlights = toLineList(out.highlights);
+    out.summary = typeof out.summary === 'string' ? out.summary : flattenToLine(out.summary);
+    out.todos = (Array.isArray(out.todos) ? out.todos : [])
+      .map((td: any) => {
+        if (td && typeof td === 'object' && !Array.isArray(td)) {
+          const title = String(td.title ?? td.name ?? '').trim();
+          const action = String(td.action ?? td.detail ?? td.description ?? '').trim();
+          if (title || action) return { title: title || action, action: title ? action : '' };
+          return { title: flattenToLine(td), action: '' };
+        }
+        return { title: String(td ?? '').trim(), action: '' };
+      })
+      .filter((td: any) => td.title);
+    return out;
   }
 
   // Mở rộng TỪ KHOÁ thành 6-7 truy vấn tìm tin cùng chủ đề (nguồn Google News)

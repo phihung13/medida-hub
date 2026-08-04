@@ -3009,7 +3009,34 @@ const ReportCard: FC<{ report: any; onDone: () => void }> = ({ report, onDone })
     sunday: t('viral_report_kind_sunday', 'Sunday recap'),
     manual: t('viral_report_kind_manual', 'Manual'),
   };
-  const todos: any[] = meta.todos || [];
+  // AI đôi khi trả mỗi mục là OBJECT (chủ đề + số bài + share + ai đẩy) thay vì
+  // chuỗi. Render thẳng object là React văng "Objects are not valid as a React
+  // child" → hỏng CẢ trang bản tin. Backend đã ép về chuỗi từ bản sau, nhưng
+  // các bản tin ĐÃ LƯU trước đó vẫn còn object nên phải ép lại ở đây.
+  const line = (v: any): string => {
+    if (v === null || v === undefined) return '';
+    if (typeof v === 'string') return v;
+    if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+    if (Array.isArray(v)) return v.map(line).filter(Boolean).join(' · ');
+    const HEAD = ['label', 'title', 'name', 'theme', 'topic', 'chu_de', 'text', 'line'];
+    const head = HEAD.map((k) => v[k]).find((x: any) => typeof x === 'string' && x.trim());
+    const rest = Object.entries(v)
+      .filter(([k]) => !HEAD.includes(k))
+      .map(([k, val]) => {
+        const s = line(val);
+        return s ? `${k}: ${s}` : '';
+      })
+      .filter(Boolean)
+      .join(' · ');
+    return [head ? String(head).trim() : '', rest].filter(Boolean).join(' — ');
+  };
+  const lines = (v: any): string[] =>
+    (Array.isArray(v) ? v : v ? [v] : []).map(line).filter(Boolean);
+  const themes = lines(meta.themes);
+  const highlights = lines(meta.highlights);
+  const market = lines(meta.market);
+  const press = lines(meta.press);
+  const todos: any[] = Array.isArray(meta.todos) ? meta.todos : [];
   return (
     <div className="bg-newColColor border border-newBgLineColor rounded-[13px] overflow-hidden">
       {/* header accordion = div role=button (button lồng button là HTML sai —
@@ -3051,36 +3078,36 @@ const ReportCard: FC<{ report: any; onDone: () => void }> = ({ report, onDone })
       </div>
       {open && (
         <div className="px-[16px] pb-[16px] flex flex-col gap-[12px] border-t border-newBgLineColor/60 pt-[12px]">
-          {meta.summary && <div className="text-[13px] leading-[1.6]">{meta.summary}</div>}
+          {line(meta.summary) && <div className="text-[13px] leading-[1.6]">{line(meta.summary)}</div>}
           {/* CHỦ ĐỀ NÓNG trên MXH (1 chủ đề = nhiều bài) — mục chính của bản
               tin mới. Bản tin CŨ chỉ có 'highlights' nên vẫn hiện được ở đây. */}
-          {((meta.themes || []).length > 0 || (meta.highlights || []).length > 0) && (
+          {(themes.length > 0 || highlights.length > 0) && (
             <div>
               <div className="text-[11px] font-[800] uppercase tracking-[0.06em] text-[#FF7A00] mb-[6px]">
-                🔥 {(meta.themes || []).length > 0
+                🔥 {themes.length > 0
                   ? t('viral_report_themes', 'Hot topics on social')
                   : t('viral_report_hot', 'Hot this week')}
               </div>
               <ol className="flex flex-col gap-[5px] list-decimal ml-[18px] text-[12.5px] leading-[1.55]">
-                {((meta.themes || []).length > 0 ? meta.themes : meta.highlights).map(
-                  (h: string, i: number) => <li key={i}>{h}</li>
-                )}
+                {(themes.length > 0 ? themes : highlights).map((h, i) => (
+                  <li key={i}>{h}</li>
+                ))}
               </ol>
             </div>
           )}
-          {(meta.market || []).length > 0 && (
+          {market.length > 0 && (
             <div>
               <div className="text-[11px] font-[800] uppercase tracking-[0.06em] text-btnPrimary mb-[6px]">📈 {t('viral_report_market', 'Market moves')}</div>
               <ul className="flex flex-col gap-[5px] list-disc ml-[18px] text-[12.5px] leading-[1.55]">
-                {(meta.market || []).map((m: string, i: number) => <li key={i}>{m}</li>)}
+                {market.map((m, i) => <li key={i}>{m}</li>)}
               </ul>
             </div>
           )}
-          {(meta.press || []).length > 0 && (
+          {press.length > 0 && (
             <div>
               <div className="text-[11px] font-[800] uppercase tracking-[0.06em] text-textItemBlur mb-[6px]">📰 {t('viral_report_press', 'Press (secondary)')}</div>
               <ul className="flex flex-col gap-[5px] list-disc ml-[18px] text-[12.5px] leading-[1.55]">
-                {(meta.press || []).map((p: string, i: number) => <li key={i}>{p}</li>)}
+                {press.map((p, i) => <li key={i}>{p}</li>)}
               </ul>
             </div>
           )}
@@ -3092,7 +3119,8 @@ const ReportCard: FC<{ report: any; onDone: () => void }> = ({ report, onDone })
                   <label key={i} className="flex items-start gap-[8px] cursor-pointer text-[12.5px] leading-[1.5]">
                     <input type="checkbox" checked={done.has(i)} onChange={() => toggleTodo(i)} className="mt-[3px]" />
                     <span className={done.has(i) ? 'line-through text-textItemBlur' : ''}>
-                      <b>{td.title}</b>{td.action ? ` — ${td.action}` : ''}
+                      <b>{line(td?.title) || line(td)}</b>
+                      {line(td?.action) ? ` — ${line(td.action)}` : ''}
                     </span>
                   </label>
                 ))}
