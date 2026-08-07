@@ -129,6 +129,35 @@ export class ViralController {
     return res;
   }
 
+  // 🧲 Gợi ý MỒI CÂU (lead magnet) cho 1 content: AI chấm 5 loại
+  // (ebook/checklist/app/template/quiz) rồi xếp hạng. Gọi tay cho
+  // content chấm từ trước khi có tính năng, hoặc khi muốn gợi ý lại.
+  @Post('/topics/:id/lead-magnets')
+  async topicLeadMagnets(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string
+  ) {
+    this.assertCanModerate(org);
+    try {
+      return await this._service.suggestLeadMagnets(org.id, id, 'topic');
+    } catch (e: any) {
+      throw new HttpException(e?.message || 'Không gợi ý được mồi câu.', 400);
+    }
+  }
+
+  @Post('/posts/:id/lead-magnets')
+  async postLeadMagnets(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string
+  ) {
+    this.assertCanModerate(org);
+    try {
+      return await this._service.suggestLeadMagnets(org.id, id, 'post');
+    } catch (e: any) {
+      throw new HttpException(e?.message || 'Không gợi ý được mồi câu.', 400);
+    }
+  }
+
   // "Bài của mình" — bản clone AI viết lại, chấm điểm lại.
   @Get('/mine')
   async mine(@GetOrgFromRequest() org: Organization) {

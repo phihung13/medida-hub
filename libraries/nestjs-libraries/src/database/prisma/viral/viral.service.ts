@@ -14,6 +14,7 @@ import {
   bgmPath,
 } from '@gitroom/nestjs-libraries/viral/viral.keys';
 import { getPodcastConfig } from '@gitroom/nestjs-libraries/viral/podcast.keys';
+import { normalizeLeadMagnets } from '@gitroom/nestjs-libraries/viral/viral.leadmagnet';
 import {
   buildPodcastRss,
   RssEpisode,
@@ -1275,8 +1276,11 @@ export class ViralService implements OnModuleInit {
         reason,
         content_type: res.content_type,
         podcast_score: res.podcast_score,
+        // 🧲 Mồi câu (lead magnet) nên làm kèm content này — bảng xếp hạng 6
+        // loại, AI chấm lúc tổng hợp chủ đề.
+        lead_magnets: normalizeLeadMagnets(res.lead_magnets),
         rounds, // số vòng viết lại đã chạy (đếm theo yêu cầu vận hành)
-      }).slice(0, 3000),
+      }).slice(0, 6000),
       status,
       synthesizedAt: new Date(),
     });
@@ -1294,6 +1298,87 @@ export class ViralService implements OnModuleInit {
       await this.autoProduceTopics(orgId, [topic.id]).catch(() => null);
     }
     return true;
+  }
+
+  // ── 🧲 MỒI CÂU (LEAD MAGNET) ────────────────────────────────────────────
+  // Chấm/chấm lại bảng xếp hạng mồi câu cho MỘT content đã có (chủ đề hoặc bài
+  // lẻ). Dùng cho content chấm từ trước khi có tính năng này, hoặc khi muốn AI
+  // gợi ý lại. CHỈ ghi khoá "lead_magnets" vào scoreDetail — điểm/persona/bản
+  // viết lại giữ nguyên.
+  async suggestLeadMagnets(
+    orgId: string,
+    id: string,
+    source: 'topic' | 'post' = 'topic'
+  ) {
+    const row: any =
+      source === 'topic'
+        ? await this._repo.getTopic(orgId, id)
+        : await this._repo.getById(orgId, id);
+    if (!row) throw new Error('Không tìm thấy content.');
+
+    // Chất liệu cho AI: bản viết sẵn + phần tổng hợp (chủ đề) hoặc nội dung gốc
+    // (bài lẻ) — càng nhiều dữ kiện, mồi câu càng ít bịa.
+    let material = decodeEntities(row.aiContent || '');
+    if (source === 'topic') {
+      let syn: any = {};
+      try {
+        syn = JSON.parse(row.synthesis || '{}');
+      } catch {
+        /* synthesis hỏng — chỉ dùng aiContent */
+      }
+      material = [
+        material,
+        syn.angle,
+        ...(syn.agreedFacts || []),
+        ...(syn.keyNumbers || []),
+        ...(syn.uniqueAngles || []),
+        syn.whyItMatters,
+      ]
+        .filter(Boolean)
+        .join('\n');
+    } else {
+      material = [material, decodeEntities(row.content || '')]
+        .filter(Boolean)
+        .join('\n');
+    }
+    const title = decodeEntities(row.label || row.title || '');
+    if (!title && !material.trim())
+      throw new Error('Content chưa có nội dung để gợi ý mồi câu.');
+
+    const raw = await this._openai.viralLeadMagnets({
+      title,
+      content: material,
+      persona: row.persona,
+      personaProfile: row.persona
+        ? await this.personaProfileText(orgId, row.persona)
+        : null,
+    });
+    const leadMagnets = normalizeLeadMagnets(raw);
+    if (!leadMagnets.length)
+      throw new Error('AI chưa gợi ý được mồi câu — bấm thử lại.');
+
+    let detail: any = {};
+    try {
+      detail = JSON.parse(row.scoreDetail || '{}') || {};
+    } catch {
+      /* scoreDetail hỏng — viết lại từ đầu, chỉ mất phần hiển thị phụ */
+    }
+    detail.lead_magnets = leadMagnets;
+    const scoreDetail = JSON.stringify(detail).slice(0, 6000);
+    if (source === 'topic') await this._repo.updateTopic(id, { scoreDetail });
+    else await this._repo.update(id, { scoreDetail });
+    return { leadMagnets };
+  }
+
+  // Hồ sơ 1 chân dung (dạng text) — nạp kèm khi gợi ý mồi câu để AI biết nhóm
+  // này chịu để lại SĐT đổi lấy thứ gì. Không tìm thấy thì bỏ qua.
+  private async personaProfileText(orgId: string, code: string) {
+    const list: any[] = await this.listPersonas(orgId).catch(() => []);
+    const p = list.find((x) => x.code === code);
+    if (!p) return null;
+    return [p.label, p.moiQuanTam, p.tamLy, p.hanhVi, p.insights]
+      .filter(Boolean)
+      .join('\n');
   }
 
   // Chạy bù khi MỞ PHANH ② (Đã duyệt → Chờ đăng): thẻ được duyệt trong lúc
@@ -1764,7 +1849,10 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
                 typeof r.podcast_score === 'number'
                   ? Math.max(0, Math.min(100, Math.round(r.podcast_score)))
                   : null,
-            }).slice(0, 3000),
+              // 🧲 Mồi câu nên làm — bài lẻ chỉ có loại tốt nhất (bản gọn);
+              // xếp hạng đủ 5 loại nằm ở cấp chủ đề.
+              lead_magnets: normalizeLeadMagnets(r.lead_magnet),
+            }).slice(0, 6000),
             // ⏸① Phanh TỰ DUYỆT: bài lẻ cũng không tự duyệt — đứng ở chờ duyệt.
             status: (() => {
               const st = viralStatusForScore(score, {

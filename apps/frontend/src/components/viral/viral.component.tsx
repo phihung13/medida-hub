@@ -298,6 +298,23 @@ const DetailModal: FC<{ post: any; onDone: () => void }> = ({ post, onDone }) =>
       return null;
     }
   })();
+  // 🧲 Mồi câu của bài lẻ: chấm lúc chấm điểm chỉ cho loại tốt nhất — bấm nút
+  // là AI xếp hạng đủ 5 loại. Giữ ở state để hiện ngay (post là prop tĩnh).
+  const [lm, setLm] = useState<any[]>(detail?.lead_magnets || []);
+  const [lmBusy, setLmBusy] = useState(false);
+  const suggestLeadMagnets = async () => {
+    setLmBusy(true);
+    try {
+      const res = await fetch(`/viral/posts/${post.id}/lead-magnets`, { method: 'POST' });
+      if (!res.ok) throw new Error();
+      const json = await res.json();
+      setLm(json.leadMagnets || []);
+    } catch {
+      toast.show(t('viral_lm_fail', 'Could not suggest a lead magnet — try again.'), 'warning');
+    } finally {
+      setLmBusy(false);
+    }
+  };
   const setStatus = (status: string) => async () => {
     await fetch(`/viral/${post.id}/status`, {
       method: 'POST',
@@ -412,6 +429,8 @@ const DetailModal: FC<{ post: any; onDone: () => void }> = ({ post, onDone }) =>
               {(detail.podcast_score ?? 0) >= 75 && <b className="text-textColor"> + 🎧 Podcast ({detail.podcast_score})</b>}
             </div>
           )}
+          {/* 🧲 mồi câu nên làm kèm bài này */}
+          <LeadMagnets items={lm} canModerate={canModerate} busy={lmBusy} onSuggest={suggestLeadMagnets} />
           {canModerate && (
           <div className="flex gap-[8px] mt-[2px]">
             {post.status !== 'approved' && (
@@ -1358,6 +1377,120 @@ const FORMAT_META: Record<string, { icon: string; label: string }> = {
   podcast: { icon: '🎧', label: 'Podcast' },
 };
 
+// ── 🧲 MỒI CÂU (LEAD MAGNET) ──────────────────────────────────────────────
+// Tài nguyên miễn phí đổi lấy SĐT/Zalo phụ huynh, làm kèm content. AI chấm cả
+// 5 loại rồi xếp hạng → đội nội dung nhìn phát biết nên làm cái nào.
+const LEAD_MAGNET_META: Record<string, { icon: string; label: string }> = {
+  ebook: { icon: '📘', label: 'Ebook' },
+  checklist: { icon: '✅', label: 'Checklist' },
+  app: { icon: '📱', label: 'Mini app' },
+  template: { icon: '🧾', label: 'Template' },
+  quiz: { icon: '🎯', label: 'Quiz' },
+};
+const lmMeta = (type: string) =>
+  LEAD_MAGNET_META[type] || { icon: '🧲', label: type };
+// Màu thanh xếp hạng — cùng ngưỡng với scoreStyle để đọc quen mắt.
+const lmBar = (s: number) =>
+  s >= 90 ? '#57D9A3' : s >= 70 ? '#FFC53D' : s >= 50 ? '#5CBEFF' : '#FF5A52';
+
+// Bảng xếp hạng mồi câu: loại đứng đầu hiện đầy đủ (tên + dàn ý + CTA), các
+// loại còn lại chỉ 1 dòng kèm thanh điểm để so nhanh.
+const LeadMagnets: FC<{
+  items: any[];
+  canModerate: boolean;
+  busy?: boolean;
+  onSuggest?: () => void;
+}> = ({ items, canModerate, busy, onSuggest }) => {
+  const t = useT();
+  const list = Array.isArray(items) ? items : [];
+  const [best, ...rest] = list;
+  return (
+    <div className="flex flex-col gap-[8px] bg-newBgColor rounded-[10px] p-[12px]">
+      <div className="flex items-center gap-[8px]">
+        <div className="text-[12px] font-[700] text-textItemBlur">
+          🧲 {t('viral_lm_head', 'Lead magnet to build')}
+        </div>
+        {canModerate && onSuggest && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onSuggest();
+            }}
+            disabled={busy}
+            className="ms-auto text-[11.5px] font-[700] text-btnPrimary hover:underline disabled:opacity-50"
+          >
+            {busy
+              ? t('viral_lm_asking', 'AI is thinking…')
+              : list.length
+              ? `↻ ${t('viral_lm_again', 'Suggest again')}`
+              : `🧲 ${t('viral_lm_ask', 'Suggest a lead magnet')}`}
+          </button>
+        )}
+      </div>
+      {!list.length ? (
+        <div className="text-[11.5px] text-textItemBlur leading-[1.55]">
+          {t(
+            'viral_lm_empty',
+            'No suggestion yet — this content was scored before the feature existed. Press "Suggest a lead magnet" and AI will rank all 5 types (ebook, checklist, mini app, template, quiz).'
+          )}
+        </div>
+      ) : (
+        <>
+          {/* loại nên làm nhất */}
+          <div className="flex flex-col gap-[5px] bg-newColColor border border-newBgLineColor rounded-[9px] p-[10px]">
+            <div className="flex items-center gap-[7px] flex-wrap">
+              <span className="text-[13px] font-[700]">
+                {lmMeta(best.type).icon} {lmMeta(best.type).label}
+              </span>
+              <span className={clsx('text-[11px] font-[800] px-[7px] py-[2px] rounded-[6px] tabular-nums', scoreStyle(best.score))}>
+                {best.score}/100
+              </span>
+              {best.effort && (
+                <span className="text-[10.5px] text-textItemBlur">
+                  ⚙ {t('viral_lm_effort', 'effort')}: {best.effort}
+                </span>
+              )}
+            </div>
+            {best.title && <div className="text-[12.5px] font-[600] leading-[1.5]">"{best.title}"</div>}
+            {best.why && <div className="text-[11.5px] text-textItemBlur leading-[1.55]">{best.why}</div>}
+            {(best.outline || []).length > 0 && (
+              <ul className="text-[11.5px] text-textColor/85 leading-[1.6] list-disc ps-[16px]">
+                {best.outline.map((o: string, i: number) => (
+                  <li key={i}>{o}</li>
+                ))}
+              </ul>
+            )}
+            {best.cta && (
+              <div className="text-[11.5px] leading-[1.55] text-btnPrimary">📣 {best.cta}</div>
+            )}
+          </div>
+          {/* các loại còn lại — xếp hạng để so */}
+          {rest.map((m: any) => (
+            <div key={m.type} className="flex items-center gap-[8px] text-[11.5px]">
+              <span className="w-[92px] shrink-0 text-textItemBlur">
+                {lmMeta(m.type).icon} {lmMeta(m.type).label}
+              </span>
+              <span className="flex-1 h-[6px] rounded-full bg-newBgLineColor overflow-hidden">
+                <i
+                  className="block h-full rounded-full"
+                  style={{ width: `${Math.max(2, m.score)}%`, background: lmBar(m.score) }}
+                />
+              </span>
+              <b className="w-[26px] text-end tabular-nums text-textColor">{m.score}</b>
+              {/* tên gợi ý chỉ hiện trên desktop — mobile hẹp, giữ thanh điểm cho gọn */}
+              {m.title && (
+                <span className="mobile:hidden flex-[1.4] truncate text-textItemBlur" title={m.why || ''}>
+                  {m.title}
+                </span>
+              )}
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+};
+
 // ── CONTENT (chủ đề) — đơn vị duyệt CHÍNH của trang: 1 content = nhiều bài từ
 // nhiều nguồn (hoặc 1 bài). Bài lẻ chỉ còn là bằng chứng bên trong content.
 const useTopics = (sort: string, status: string) => {
@@ -1394,6 +1527,18 @@ const TopicDetailModal: FC<{ topicId: string; onDone: () => void }> = ({ topicId
     onDone();
     if (action === 'approve') {
       toast.show(t('viral_topic_approved_toast', 'Approved — AI is producing the suggested format, see "Ready to post" in a few minutes.'), 'success');
+    }
+  };
+  // 🧲 Chấm (hoặc chấm lại) mồi câu — chỉ ghi vào scoreDetail, không đụng điểm.
+  const [lmBusy, setLmBusy] = useState(false);
+  const suggestLeadMagnets = async () => {
+    setLmBusy(true);
+    try {
+      const res = await fetch(`/viral/topics/${topicId}/lead-magnets`, { method: 'POST' });
+      if (res.ok) await mutate();
+      else toast.show(t('viral_lm_fail', 'Could not suggest a lead magnet — try again.'), 'warning');
+    } finally {
+      setLmBusy(false);
     }
   };
   const clone = async () => {
@@ -1452,6 +1597,13 @@ const TopicDetailModal: FC<{ topicId: string; onDone: () => void }> = ({ topicId
           {sd.reason && <div className="text-textItemBlur">📋 {sd.reason}</div>}
         </div>
       )}
+      {/* 🧲 mồi câu nên làm kèm content này (xếp hạng 5 loại) */}
+      <LeadMagnets
+        items={sd.lead_magnets || []}
+        canModerate={canModerate}
+        busy={lmBusy}
+        onSuggest={suggestLeadMagnets}
+      />
       {/* trạng thái SẢN XUẤT — lỗi thì hiện lý do + nút thử lại (thẻ content
           không bao giờ bị xóa vì SX lỗi; thường do hết hạn mức AI) */}
       {((topic.products || []).length > 0) && (
@@ -3989,6 +4141,19 @@ export const ViralComponent: FC = () => {
                   if (run) return <span className="text-[10.5px] font-[700]">⏳ {t('viral_prod_running', 'producing…')}</span>;
                   if (done) return <span className="text-[10.5px] font-[700] text-[#57D9A3]">🏭 {done} ✓</span>;
                   return null;
+                })()}
+                {/* 🧲 mồi câu nên làm nhất (mở thẻ để xem cả bảng xếp hạng) */}
+                {(() => {
+                  const best = (sd.lead_magnets || [])[0];
+                  if (!best) return null;
+                  return (
+                    <span
+                      className="text-[10.5px] font-[700] px-[6px] py-[2px] rounded-[6px] bg-btnPrimary/12 text-btnPrimary"
+                      title={`${t('viral_lm_head', 'Lead magnet to build')}: ${lmMeta(best.type).label} ${best.score}/100${best.title ? ` — ${best.title}` : ''}`}
+                    >
+                      🧲 {lmMeta(best.type).icon} {best.score}
+                    </span>
+                  );
                 })()}
                 <span className="ms-auto" title={t('viral_produce_suggest', 'AI production suggestion')}>
                   {topicDefaults(sd).map((f) => FORMAT_META[f]?.icon).join(' ')}

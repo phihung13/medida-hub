@@ -3,6 +3,10 @@ import OpenAI from 'openai';
 import { shuffle } from 'lodash';
 import { getSkill } from '@gitroom/nestjs-libraries/viral/viral.skills';
 import {
+  LEAD_MAGNET_TYPES,
+  ViralLeadMagnet,
+} from '@gitroom/nestjs-libraries/viral/viral.leadmagnet';
+import {
   getTextProvider,
   getOpenRouterKey,
   getOpenRouterModel,
@@ -814,6 +818,7 @@ export class OpenaiService {
         reason: string;
         content_type?: string;
         podcast_score?: number;
+        lead_magnet?: ViralLeadMagnet;
       }[]
     | null
   > {
@@ -828,7 +833,12 @@ export class OpenaiService {
       '\n\n' +
       `CÁC NHÓM CHÂN DUNG:\n${personasText}\n\n${rubric}\n\n` +
       'verdict ∈ ["xuất sắc - đăng ngay","đăng ngay","sửa nhẹ","sửa nhiều","bỏ qua"].\n' +
-      'Trả JSON: mảng [{"i","persona","score","scores":{"hook","clarity","brand_voice","value","cta","seo"},"verdict","rewritten","variants":[{"persona","text"}],"reason","content_type","podcast_score"}] — đúng thứ tự "i" của đầu vào, đủ mọi phần tử.';
+      // Bài lẻ chấm 8 bài/lần → chỉ lấy MỒI CÂU TỐT NHẤT (bản gọn) cho đỡ token;
+      // xếp hạng đủ 5 loại chỉ làm ở cấp chủ đề (viralLeadMagnets).
+      `Thêm "lead_magnet" = MỘT lead magnet đáng làm nhất kèm content này: {"type","score","title","why"} với type ∈ ${JSON.stringify(
+        LEAD_MAGNET_TYPES
+      )}, score 0-100 (độ nên làm). Nội dung quá mỏng để làm mồi câu → vẫn trả nhưng score thấp.\n` +
+      'Trả JSON: mảng [{"i","persona","score","scores":{"hook","clarity","brand_voice","value","cta","seo"},"verdict","rewritten","variants":[{"persona","text"}],"reason","content_type","podcast_score","lead_magnet"}] — đúng thứ tự "i" của đầu vào, đủ mọi phần tử.';
     const user = items
       .map(
         (it) =>
@@ -931,6 +941,7 @@ export class OpenaiService {
     content_type: string;
     podcast_score: number;
     rewritten: string;
+    lead_magnets?: ViralLeadMagnet[];
   } | null> {
     const system =
       vietAnhSystem() +
@@ -939,10 +950,16 @@ export class OpenaiService {
       '\n\n' +
       getSkill('nguyen-tac-chon-nhom') +
       '\n\n' +
+      // BƯỚC 5 — xếp hạng mồi câu (lead magnet) cho chủ đề này.
+      getSkill('skill-lead-magnet') +
+      '\n\n' +
       `CÁC NHÓM CHÂN DUNG:\n${input.personasText}\n\n${input.rubric}\n\n` +
       'verdict ∈ ["xuất sắc - đăng ngay","đăng ngay","sửa nhẹ","sửa nhiều","bỏ qua"]. ' +
       'content_type ∈ ["blog","infographic","video"]. podcast_score 0-100.\n' +
-      'Trả DUY NHẤT JSON: {"label","synthesis":{"angle","agreedFacts":[],"keyNumbers":[],"quotes":[],"uniqueAngles":[],"hook","whyItMatters"},"persona","rewritten","score","scores":{"hook","clarity","brand_voice","value","cta","seo"},"verdict","reason","content_type","podcast_score"}. ' +
+      `"lead_magnets" = mảng ĐỦ 5 phần tử (type ∈ ${JSON.stringify(
+        LEAD_MAGNET_TYPES
+      )}), xếp theo "score" giảm dần, mỗi phần tử {"type","score","title","why","effort"}; RIÊNG phần tử đầu tiên thêm {"outline":[],"cta"}.\n` +
+      'Trả DUY NHẤT JSON: {"label","synthesis":{"angle","agreedFacts":[],"keyNumbers":[],"quotes":[],"uniqueAngles":[],"hook","whyItMatters"},"persona","rewritten","score","scores":{"hook","clarity","brand_voice","value","cta","seo"},"verdict","reason","content_type","podcast_score","lead_magnets":[]}. ' +
       '"rewritten" = bài đăng mạng xã hội của Trường Việt Anh (2-4 câu + CTA + hashtag) cho persona đã chọn, dựa trên content tổng hợp — score chấm chính bản rewritten này.';
     const user =
       `${input.posts.length} bài từ nhiều nguồn CÙNG NÓI về một chủ đề — hãy tổng hợp:\n\n` +
@@ -952,7 +969,36 @@ export class OpenaiService {
             `[${k + 1}] Nguồn: ${p.sourceName || p.platform}${p.shares ? ` · ${p.shares} share` : ''}\nTiêu đề: ${p.title}\nNội dung: ${(p.content || '(chỉ có tiêu đề)').slice(0, 1200)}`
         )
         .join('\n\n---\n\n');
-    return claudeJson(system, user, 4000);
+    // 6000 (cũ 4000): JSON giờ cõng thêm bảng xếp hạng 6 lead magnet — trần cũ
+    // dễ cắt giữa chừng làm hỏng JSON → chủ đề không tổng hợp được.
+    return claudeJson(system, user, 6000);
+  }
+
+  // XẾP HẠNG LEAD MAGNET cho MỘT content đã có sẵn (chấm bù cho content cũ,
+  // hoặc bấm lại khi muốn gợi ý mới). Chỉ trả bảng xếp hạng — KHÔNG đụng tới
+  // điểm/persona/bản viết lại của content.
+  async viralLeadMagnets(input: {
+    title: string;
+    content: string;
+    persona?: string | null;
+    personaProfile?: string | null;
+  }): Promise<ViralLeadMagnet[] | null> {
+    const system =
+      vietAnhSystem() +
+      '\n\n' +
+      getSkill('skill-lead-magnet') +
+      '\n\n' +
+      `Trả DUY NHẤT JSON: {"lead_magnets":[...]} — mảng ĐỦ 5 phần tử (type ∈ ${JSON.stringify(
+        LEAD_MAGNET_TYPES
+      )}), xếp theo "score" giảm dần, mỗi phần tử {"type","score","title","why","effort"}; RIÊNG phần tử đầu tiên thêm {"outline":[],"cta"}.`;
+    const user =
+      `CONTENT CẦN GẮN MỒI CÂU\nTiêu đề: ${input.title}\n\n${(
+        input.content || ''
+      ).slice(0, 6000)}` +
+      (input.persona ? `\n\nNHÓM CHÂN DUNG NHẮM TỚI: ${input.persona}` : '') +
+      (input.personaProfile ? `\n${input.personaProfile.slice(0, 2000)}` : '');
+    const res = await claudeJson<{ lead_magnets?: any[] }>(system, user, 3000);
+    return (res?.lead_magnets as ViralLeadMagnet[]) || null;
   }
 
   // Làm giàu hồ sơ persona từ tín hiệu cào — port nguyên văn prompt node n8n

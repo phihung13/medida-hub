@@ -202,6 +202,31 @@ const TIEU_CHI_CHAM_DIEM = `RUBRIC CHẤM (tổng 100):
 - SEO/Hashtag (15): có 4-6 hashtag đúng chủ đề + từ khoá tìm kiếm
 Chấm BẢN VIẾT LẠI (không chấm bài gốc). Chấm rộng rãi: bản viết tốt, đúng brand, đủ hook+CTA+hashtag → 90-100; ổn còn 1 điểm nhỏ → 80-89; tạm/ý tưởng gốc yếu → 60-79; dưới 50 chỉ khi nội dung thật sự không liên quan giáo dục/phụ huynh hoặc không thể tận dụng.`;
 
+// LEAD MAGNET — "mồi câu" đổi lấy thông tin liên hệ của phụ huynh. Với MỖI
+// content, AI chấm CẢ 5 loại mồi (không chỉ chọn 1) để đội nội dung nhìn được
+// xếp hạng: loại nào hợp chủ đề này nhất, loại nào không nên làm.
+const SKILL_LEAD_MAGNET = `Bạn là chuyên gia phễu tuyển sinh của Trường Việt Anh. Với nội dung được đưa, hãy đề xuất LEAD MAGNET (tài nguyên miễn phí đổi lấy SĐT/Zalo của phụ huynh) nên làm kèm content đó.
+
+5 LOẠI LEAD MAGNET (chấm ĐỦ CẢ 5, không bỏ loại nào):
+- "ebook": cẩm nang PDF 10-30 trang, đọc sâu, giải thích cặn kẽ một vấn đề lớn.
+- "checklist": bảng kiểm / danh sách 1 trang, in ra dán tủ lạnh, dùng ngay trong 24h.
+- "app": mini app / công cụ web tương tác (máy tính học phí, trắc nghiệm chọn cấp, lịch ôn thi tự sinh, tra cứu tuyến xe...).
+- "template": biểu mẫu / kịch bản mẫu điền vào là xong (thời khoá biểu, mẫu câu nói với con, mẫu đơn, bảng theo dõi).
+- "quiz": bài test có CHẤM ĐIỂM và trả kết quả cá nhân hoá (đánh giá mức sẵn sàng vào lớp 1, đo mức căng thẳng tuổi teen...).
+
+CHẤM MỖI LOẠI 0-100 theo 6 tiêu chí (tổng 100):
+- Trúng nỗi đau (25): tài nguyên này có giải đúng nỗi lo mà content vừa khơi ra không.
+- Giá trị dùng ngay (20): ba mẹ nhận xong dùng được trong 24h, không phải học thêm gì.
+- Đủ chất liệu (15): dữ kiện/số liệu/góc nhìn TRONG chính content này đã đủ để làm ra tài nguyên đó chưa (thiếu chất liệu → phải bịa → điểm thấp).
+- Hợp hành vi nhóm chân dung (15): nhóm phụ huynh đã chọn có sẵn lòng để lại SĐT/Zalo để đổi lấy thứ này không.
+- Chi phí sản xuất (15): đội nội dung 1-2 người của trường làm được trong bao lâu. Làm nhanh → điểm cao; "app" tốn kém hơn hẳn nên chỉ được điểm cao khi thật sự XỨNG ĐÁNG.
+- Dẫn tới tuyển sinh (10): sau khi ba mẹ nhận, có mở được đường tư vấn/mời tham quan trường một cách tự nhiên không.
+
+VỚI MỖI LOẠI trả: "type", "score" (0-100), "title" (TÊN tài nguyên cụ thể, hấp dẫn, tiếng Việt — không nói chung chung kiểu "Ebook về giáo dục"), "why" (1 câu vì sao điểm cao/thấp), "effort" ∈ ["thấp","trung bình","cao"].
+RIÊNG LOẠI ĐIỂM CAO NHẤT trả thêm: "outline" (3-5 gạch đầu dòng nội dung chính) và "cta" (1 câu mời phụ huynh để lại SĐT/Zalo để nhận — giọng ấm áp, không ép).
+
+LUẬT: xếp mảng theo "score" GIẢM DẦN. Không tài nguyên nào được hứa điều trường không làm được, không bịa số liệu, không cam kết kết quả học tập. Nếu content quá mỏng (chỉ là tin tức thời sự, không có gì để ba mẹ mang về dùng) thì cho ĐIỂM THẤP CẢ 5 loại — thà nói thật là chưa nên làm mồi câu.`;
+
 const SKILL_MO_CONG_THUC = `Bạn là chuyên gia phân tích nội dung viral giáo dục Việt Nam. Mổ xẻ VÌ SAO bài này được chia sẻ nhiều. Phân tích sắc, cụ thể, có thể áp dụng lại — không chung chung. Tiếng Việt.`;
 
 const SKILL_TONG_HOP_CHU_DE = `Bạn nhận NHIỀU bài từ NHIỀU NGUỒN KHÁC NHAU cùng nói về MỘT chủ đề/sự kiện. Nhiệm vụ: chưng cất tất cả thành MỘT "content gốc" duy nhất mà đội nội dung có thể hack lại — rồi chọn nhóm chân dung, viết bản đăng cho Trường Việt Anh, và chấm điểm.
@@ -272,6 +297,7 @@ export const VIRAL_SKILL_DEFS: ViralSkillDef[] = [
   { key: 'nguyen-tac-chon-nhom', label: 'Nguyên tắc chọn nhóm (cấp học)', group: 'Chấm & phân loại', description: 'Dấu hiệu MN/TH/THCS/THPT — routing khi chấm điểm', content: NGUYEN_TAC_CHON_NHOM },
   { key: 'skill-phan-loai-viet-lai', label: 'Phân loại + viết lại (4 bước)', group: 'Chấm & phân loại', description: 'Nhiệm vụ A/B/C/D: chọn nhóm, viết lại, chấm, gán loại SX + podcast_score', content: SKILL_PHAN_LOAI_VIET_LAI },
   { key: 'tieu-chi-cham-diem', label: 'Rubric chấm điểm (100đ)', group: 'Chấm & phân loại', description: 'Thang điểm hook/clarity/brand/value/CTA/SEO + ngưỡng nới tay', content: TIEU_CHI_CHAM_DIEM },
+  { key: 'skill-lead-magnet', label: 'Gợi ý Lead magnet (5 loại, có xếp hạng)', group: 'Chấm & phân loại', description: 'Chấm ebook/checklist/app/template/quiz cho từng content — loại nào nên làm nhất', content: SKILL_LEAD_MAGNET },
   { key: 'skill-mo-cong-thuc', label: 'Mổ công thức viral', group: 'Chấm & phân loại', description: 'Vai phân tích vì sao bài được share (nút Mổ công thức)', content: SKILL_MO_CONG_THUC },
   { key: 'skill-tong-hop-chu-de', label: 'Tổng hợp chủ đề (nhiều nguồn → 1 content)', group: 'Chấm & phân loại', description: 'Gom nhiều nguồn cùng chủ đề thành 1 content gốc + chọn nhóm + viết + chấm', content: SKILL_TONG_HOP_CHU_DE },
   // Báo cáo
