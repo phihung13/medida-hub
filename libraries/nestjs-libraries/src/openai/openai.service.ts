@@ -997,8 +997,13 @@ export class OpenaiService {
       ).slice(0, 6000)}` +
       (input.persona ? `\n\nNHÓM CHÂN DUNG NHẮM TỚI: ${input.persona}` : '') +
       (input.personaProfile ? `\n${input.personaProfile.slice(0, 2000)}` : '');
-    const res = await claudeJson<{ lead_magnets?: any[] }>(system, user, 3000);
-    return (res?.lead_magnets as ViralLeadMagnet[]) || null;
+    const res = await claudeJson<any>(system, user, 3000);
+    // AI hay trả THẲNG mảng thay vì bọc trong {"lead_magnets":[...]} (và đôi khi
+    // đặt tên khoá khác) — nhận hết, đừng bắt nó phải đúng vỏ mới chịu.
+    const list = Array.isArray(res)
+      ? res
+      : res?.lead_magnets || res?.leadMagnets || res?.items || res?.data;
+    return Array.isArray(list) ? (list as ViralLeadMagnet[]) : null;
   }
 
   // Làm giàu hồ sơ persona từ tín hiệu cào — port nguyên văn prompt node n8n

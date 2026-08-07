@@ -29,6 +29,44 @@ export interface ViralLeadMagnet {
   cta?: string; // câu mời để lại SĐT/Zalo (loại đứng đầu)
 }
 
+// AI hay gọi loại bằng tên tự nhiên ("mini app", "e-book", "biểu mẫu") thay vì
+// đúng mã. Quy hết về 5 mã chuẩn — sai tên mà vứt cả bảng thì người dùng bấm
+// nút chỉ thấy "chưa gợi ý được".
+const TYPE_ALIASES: Record<string, string> = {
+  'e-book': 'ebook',
+  'e book': 'ebook',
+  book: 'ebook',
+  pdf: 'ebook',
+  guide: 'ebook',
+  'cẩm nang': 'ebook',
+  'sách': 'ebook',
+  'check list': 'checklist',
+  'bảng kiểm': 'checklist',
+  'danh sách': 'checklist',
+  'mini app': 'app',
+  miniapp: 'app',
+  'mini-app': 'app',
+  tool: 'app',
+  'công cụ': 'app',
+  calculator: 'app',
+  webapp: 'app',
+  'web app': 'app',
+  'biểu mẫu': 'template',
+  form: 'template',
+  'mẫu': 'template',
+  worksheet: 'template',
+  test: 'quiz',
+  'trắc nghiệm': 'quiz',
+  'bài test': 'quiz',
+  assessment: 'quiz',
+};
+
+const canonType = (raw: string) => {
+  const k = raw.trim().toLowerCase().replace(/_/g, ' ');
+  if ((LEAD_MAGNET_TYPES as readonly string[]).includes(k)) return k;
+  return TYPE_ALIASES[k] || '';
+};
+
 const clampScore = (n: any) =>
   Math.max(0, Math.min(100, Math.round(Number(n) || 0)));
 
@@ -40,8 +78,8 @@ export const normalizeLeadMagnets = (raw: any): ViralLeadMagnet[] => {
   const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
   const byType = new Map<string, ViralLeadMagnet>();
   for (const it of list) {
-    const type = str(it?.type, 20).toLowerCase();
-    if (!(LEAD_MAGNET_TYPES as readonly string[]).includes(type)) continue;
+    const type = canonType(str(it?.type, 40));
+    if (!type) continue;
     const item: ViralLeadMagnet = {
       type: type as LeadMagnetType,
       score: clampScore(it?.score),

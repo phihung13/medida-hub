@@ -306,11 +306,17 @@ const DetailModal: FC<{ post: any; onDone: () => void }> = ({ post, onDone }) =>
     setLmBusy(true);
     try {
       const res = await fetch(`/viral/posts/${post.id}/lead-magnets`, { method: 'POST' });
-      if (!res.ok) throw new Error();
-      const json = await res.json();
-      setLm(json.leadMagnets || []);
-    } catch {
-      toast.show(t('viral_lm_fail', 'Could not suggest a lead magnet — try again.'), 'warning');
+      const json = await res.json().catch(() => null);
+      // Hiện ĐÚNG lý do backend trả về (hết hạn mức AI, content rỗng…) — câu
+      // chung chung làm người dùng tưởng nút hỏng.
+      if (!res.ok) throw new Error(json?.message || '');
+      setLm(json?.leadMagnets || []);
+      onDone(); // làm mới danh sách để kết quả còn nguyên khi đóng thẻ
+    } catch (e: any) {
+      toast.show(
+        e?.message || t('viral_lm_fail', 'Could not suggest a lead magnet — try again.'),
+        'warning'
+      );
     } finally {
       setLmBusy(false);
     }
@@ -1535,8 +1541,17 @@ const TopicDetailModal: FC<{ topicId: string; onDone: () => void }> = ({ topicId
     setLmBusy(true);
     try {
       const res = await fetch(`/viral/topics/${topicId}/lead-magnets`, { method: 'POST' });
-      if (res.ok) await mutate();
-      else toast.show(t('viral_lm_fail', 'Could not suggest a lead magnet — try again.'), 'warning');
+      if (res.ok) {
+        await mutate();
+        onDone(); // badge 🧲 ngoài lưới cập nhật theo
+      } else {
+        // Hiện ĐÚNG lý do backend trả về thay vì câu chung chung.
+        const json = await res.json().catch(() => null);
+        toast.show(
+          json?.message || t('viral_lm_fail', 'Could not suggest a lead magnet — try again.'),
+          'warning'
+        );
+      }
     } finally {
       setLmBusy(false);
     }
