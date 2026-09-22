@@ -18,6 +18,12 @@ import { MagicWandIcon } from '@gitroom/frontend/components/ui/icons';
 
 const VIDEO_RE = /\.(mp4|mov|webm|mp3|wav|m4a)(\?|$)/i;
 
+// Trần backend (GenerateAiCaptionDto: @ArrayMaxSize(20)). Đính nhiều hơn 20 ảnh
+// là bài đăng bình thường, nhưng gửi HẾT lên thì API trả lỗi "mediaIds must
+// contain no more than 20 elements" và người dùng chỉ thấy báo lỗi khó hiểu.
+// Cắt sẵn ở đây: AI chỉ cần NHÌN một phần là đủ để viết caption cho cả bài.
+const AI_CAPTION_MAX_IMAGES = 20;
+
 const escapeHtml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -33,8 +39,14 @@ export const MagicCaption: FC<{
   const setLocked = useLaunchStore((state) => state.setLocked);
   const [loading, setLoading] = useState(false);
 
+  // Ảnh ĐANG ẨN sẽ không được đăng (lọc ở post.activity.ts lúc đăng thật) nên
+  // cũng không được để AI nhìn — caption sẽ tả thứ người xem không thấy.
   const images = useMemo(
-    () => (pictures || []).filter((p) => p?.id && !VIDEO_RE.test(p?.path || '')),
+    () =>
+      (pictures || []).filter(
+        (p) =>
+          p?.id && !(p as any).hidden && !VIDEO_RE.test(p?.path || '')
+      ),
     [pictures]
   );
 
@@ -45,10 +57,20 @@ export const MagicCaption: FC<{
     setLoading(true);
     setLocked(true);
     try {
+      const sent = images.slice(0, AI_CAPTION_MAX_IMAGES);
+      if (images.length > sent.length) {
+        toaster.show(
+          t(
+            'magic_caption_capped',
+            `Too many images — AI is reading the first ${AI_CAPTION_MAX_IMAGES} to write the caption.`
+          ),
+          'warning'
+        );
+      }
       const res = await fetch('/media/ai-caption', {
         method: 'POST',
         body: JSON.stringify({
-          mediaIds: images.map((p) => p.id),
+          mediaIds: sent.map((p) => p.id),
           context: context || undefined,
         }),
       });

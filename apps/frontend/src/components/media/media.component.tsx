@@ -867,6 +867,24 @@ const MediaManagerModal: FC<{
     [onChange]
   );
 
+  // Trả ảnh về BẢN GỐC trước khi sửa (file gốc chưa bao giờ bị xoá, vẫn nằm
+  // trong thư viện — chỉ cần trỏ lại id/path cũ). Bỏ luôn dấu vết originalId
+  // để lần sửa sau lại ghi mốc mới từ chính bản gốc này.
+  const revertToOriginal = useCallback(
+    (id: string) => {
+      setList((prev) => {
+        const next = prev.map((m) => {
+          if (m.id !== id || !m.originalId) return m;
+          const { originalId, originalPath, ...rest } = m;
+          return { ...rest, id: originalId, path: originalPath };
+        });
+        onChange(next);
+        return next;
+      });
+    },
+    [onChange]
+  );
+
   const openInsertFromLibrary = useCallback(() => {
     modals.openModal({
       askClose: false,
@@ -911,7 +929,22 @@ const MediaManagerModal: FC<{
         setMedia={(edited) => {
           const next = edited?.[0];
           if (next) {
-            commit(list.map((m) => (m.id === editing.id ? { ...m, ...next } : m)));
+            commit(
+              list.map((m) =>
+                m.id === editing.id
+                  ? {
+                      ...m,
+                      ...next,
+                      // Nhớ ĐƯỜNG VỀ ảnh gốc: ảnh đã sửa là file MỚI, file cũ
+                      // vẫn nằm nguyên trong thư viện — giữ id/path của nó để
+                      // bấm hoàn tác là lấy lại được. Sửa nhiều lần liên tiếp
+                      // vẫn trỏ về bản gốc ĐẦU TIÊN (|| chỉ gán lần đầu).
+                      originalId: m.originalId || m.id,
+                      originalPath: m.originalPath || m.path,
+                    }
+                  : m
+              )
+            );
           }
           setEditing(null);
         }}
@@ -1001,10 +1034,16 @@ const MediaManagerModal: FC<{
                 <span className="absolute top-[6px] left-[6px] z-[5] bg-black/70 text-white text-[11px] font-[700] rounded-full min-w-[20px] h-[20px] px-[5px] flex items-center justify-center pointer-events-none">
                   {i + 1}
                 </span>
-                {m.hidden && (
+                {m.hidden ? (
                   <span className="absolute top-[6px] right-[6px] z-[5] bg-amber-500 text-white text-[10px] font-[700] rounded-full px-[7px] h-[20px] flex items-center justify-center pointer-events-none">
                     {t('media_hidden_badge', 'Hidden')}
                   </span>
+                ) : (
+                  !!m.originalId && (
+                    <span className="absolute top-[6px] right-[6px] z-[5] bg-blue-600 text-white text-[10px] font-[700] rounded-full px-[7px] h-[20px] flex items-center justify-center pointer-events-none">
+                      {t('media_edited_badge', 'Edited')}
+                    </span>
+                  )
                 )}
                 {hasExtension(m.path, 'mp4') ? (
                   <video
@@ -1083,6 +1122,28 @@ const MediaManagerModal: FC<{
                           d="M4 20h4L18.5 9.5a2.121 2.121 0 0 0-3-3L5 17v3ZM13.5 6.5l4 4"
                           stroke="#111827"
                           strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                  )}
+                  {!!m.originalId && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        revertToOriginal(m.id);
+                      }}
+                      title={t('media_revert', 'Back to the original image')}
+                      aria-label={t('media_revert', 'Back to the original image')}
+                      className="w-[32px] h-[32px] rounded-full bg-white/95 flex items-center justify-center hover:bg-white transition-colors"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                        <path
+                          d="M3 5v6h6M3.5 10a9 9 0 1 1 1.6 6"
+                          stroke="#111827"
+                          strokeWidth="1.8"
                           strokeLinecap="round"
                           strokeLinejoin="round"
                         />
@@ -1261,7 +1322,16 @@ export const MultiMediaComponent: FC<{
                 target: {
                   name: 'upload',
                   value: (currentMedia || []).map((p) =>
-                    p.id === media.id ? { ...p, ...next } : p
+                    p.id === media.id
+                      ? {
+                          ...p,
+                          ...next,
+                          // Giữ đường về ảnh gốc y như trong Trình quản lý
+                          // media — sửa ở đâu cũng hoàn tác lại được.
+                          originalId: (p as any).originalId || p.id,
+                          originalPath: (p as any).originalPath || p.path,
+                        }
+                      : p
                   ),
                 },
               });

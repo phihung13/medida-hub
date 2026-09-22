@@ -196,17 +196,29 @@ export const Component: FC<{
           !isLast && '!overflow-hidden'
         )}
       >
-        <div className={clsx(modal.fullScreen && 'flex', 'relative flex-1')}>
+        {/* min-w-0 ở CẢ 3 tầng: flex item mặc định min-width:auto nên không co
+            nhỏ hơn nội dung bên trong — nội dung nào rộng bất thường (vd dải
+            thumbnail bộ lọc của Filerobot ở tab Filters) sẽ kéo cả modal phình
+            ra quá bề ngang màn hình (đo được 3399px trên màn 1592px), làm
+            canvas/nội dung bị tính sai kích thước và modal trôi ngang. */}
+        <div
+          className={clsx(
+            modal.fullScreen && 'flex min-w-0',
+            'relative flex-1'
+          )}
+        >
           <div
             className={clsx(
               modal.fullScreen
-                ? 'flex flex-1'
+                ? 'flex flex-1 min-w-0'
                 : 'absolute top-0 left-0 min-w-full min-h-full'
             )}
           >
             <div
               className={clsx(
-                modal.fullScreen ? 'w-full h-full flex-1' : 'mx-auto py-[48px]'
+                modal.fullScreen
+                  ? 'w-full h-full flex-1 min-w-0'
+                  : 'mx-auto py-[48px]'
               )}
               {...(modal.size && { style: { width: modal.size } })}
             >

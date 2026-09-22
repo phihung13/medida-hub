@@ -38,4 +38,15 @@ export class MediaDto {
   @ValidateIf((o) => o.hiddenReason)
   @IsString()
   hiddenReason?: string;
+
+  // Đường về ẢNH GỐC khi ảnh này là bản đã qua Design Media: bấm "Use this
+  // media" tạo file MỚI, file gốc vẫn nằm nguyên trong thư viện — giữ id/path
+  // của nó để nút hoàn tác lấy lại được (sửa nhiều lần vẫn trỏ bản gốc đầu).
+  @ValidateIf((o) => o.originalId)
+  @IsString()
+  originalId?: string;
+
+  @ValidateIf((o) => o.originalPath)
+  @IsString()
+  originalPath?: string;
 }

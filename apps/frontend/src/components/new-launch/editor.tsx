@@ -68,7 +68,6 @@ import {
 } from '@gitroom/frontend/components/ui/icons';
 import { DelayComponent } from '@gitroom/frontend/components/new-launch/delay.component';
 import { MagicCaption } from '@gitroom/frontend/components/new-launch/magic.caption';
-import { MediaFromUrl } from '@gitroom/frontend/components/new-launch/media.from.url';
 
 const MAX_UPLOAD_SIZE = 2 * 1024 * 1024 * 1024; // 2 GB (video to hơn: dán link Drive — trần 5GB)
 
@@ -826,8 +825,8 @@ export const Editor: FC<{
                   }
                   toolBar={
                     // Nút toolbar 30px nằm trong file cấm sửa → phóng 40px từ wrapper
-                    // (:not(.absolute) né panel bay của Heading). Không hscroll:
-                    // overflow-x sẽ cắt dropdown của MediaFromUrl.
+                    // (:not(.absolute) né panel bay của Heading). Không hscroll
+                    // để panel bay của các nút ở đây không bị overflow-x cắt.
                     <div className="flex flex-wrap gap-[5px] mobile:gap-[8px] mobile:[&>[data-tooltip-id]]:w-[40px] mobile:[&>[data-tooltip-id]]:h-[40px] mobile:[&>div>[data-tooltip-id]:not(.absolute)]:w-[40px] mobile:[&>div>[data-tooltip-id]:not(.absolute)]:h-[40px]">
                       <MagicCaption
                         pictures={pictures || []}
@@ -838,7 +837,9 @@ export const Editor: FC<{
                           props.onChange(html);
                         }}
                       />
-                      <MediaFromUrl onMedia={(media) => appendImages([media])} />
+                      {/* MediaFromUrl KHÔNG đặt ở đây: MultiMediaComponent đã
+                          render sẵn nút đó cạnh Insert Media/Design Media —
+                          hai chỗ cùng đổ ra một hàng nên hiện 2 nút y hệt. */}
                       <SignatureBox editor={editorRef?.current?.editor} />
                       {editorType !== 'none' && (
                         <>

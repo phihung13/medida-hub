@@ -153,8 +153,14 @@ const FilerobotEditor: FC<{
       </div>
 
       {/* Vùng editor lấp đầy phần còn lại của modal. Nền xám nhạt để canvas
-          TRẮNG nổi rõ (trước đây trắng-trên-trắng → nhìn như editor vỡ). */}
-      <div className="flex-1 min-h-0 relative bg-[#e9edf2]">
+          TRẮNG nổi rõ (trước đây trắng-trên-trắng → nhìn như editor vỡ).
+          min-w-0 BẮT BUỘC (cùng lý do với min-h-0): flex item mặc định
+          min-width:auto nên KHÔNG co nhỏ hơn nội dung bên trong — tab Filters
+          của Filerobot render một dải thumbnail nằm ngang rất dài, làm div
+          phình ra (đo được 3259px) và canvas bị JS tính theo bề rộng đã phình,
+          dù ảnh chỉ là hình vuông nhỏ. overflow-hidden để dải đó tự cuộn
+          ngang bên trong thay vì đẩy layout. */}
+      <div className="flex-1 min-h-0 min-w-0 relative overflow-hidden bg-[#e9edf2]">
         {/* Gợi ý cho trạng thái canvas trắng — hướng dẫn người mới bắt đầu. */}
         {!source && (
           <div className="pointer-events-none absolute top-[8px] left-1/2 -translate-x-1/2 z-[10] rounded-full bg-[#111827]/85 text-white text-[12px] px-[12px] py-[6px] shadow-md whitespace-nowrap">
