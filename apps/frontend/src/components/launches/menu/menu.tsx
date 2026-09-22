@@ -453,9 +453,14 @@ export const Menu: FC<{
             </div>
             <div className="text-[14px]">{t('post_footer', 'Post Footer')}</div>
           </div>
-          {canDisable &&
-            findIntegration?.refreshNeeded &&
-            !findIntegration.customFields && (
+          {/* Trước đây chỉ hiện khi refreshNeeded (token đã hỏng). Nhưng còn
+              một lý do CHÍNH ĐÁNG khác để nối lại: khi Hub xin THÊM quyền mới
+              (vd pages_manage_engagement để đăng bình luận thay Trang), kênh
+              đang khoẻ vẫn giữ token cũ THIẾU quyền đó — mà không có nút này
+              thì không có đường nào cấp quyền, ngoài xoá kênh rồi nối lại
+              (mất chân bài/nhóm/khách hàng và làm hỏng bài đã lên lịch).
+              Nối lại giữ nguyên internalId nên mọi thứ gắn với kênh còn nguyên. */}
+          {canDisable && !findIntegration?.customFields && (
               <div
                 className="flex gap-[12px] items-center py-[8px] px-[10px]"
                 onClick={refreshChannel(findIntegration!)}
