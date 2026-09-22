@@ -146,6 +146,60 @@ com.docker.backend.exe.log lap lai {"docker":"starting",...} khong tien trien,
 
 ---
 
+## ⚠️ 5.2 SỰ CỐ ĐANG MỞ: production sập vì `mastra_ai_spans` vượt trần 1600 cột (2026-09-22)
+
+**Triệu chứng:** sau khi deploy bản mới, `hub.vietanh.org` trả **503 "no available server"**
+(Traefik/Coolify không tìm được backend khoẻ). Trình duyệt thấy trang "Media Hub Việt Anh
+đang cập nhật tính năng mới". Container **có** được tạo lại đúng bằng image mới (log Coolify
+xác nhận pull `ghcr.io/phihung13/medida-hub:latest` + recreate container), nhưng backend bên
+trong **crash-loop vô tận** qua PM2.
+
+**Lỗi thật (log container):**
+```
+MastraError: tables can have at most 1600 columns
+  at PgDB.alterTable (@mastra/pg/dist/index.cjs:2955)
+  at async _ObservabilityPG.init → PostgresStore.init → ensureInit → Proxy.<anonymous>
+id: 'MASTRA_STORAGE_PG_ALTER_TABLE_FAILED'   code: '54011'   details: { tableName: 'mastra_ai_spans' }
+→ Node.js thoát exit code 1 → PM2 restart → lặp lại mãi
+```
+
+**Chẩn đoán:**
+- `libraries/nestjs-libraries/src/chat/mastra.store.ts` trỏ `PostgresStore` vào **chính DB
+  production** (`DATABASE_URL`). `PostgresStore.init()` chạy `Promise.all` khởi tạo các
+  sub-store, trong đó `_ObservabilityPG` `ALTER TABLE ADD COLUMN` lên `mastra_ai_spans`.
+- Postgres đếm giới hạn 1600 cột theo `pg_attribute` (**tính cả cột đã DROP** — slot `attnum`
+  không được tái sử dụng cho tới khi bảng bị xoá/tạo lại). Bảng đã chạm trần → mọi lần
+  `ADD COLUMN` đều fail → app không boot nổi.
+- ⚠️ `VACUUM FULL` **KHÔNG** giải phóng slot `attnum` — chỉ `DROP TABLE` + tạo lại mới được.
+- `main.ts` gọi `await startMcp(app)` lúc boot; `startMcp` gọi `mastraService.mastra()`.
+  Nhưng lỗi bắn ra từ một promise **không ai await** (lazy `ensureInit()` qua Proxy của
+  Mastra) → bọc `try/catch` quanh `startMcp()` **KHÔNG đủ**, đã thử và vẫn sập.
+
+**Đã làm (chặn sự cố, commit trên main):**
+1. `0907fc6f` — bọc `try/catch` quanh `startMcp()` trong `apps/backend/src/main.ts`.
+   → **Không đủ**, vẫn sập (xác nhận bằng log container sau deploy).
+2. `2fb6d5ff` — thêm `process.on('unhandledRejection')` ở **dòng đầu tiên** `main.ts`
+   (trước mọi import). → **Chặn được**, site lên lại 307.
+
+**CÒN PHẢI LÀM — sửa gốc (cần quyền chạy SQL trên Postgres production):**
+```sql
+DROP TABLE IF EXISTS mastra_ai_spans;
+```
+- An toàn: bảng này CHỈ chứa **dấu vết tracing AI Agent** để gỡ lỗi. Lịch sử chat nằm ở
+  `mastra_messages`, luồng hội thoại ở `mastra_threads`, workflow ở `mastra_workflow_snapshot`
+  — **không đụng tới**. Bài viết/media/user của Postiz nằm ở schema Prisma riêng, không liên quan.
+- Mastra tự tạo lại bảng sạch (~20 cột, dùng JSONB + GIN index cho dữ liệu động) ở lần boot kế.
+- Chạy được qua: Coolify → terminal của container `postiz-postgres`, hoặc
+  `docker exec -it postiz-postgres psql -U postiz-user -d postiz-db -c "DROP TABLE IF EXISTS mastra_ai_spans;"`
+- **Sau khi dọn xong:** theo dõi xem bảng có phình cột lại không (nếu có → là bug của
+  `@mastra/pg` 1.8.5, cân nhắc bỏ hẳn `storage: pStore` trong `mastra.service.ts`, đánh đổi
+  là mất bộ nhớ hội thoại Agent qua restart).
+- Lưới `unhandledRejection` là **chặn tạm**, không phải fix — giữ lại cũng tốt (một nhánh phụ
+  không được phép kéo sập cả container all-in-one), nhưng nó sẽ che các lỗi async khác nên
+  phải đọc log định kỳ.
+
+---
+
 ## 5. Nhật ký
 
 - **2026-09-21** — Dựng SSH máy A→B; clone repo về `D:\media-hub`; `pnpm install`; thêm nút sửa ảnh trong composer (typecheck pass, chưa commit). Phát hiện máy B đang chạy Postiz bản official ở cổng 4007 → cần chốt hướng thay thế.
