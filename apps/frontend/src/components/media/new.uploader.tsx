@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 // @ts-ignore
 import Uppy, { BasePlugin, UploadResult, UppyFile } from '@uppy/core';
 // @ts-ignore
@@ -46,8 +52,21 @@ export function useUppyUploader(props: {
   const toast = useToaster();
   const { storageProvider, backendUrl, disableImageCompression, transloadit } =
     useVariables();
-  const { onUploadSuccess, allowedFileTypes } = props;
+  const { allowedFileTypes } = props;
   const fetch = useFetch();
+
+  // Uppy được tạo MỘT LẦN (useMemo deps rỗng — cố ý, tạo lại là mất file đang
+  // tải). Nhưng vì thế `props.onUploadSuccess` cũng bị đóng băng ở lần render
+  // ĐẦU TIÊN: đổi sang kênh khác rồi thả ảnh vào là ảnh bay sang bài của kênh
+  // cũ (composer không remount khi chuyển kênh). Giữ callback mới nhất trong
+  // ref để Uppy vẫn là một, mà lời gọi luôn trúng bài đang mở.
+  const onUploadSuccessRef = useRef(props.onUploadSuccess);
+  onUploadSuccessRef.current = props.onUploadSuccess;
+  const onUploadSuccess = useCallback(
+    (result: any) => onUploadSuccessRef.current(result),
+    []
+  );
+
   return useMemo(() => {
     // Track file order to maintain original sequence after upload
     let fileOrderIndex = 0;

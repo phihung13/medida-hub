@@ -69,7 +69,11 @@ import {
 import { DelayComponent } from '@gitroom/frontend/components/new-launch/delay.component';
 import { MagicCaption } from '@gitroom/frontend/components/new-launch/magic.caption';
 
-const MAX_UPLOAD_SIZE = 2 * 1024 * 1024 * 1024; // 2 GB (video to hơn: dán link Drive — trần 5GB)
+// 1 GB — khớp với trần THẬT mà Uppy áp ở new.uploader.tsx (video 1GB, ảnh
+// 30MB) và khớp với chính câu thông báo bên dưới. Trước đây để 2GB nên video
+// 1.5GB lọt qua cổng này rồi mới bị Uppy chặn bằng một thông báo khác hẳn.
+// Video to hơn: dán link Drive (trần 5GB).
+const MAX_UPLOAD_SIZE = 1000 * 1024 * 1024;
 
 const InterceptBoldShortcut = Extension.create({
   name: 'preventBoldWithUnderline',

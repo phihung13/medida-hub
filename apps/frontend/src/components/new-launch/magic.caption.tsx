@@ -7,6 +7,7 @@ import { useToaster } from '@gitroom/react/toaster/toaster';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
 import { MagicWandIcon } from '@gitroom/frontend/components/ui/icons';
+import { deleteDialog } from '@gitroom/react/helpers/delete.dialog';
 
 // ============================================================================
 //  Nút "bút phép thuật" — AI đọc các ảnh đã đính kèm rồi:
@@ -23,6 +24,13 @@ const VIDEO_RE = /\.(mp4|mov|webm|mp3|wav|m4a)(\?|$)/i;
 // contain no more than 20 elements" và người dùng chỉ thấy báo lỗi khó hiểu.
 // Cắt sẵn ở đây: AI chỉ cần NHÌN một phần là đủ để viết caption cho cả bài.
 const AI_CAPTION_MAX_IMAGES = 20;
+
+// Hạn giờ cho lời gọi AI. KHÔNG phải để "cho chắc": custom.fetch.func.ts trả về
+// `new Promise(() => {})` — một promise KHÔNG BAO GIỜ settle — khi backend đáp
+// 406 (hết hạn dùng thử) hoặc 402 mà người dùng đóng hộp thanh toán. Không có
+// hạn giờ thì `finally` không bao giờ chạy, `locked` kẹt ở true và cả composer
+// (nút Đăng/Lên lịch, chọn kênh) chết cứng cho tới khi tải lại trang — mất bài.
+const AI_CAPTION_TIMEOUT_MS = 90_000;
 
 const escapeHtml = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -54,6 +62,20 @@ export const MagicCaption: FC<{
     if (loading || !images.length) {
       return;
     }
+    // AI GHI ĐÈ TOÀN BỘ nội dung đang có (setContent), không có undo nào ngoài
+    // Ctrl+Z. Ai lỡ bấm nút đũa phép sau khi viết 10 phút thì mất sạch → hỏi.
+    if ((context || '').trim().length > 0) {
+      const ok = await deleteDialog(
+        t(
+          'magic_caption_overwrite',
+          'AI sẽ viết lại toàn bộ nội dung bài, phần bạn đang viết sẽ bị thay thế. Tiếp tục?'
+        ),
+        t('magic_caption_overwrite_yes', 'Viết lại bằng AI')
+      );
+      if (!ok) {
+        return;
+      }
+    }
     setLoading(true);
     setLocked(true);
     try {
@@ -67,13 +89,21 @@ export const MagicCaption: FC<{
           'warning'
         );
       }
-      const res = await fetch('/media/ai-caption', {
-        method: 'POST',
-        body: JSON.stringify({
-          mediaIds: sent.map((p) => p.id),
-          context: context || undefined,
+      const res = await Promise.race([
+        fetch('/media/ai-caption', {
+          method: 'POST',
+          body: JSON.stringify({
+            mediaIds: sent.map((p) => p.id),
+            context: context || undefined,
+          }),
         }),
-      });
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error('AI_CAPTION_TIMEOUT')),
+            AI_CAPTION_TIMEOUT_MS
+          )
+        ),
+      ]);
 
       if (!res.ok) {
         let message = '';
@@ -144,19 +174,30 @@ export const MagicCaption: FC<{
         ),
         'success'
       );
-    } catch {
+    } catch (err) {
       toaster.show(
-        t('magic_caption_error', 'Error calling AI — please try again.'),
+        (err as any)?.message === 'AI_CAPTION_TIMEOUT'
+          ? t(
+              'magic_caption_timeout',
+              'AI không phản hồi — bài của bạn vẫn còn nguyên, thử lại sau.'
+            )
+          : t('magic_caption_error', 'Error calling AI — please try again.'),
         'warning'
       );
     } finally {
       setLoading(false);
       setLocked(false);
     }
-  }, [loading, images, context, num, onCaption]);
+  }, [loading, images, context, num, onCaption, fetch, t, toaster, setLocked]);
 
   return (
-    <div
+    // <button> chứ không phải <div onClick>: bàn phím phải tới được và trình
+    // đọc màn hình phải biết đây là nút (tooltip không phải tên gọi hợp lệ).
+    <button
+      type="button"
+      disabled={!images.length || loading}
+      aria-label={t('magic_caption_label', 'AI viết caption từ ảnh')}
+      aria-busy={loading}
       data-tooltip-id="tooltip"
       data-tooltip-content={
         images.length
@@ -182,6 +223,6 @@ export const MagicCaption: FC<{
       ) : (
         <MagicWandIcon size={16} />
       )}
-    </div>
+    </button>
   );
 };

@@ -10,6 +10,7 @@ import {
 } from 'react';
 import dynamic from 'next/dynamic';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
+import { useToaster } from '@gitroom/react/toaster/toaster';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
 
@@ -49,6 +50,7 @@ const FilerobotEditor: FC<{
 }> = ({ setMedia, source: initialSource, closeModal }) => {
   const t = useT();
   const fetch = useFetch();
+  const toaster = useToaster();
   const [saving, setSaving] = useState(false);
   // Ảnh nguồn: có thể đổi bằng nút "Tải ảnh lên để sửa".
   const [source, setSource] = useState<string | undefined>(initialSource);
@@ -96,19 +98,43 @@ const FilerobotEditor: FC<{
         const blob = await (await window.fetch(dataUrl)).blob();
         const formData = new FormData();
         formData.append('file', blob, edited?.fullName || 'design.png');
-        const data = await (
-          await fetch('/media/upload-simple', {
-            method: 'POST',
-            body: formData,
-          })
-        ).json();
+        const res = await fetch('/media/upload-simple', {
+          method: 'POST',
+          body: formData,
+        });
+        // Trước đây .json() được gọi thẳng, không kiểm tra res.ok và không có
+        // catch: upload lỗi (500 / quá dung lượng / trả HTML) là promise reject
+        // im lặng — editor đứng nguyên, không báo gì, người dùng bấm Save mãi
+        // mà không biết bản thiết kế đã mất.
+        if (!res.ok) {
+          let message = '';
+          try {
+            message = (await res.json())?.message || '';
+          } catch {
+            /* body không phải JSON */
+          }
+          throw new Error(message);
+        }
+        const data = await res.json();
+        if (!data?.id || !data?.path) {
+          throw new Error('');
+        }
         setMedia([{ id: data.id, path: data.path }]);
         closeModal();
+      } catch (err) {
+        toaster.show(
+          (err as any)?.message ||
+            t(
+              'design_save_failed',
+              'Không lưu được ảnh — thử lại, ảnh của bạn vẫn còn trong trình sửa.'
+            ),
+          'warning'
+        );
       } finally {
         setSaving(false);
       }
     },
-    [saving, fetch, setMedia, closeModal]
+    [saving, fetch, setMedia, closeModal, toaster, t]
   );
 
   return (

@@ -174,14 +174,28 @@ export const Component: FC<{
       : modal.children;
   }, [modal, closeModalFunction]);
 
+  // `closeOnEscape` / `closeOnClickOutside` được KHAI BÁO trong OpenModalInterface
+  // và nhiều nơi truyền `false` (vd calendar.tsx) nhưng trước đây KHÔNG CHỖ NÀO
+  // ĐỌC — Escape và bấm ra ngoài luôn đóng modal, cuốn theo cả việc đang làm dở
+  // (vd đang chọn 12 ảnh trong thư viện). Mặc định vẫn là true để không đổi hành
+  // vi của những modal không truyền gì.
+  const closeOnEscape = modal.closeOnEscape !== false;
+  const closeOnClickOutside = modal.closeOnClickOutside !== false;
+
+  const closeOnBackdropClick = useCallback(() => {
+    if (closeOnClickOutside) {
+      closeModalFunction();
+    }
+  }, [closeOnClickOutside, closeModalFunction]);
+
   useHotkeys(
     'Escape',
     () => {
-      if (isLast) {
+      if (isLast && closeOnEscape) {
         closeModalFunction();
       }
     },
-    [isLast, closeModalFunction]
+    [isLast, closeOnEscape, closeModalFunction]
   );
 
   if (modal.removeLayout) {
@@ -235,7 +249,7 @@ export const Component: FC<{
   return (
     <CurrentModalContext.Provider value={{ id: modal.id }}>
       <div
-        onClick={closeModalFunction}
+        onClick={closeOnBackdropClick}
         style={{ zIndex }}
         className={clsx(
           'fixed flex left-0 top-0 min-w-full min-h-full bg-popup transition-all animate-fadeIn overflow-y-auto text-newTextColor',

@@ -450,12 +450,34 @@ export const MediaBox: FC<{
       ) {
         return;
       }
-      await fetch(`/media/${media.id}`, {
-        method: 'DELETE',
-      });
+      // Trước đây không kiểm tra res.ok: server từ chối xoá (ảnh đang dùng ở
+      // bài đã lên lịch, lỗi quyền, 500) thì hộp thoại vẫn đóng, lưới vẫn
+      // refresh và ẢNH VẪN CÒN ĐÓ — không khác gì lỗi giao diện, user bấm xoá
+      // đi xoá lại. Giờ báo đúng lý do server trả về.
+      try {
+        const res = await fetch(`/media/${media.id}`, {
+          method: 'DELETE',
+        });
+        if (!res.ok) {
+          let message = '';
+          try {
+            message = (await res.json())?.message || '';
+          } catch {
+            /* body không phải JSON */
+          }
+          throw new Error(message);
+        }
+      } catch (err) {
+        toaster.show(
+          (err as any)?.message ||
+            t('delete_image_failed', 'Không xoá được ảnh — thử lại sau.'),
+          'warning'
+        );
+        return;
+      }
       mutate();
     },
-    [mutate]
+    [mutate, fetch, toaster, t]
   );
 
   const btn = useMemo(() => {
@@ -1274,6 +1296,10 @@ export const MultiMediaComponent: FC<{
       title: t('media_library', 'Media Library'),
       askClose: false,
       closeOnEscape: true,
+      // Modal chừa 40px lề nên có dải nền bấm được quanh panel. Bấm nhầm vào
+      // đó khi đang chọn 12 ảnh qua 2 trang là mất sạch lựa chọn, không hỏi
+      // han gì. Đóng bằng Escape hoặc nút X thôi.
+      closeOnClickOutside: false,
       fullScreen: true,
       size: 'calc(100% - 80px)',
       height: 'calc(100% - 80px)',
@@ -1348,7 +1374,10 @@ export const MultiMediaComponent: FC<{
   // từng ảnh bằng Filerobot ngay tại chỗ) thay vì thẳng vào editor trắng —
   // gộp 1 chỗ theo yêu cầu user (trước đây dải ảnh 40px vỡ trận khi đính 60 ảnh).
   const designMedia = useCallback(() => {
-    if (!!user?.tier?.ai && !dummy) {
+    // Trước đây cổng là `user?.tier?.ai` — nút vẫn hiện, vẫn con trỏ tay, bấm
+    // thì KHÔNG CÓ GÌ XẢY RA với tài khoản không có gói AI. Filerobot là MIT,
+    // chạy hoàn toàn ở trình duyệt, không tốn token nào → bỏ cổng gói.
+    if (!dummy) {
       modals.openModal({
         askClose: false,
         closeOnEscape: true,
@@ -1703,6 +1732,10 @@ export const MediaComponent: FC<{
       title: t('media_library', 'Media Library'),
       askClose: false,
       closeOnEscape: true,
+      // Modal chừa 40px lề nên có dải nền bấm được quanh panel. Bấm nhầm vào
+      // đó khi đang chọn 12 ảnh qua 2 trang là mất sạch lựa chọn, không hỏi
+      // han gì. Đóng bằng Escape hoặc nút X thôi.
+      closeOnClickOutside: false,
       fullScreen: true,
       size: 'calc(100% - 80px)',
       height: 'calc(100% - 80px)',
