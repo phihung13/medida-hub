@@ -78,7 +78,20 @@ async function start() {
     },
   });
 
-  await startMcp(app);
+  // startMcp() khởi tạo storage Postgres của Mastra (mastra_ai_spans…) NGAY lúc
+  // boot, không đợi request nào — một lỗi ở đó (schema hỏng, cột vượt trần
+  // Postgres, DB tạm không tới được…) ném ra KHÔNG AI BẮT trước đây → sập cả
+  // tiến trình Node, kéo theo toàn bộ backend/frontend/orchestrator (một
+  // container all-in-one). MCP là tính năng phụ (Model Context Protocol) —
+  // lỗi ở đây chỉ nên tắt MCP, không được phép kéo sập cả Hub.
+  try {
+    await startMcp(app);
+  } catch (err: any) {
+    console.error(
+      '⚠️ startMcp() lỗi — MCP tắt, backend vẫn tiếp tục khởi động:',
+      err?.message || err
+    );
+  }
 
   app.useGlobalPipes(
     new ValidationPipe({
