@@ -504,15 +504,21 @@ export const EditorWrapper: FC<{
                   onChange={changeOrder(index)}
                 />
                 {items.length > 1 && (
-                  <TrashIcon
+                  // Bọc trong <button>: icon trần có onClick thì bàn phím không
+                  // tới được và trình đọc màn hình không biết đây là nút xoá.
+                  <button
+                    type="button"
                     onClick={deletePost(index)}
+                    aria-label={t('delete_post_tooltip', 'Delete Post')}
                     data-tooltip-id="tooltip"
                     data-tooltip-content={t(
                       'delete_post_tooltip',
                       'Delete Post'
                     )}
-                    className="cursor-pointer text-[#FF3F3F]"
-                  />
+                    className="outline-none w-[24px] h-[24px] flex justify-center items-center rounded-[4px] focus-visible:ring-2 focus-visible:ring-ring cursor-pointer text-[#FF3F3F]"
+                  >
+                    <TrashIcon />
+                  </button>
                 )}
                 {index > 0 && (
                   <DelayComponent currentIndex={index} currentDelay={g.delay} />
