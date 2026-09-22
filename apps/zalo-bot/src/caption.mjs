@@ -14,11 +14,43 @@ async function toThumb(input, size = 512) {
 }
 
 /** Gộp các đoạn text giáo viên gõ thành 1 khối (bỏ rỗng, bỏ trùng liền kề). */
+/**
+ * Mã cảm xúc/sticker của Zalo (`/-heart`, `/-strong`…): Zalo hiện thành icon,
+ * nhưng Facebook KHÔNG hiểu — đăng lên hiện nguyên chữ "/-heart" giữa câu, rất
+ * xấu. Cô giáo gõ trong nhóm Zalo nên mã này lọt vào ghi chú, rồi lọt tiếp vào
+ * caption qua CẢ 2 đường: AI chép lại, và fallback dùng nguyên text.
+ * Mã quen thuộc -> đổi thành emoji thật (giữ đúng ý cô giáo); mã lạ -> bỏ hẳn.
+ */
+const ZALO_EMOTICONS = {
+  "/-heart": "❤️",
+  "/-strong": "👍",
+  "/-weak": "👎",
+  "/-ok": "👌",
+  "/-bye": "👋",
+  "/-rose": "🌹",
+  "/-clap": "👏",
+  "/-pray": "🙏",
+  "/-cake": "🎂",
+  "/-gift": "🎁",
+  "/-coffee": "☕",
+};
+
+export function stripZaloEmoticons(s) {
+  let out = String(s || "");
+  for (const [code, emoji] of Object.entries(ZALO_EMOTICONS)) {
+    out = out.split(code).join(emoji);
+  }
+  // Mã lạ còn sót (/-xxx) -> bỏ, đừng để chữ thô lọt lên Facebook.
+  return out.replace(/\/-[a-z]{2,15}\b/gi, "").replace(/[ \t]{2,}/g, " ");
+}
+
 export function combineTexts(texts = []) {
   const lines = [];
   for (const t of texts) {
     const s = (typeof t === "string" ? t : t && t.text) || "";
-    const v = s.trim();
+    // Dọn mã Zalo NGAY Ở ĐÂY: đây là cửa duy nhất mọi text nhóm Zalo đi qua
+    // (ghi chú cho AI lẫn caption fallback) -> chặn 1 chỗ, khỏi sót đường nào.
+    const v = stripZaloEmoticons(s).trim();
     if (v && v !== lines[lines.length - 1]) lines.push(v);
   }
   return lines.join("\n");
@@ -46,9 +78,17 @@ const SYSTEM = [
   "Dùng tự nhiên, linh hoạt — KHÔNG thay máy móc/lặp cứng nhắc; cốt sao câu mượt và ấm áp.",
 ].join(" ");
 
-/** Bỏ ký tự markdown (**, *, __) — Facebook không hiểu, hiện ra ký tự thừa. */
+/**
+ * Dọn thứ Facebook KHÔNG hiểu ra khỏi caption: ký tự markdown (**, *, __) và
+ * mã sticker Zalo (/-heart…) — AI đôi khi chép lại mã Zalo từ ghi chú gốc nên
+ * phải lọc CẢ đầu ra, không chỉ đầu vào ở combineTexts().
+ */
 export function stripMarkdown(s) {
-  return String(s || "").replace(/\*+/g, "").replace(/__+/g, "").replace(/[ \t]{2,}/g, " ").trim();
+  return stripZaloEmoticons(String(s || ""))
+    .replace(/\*+/g, "")
+    .replace(/__+/g, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
 }
 
 // ===== Ráp caption theo THỨ TỰ: thân bài → chân bài (hotline/địa chỉ) → hashtag (dưới cùng) =====

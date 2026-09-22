@@ -37,13 +37,18 @@ const raw = (fn) => { const b = Buffer.alloc(N * N); for (let y = 0; y < N; y++)
     log: () => {},
   });
 
-  assert.equal(res.savedImages.length, 2, "giữ 2 ảnh nét (loại ảnh mờ)");
-  assert.equal(res.droppedCount, 1, "1 ảnh mờ bị bỏ");
+  // Ảnh mờ KHÔNG còn bị vứt: vẫn lưu + đẩy sang Media Hub, chỉ gắn cờ ẩn để
+  // người duyệt xem lại và tự bấm hiện nếu bộ lọc nhầm (đổi 2026-09-22).
+  assert.equal(res.savedImages.length, 3, "lưu cả 3 ảnh (2 nét + 1 mờ bị ẩn)");
+  assert.deepEqual(res.imageHidden, [false, false, true], "2 ảnh nét hiện, ảnh mờ ẩn");
+  assert.equal(res.imageHiddenReasons[2], "mo", "ghi đúng lý do ẩn");
+  assert.equal(res.droppedCount, 1, "1 ảnh mờ bị ẩn");
   assert.equal(res.captionSource, "fallback");
   assert.equal(res.caption, "các bé chơi ngoài sân hôm nay");
-  // file thật được lưu
+  // file thật được lưu — ảnh hiện đánh số anh_, ảnh ẩn đánh số anh_an_
   assert.ok(fs.existsSync(path.join(res.dir, "anh_01.jpg")));
   assert.ok(fs.existsSync(path.join(res.dir, "anh_02.jpg")));
+  assert.ok(fs.existsSync(path.join(res.dir, "anh_an_03.jpg")), "ảnh bị ẩn vẫn nằm trên đĩa");
   assert.ok(fs.existsSync(path.join(res.dir, "caption.txt")));
   // ảnh ra đúng 1080x1080? (native giữ tỉ lệ vuông vì nguồn vuông)
   const m = await sharp(path.join(res.dir, "anh_01.jpg")).metadata();
