@@ -107,7 +107,9 @@ jobs:
             echo "Chưa đặt secret COOLIFY_WEBHOOK — bỏ qua bước deploy."
             exit 0
           fi
-          RESP=$(curl --fail -sS "$WEBHOOK" ${TOKEN:+-H "Authorization: Bearer $TOKEN"})
+          # Coolify đổi endpoint deploy từ GET sang POST (2026, xem coollabsio/coolify#2539/#2539) —
+          # GET giờ trả 405 Method Not Allowed. -X POST + Content-Length: 0 (không có body).
+          RESP=$(curl --fail -sS -X POST -H "Content-Length: 0" "$WEBHOOK" ${TOKEN:+-H "Authorization: Bearer $TOKEN"})
           echo "✅ Đã kích hoạt deploy (pull ảnh) trên Coolify."
 
           DEP=$(echo "$RESP" | jq -r '.deployments[0].deployment_uuid // empty' 2>/dev/null || true)
