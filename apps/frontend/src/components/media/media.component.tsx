@@ -1380,7 +1380,11 @@ export const MultiMediaComponent: FC<{
               setList={(value) =>
                 onChange({ target: { name: 'upload', value } })
               }
-              className="flex gap-[10px] sortable-container"
+              // flex-wrap + max-h + cuộn dọc: trước đây là MỘT hàng flex không
+              // wrap, đính vài chục ảnh là chúng chạy tuốt ra ngoài khung và
+              // KHÔNG có cách nào cuộn tới (không thanh cuộn, không kéo được).
+              // min-w-0 để hàng co đúng bề ngang khung cha rồi mới xuống dòng.
+              className="flex flex-wrap gap-[10px] sortable-container flex-1 min-w-0 max-h-[132px] overflow-y-auto scrollbar scrollbar-thumb-newColColor scrollbar-track-newBgColorInner"
               animation={200}
               swap={true}
               handle=".dragging"
