@@ -1,3 +1,20 @@
+// LƯỚI AN TOÀN TẠM THỜI (2026-09-22): một promise không được await ở đâu đó
+// bên trong Mastra/observability (bảng mastra_ai_spans phình quá trần 1600
+// cột của Postgres — MASTRA_STORAGE_PG_ALTER_TABLE_FAILED) ném lỗi ra NGOÀI
+// mọi try/catch (kể cả try/catch bọc quanh startMcp() ở dưới) — Node coi đây
+// là unhandled rejection và thoát tiến trình, sập CẢ backend + frontend +
+// orchestrator (chung 1 container all-in-one) trong vòng lặp restart vô tận.
+// Chặn Ở ĐÂY (sớm nhất có thể, trước mọi import khác) để một lỗi ở nhánh phụ
+// (MCP/observability) không bao giờ được phép kéo sập cả Hub nữa. Sửa GỐC là
+// dọn bảng mastra_ai_spans trên Postgres (xem docs/MIGRATION-TO-HOST.md) —
+// đây chỉ là lưới chặn, không phải fix triệt để.
+process.on('unhandledRejection', (reason) => {
+  console.error(
+    '⚠️ Unhandled promise rejection (đã chặn, KHÔNG làm sập server):',
+    reason
+  );
+});
+
 // Nạp ANTHROPIC_API_KEY (nhập qua UI Settings) từ file vào env — PHẢI đầu tiên.
 import '@gitroom/nestjs-libraries/openai/anthropic.key';
 // Nạp cấu hình tạo ảnh AI (nhà cung cấp + key) từ file vào env.
