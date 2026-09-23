@@ -11,12 +11,10 @@ import { Input } from '@gitroom/react/form/input';
 import { Checkbox } from '@gitroom/react/form/checkbox';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 
-// Zalo OA có 2 dạng nội dung, provider tự chọn theo media đính kèm:
-//  - Đính VIDEO  -> đăng "nội dung dạng Video" (lên mục Video của OA).
-//                   Bắt buộc kèm 1 ảnh làm thumbnail.
-//  - Chỉ có ẢNH  -> đăng "bài viết" (article type: normal), ảnh đầu làm bìa.
-// Trần của Zalo: tiêu đề 150, tác giả 50, mô tả 300, ảnh 1MB/tấm,
-// video .mp4/.avi tối đa 50MB và chỉ 1 video mỗi bài.
+// Zalo OA đăng giống fanpage Facebook: một bài viết gồm CHỮ + ẢNH, ảnh đầu
+// làm ảnh bìa. Chỉ ảnh — không đăng video (Zalo Video là sản phẩm khác, dành
+// cho tài khoản cá nhân). Trần của Zalo: tiêu đề 150, tác giả 50, mô tả 300,
+// và ảnh tối đa 1MB mỗi tấm.
 const ZaloSettings: FC = () => {
   const { register } = useSettings();
   const t = useT();
@@ -43,7 +41,7 @@ const ZaloSettings: FC = () => {
       <div className="text-[12px] leading-[1.5] opacity-70">
         {t(
           'zalo_limits_hint',
-          'Zalo giới hạn: ảnh tối đa 1MB mỗi tấm, video .mp4/.avi tối đa 50MB và chỉ 1 video mỗi bài. Đính video thì bài sẽ lên mục Video của OA và cần thêm 1 ảnh làm thumbnail. OA phải đã được xác minh mới đăng được.'
+          'Zalo OA chỉ đăng bài dạng ảnh, ảnh đầu tiên làm ảnh bìa. Giới hạn của Zalo: mỗi ảnh tối đa 1MB, tiêu đề 150 ký tự, mô tả 300 ký tự. Không đính video vào bài Zalo. OA phải đã được xác minh mới đăng được.'
         )}
       </div>
     </div>
