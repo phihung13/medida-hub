@@ -8,10 +8,15 @@ import {
 import { ZaloDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/zalo.dto';
 import { useSettings } from '@gitroom/frontend/components/launches/helpers/use.values';
 import { Input } from '@gitroom/react/form/input';
+import { Checkbox } from '@gitroom/react/form/checkbox';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 
-// Bài Zalo OA đăng dạng "bài viết" (Article). Hai ô tùy chọn: tiêu đề + tác giả.
-// Bỏ trống → tiêu đề = dòng đầu caption, tác giả = tên OA.
+// Zalo OA có 2 dạng nội dung, provider tự chọn theo media đính kèm:
+//  - Đính VIDEO  -> đăng "nội dung dạng Video" (lên mục Video của OA).
+//                   Bắt buộc kèm 1 ảnh làm thumbnail.
+//  - Chỉ có ẢNH  -> đăng "bài viết" (article type: normal), ảnh đầu làm bìa.
+// Trần của Zalo: tiêu đề 150, tác giả 50, mô tả 300, ảnh 1MB/tấm,
+// video .mp4/.avi tối đa 50MB và chỉ 1 video mỗi bài.
 const ZaloSettings: FC = () => {
   const { register } = useSettings();
   const t = useT();
@@ -19,18 +24,28 @@ const ZaloSettings: FC = () => {
   return (
     <div className="flex flex-col gap-[10px]">
       <Input
-        label={t('zalo_article_title', 'Article title (optional)')}
+        label={t('zalo_article_title', 'Tiêu đề bài viết')}
         placeholder={t(
           'zalo_article_title_ph',
-          'Leave empty → first line of the caption'
+          'Bỏ trống → lấy dòng đầu của nội dung'
         )}
         {...register('title')}
       />
       <Input
-        label={t('zalo_article_author', 'Author (optional)')}
-        placeholder={t('zalo_article_author_ph', 'e.g. Trường Việt Anh')}
+        label={t('zalo_article_author', 'Tác giả')}
+        placeholder={t('zalo_article_author_ph', 'VD: Trường Việt Anh')}
         {...register('author')}
       />
+      <Checkbox
+        label={t('zalo_allow_comment', 'Cho phép bình luận trên bài')}
+        {...register('allowComment')}
+      />
+      <div className="text-[12px] leading-[1.5] opacity-70">
+        {t(
+          'zalo_limits_hint',
+          'Zalo giới hạn: ảnh tối đa 1MB mỗi tấm, video .mp4/.avi tối đa 50MB và chỉ 1 video mỗi bài. Đính video thì bài sẽ lên mục Video của OA và cần thêm 1 ảnh làm thumbnail. OA phải đã được xác minh mới đăng được.'
+        )}
+      </div>
     </div>
   );
 };

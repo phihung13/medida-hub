@@ -14,20 +14,26 @@ import { ZaloDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 
 // ============================================================================
-//  ZALO OA PROVIDER — đăng bài NGƯỢC từ Media Hub ra Zalo Official Account.
+//  ZALO OA PROVIDER — đăng NGƯỢC từ Media Hub ra Zalo Official Account.
 //
-//  Luồng: OAuth v4 (oauth.zaloapp.com) → access_token(1h)+refresh_token(3 tháng)
-//  → đăng bằng Article API (openapi.zalo.me/v2.0/article/create).
+//  Hai loại nội dung, CÙNG endpoint article/create nhưng KHÁC body:
+//   1. "Bài viết" (type: "normal") — text + ảnh, có cover.
+//   2. "Video" — nội dung dạng Video của OA. Bắt buộc video_id + avatar.
+//  Bài có video -> tự đi nhánh 2; không có video -> nhánh 1.
 //
-//  ⚠️ RÀNG BUỘC ZALO (không lách được bằng code):
-//   - Chỉ OA đã XÁC MINH (verified) mới dùng được Article API.
-//   - Cần đăng ký Zalo App (developers.zalo.me) lấy App ID + Secret Key,
-//     gắn OA vào app, khai Callback URL = <FRONTEND_URL>/integrations/social/zalo.
-//   - Ảnh/video trong bài dùng URL công khai (media của Hub đã có URL public).
-//     v1 hỗ trợ TEXT + ẢNH; video cần bước upload lấy video_id (để sau).
+//  ⚠️ CẢ HAI ĐỀU BẤT ĐỒNG BỘ: article/create CHỈ trả về `token`, phải gọi
+//  article/verify với token đó mới ra id bài thật. Bản cũ đọc thẳng
+//  res.data.id — trường KHÔNG TỒN TẠI trong tài liệu Zalo.
 //
-//  Body Article dựng theo cấu trúc v2.0 (type số: 0=text, 1=image). Nếu Zalo
-//  đổi field, xem message lỗi trả về (đã log nguyên response) rồi tinh chỉnh.
+//  ⚠️ Bản cũ còn sai schema: dùng type dạng SỐ (0/1) trong body, `desc` thay
+//  vì `description`, `coverType/coverView/photo` thay vì
+//  `cover_type/cover_view/photo_url`, thiếu hẳn `type: "normal"`, và lấy
+//  `img.path` (đường dẫn TRÊN Ổ ĐĨA) làm URL gửi cho Zalo.
+//
+//  ⚠️ RÀNG BUỘC ZALO (tài liệu chính thức, không lách được bằng code):
+//   - Ảnh dùng cho Article API: TỐI ĐA 1MB mỗi ảnh.
+//   - Video: chỉ .mp4/.avi, tối đa 50MB, phải upload lấy video_id.
+//   - Chỉ OA đã XÁC MINH mới dùng được Article API.
 // ============================================================================
 
 // PKCE S256: code_challenge = base64url(sha256(code_verifier))
@@ -44,8 +50,24 @@ const OAUTH_TOKEN_URL = 'https://oauth.zaloapp.com/v4/oa/access_token';
 const OAUTH_PERMISSION_URL = 'https://oauth.zaloapp.com/v4/oa/permission';
 const OPENAPI = 'https://openapi.zalo.me/v2.0';
 
+// Đúng 2 định dạng Zalo nhận cho API upload video.
+const VIDEO_RE = /\.(mp4|avi)(\?|$)/i;
+// Định dạng video phổ biến nhưng Zalo KHÔNG nhận -> báo sớm cho người dùng.
+const UNSUPPORTED_VIDEO_RE = /\.(mov|webm|mkv|flv|wmv|m4v|3gp)(\?|$)/i;
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+
+const isVideo = (m: any) => VIDEO_RE.test(m?.url || m?.path || '');
+
+// updateMedia() gắn cứng type:'image' cho MỌI media (kể cả video), và đặt
+// `path` = đường dẫn TRÊN Ổ ĐĨA khi file lưu nội bộ. Zalo cần URL công khai
+// nên luôn ưu tiên `url`; `path` chỉ dùng được khi bản thân nó đã là http.
+const publicUrl = (m: any): string => {
+  const u = m?.url || m?.path || '';
+  return /^https?:\/\//i.test(u) ? u : '';
+};
+
 @Rules(
-  'Zalo OA posts are published as an Article on the Official Account. A post can be text only or text with photos. The first line becomes the article title.'
+  'Zalo OA supports two content types: an Article (text + photos with a cover) or a Video post. A post containing a video is published as a Video post and requires a thumbnail image. Zalo caps article images at 1MB each and videos at 50MB (.mp4/.avi only). Only one video per post.'
 )
 export class ZaloProvider extends SocialAbstract implements SocialProvider {
   identifier = 'zalo';
@@ -54,7 +76,6 @@ export class ZaloProvider extends SocialAbstract implements SocialProvider {
   // Zalo OA cấp quyền ở cấp OA (không dùng scope kiểu Facebook).
   scopes = [] as string[];
   editor = 'normal' as const;
-  // Bài viết Zalo có thể dài; giới hạn thoáng.
   maxLength() {
     return 20000;
   }
@@ -124,7 +145,9 @@ export class ZaloProvider extends SocialAbstract implements SocialProvider {
         'zalo',
         JSON.stringify(token),
         body as any,
-        token?.error_description || token?.message || 'Zalo authentication failed'
+        token?.error_description ||
+          token?.message ||
+          'Zalo authentication failed'
       );
     }
 
@@ -165,7 +188,9 @@ export class ZaloProvider extends SocialAbstract implements SocialProvider {
         'zalo',
         JSON.stringify(token),
         body as any,
-        token?.error_description || token?.message || 'Zalo token refresh failed'
+        token?.error_description ||
+          token?.message ||
+          'Zalo token refresh failed'
       );
     }
 
@@ -183,6 +208,147 @@ export class ZaloProvider extends SocialAbstract implements SocialProvider {
     };
   }
 
+  // Chặn NGAY LÚC LÊN LỊCH những thứ Zalo chắc chắn từ chối, thay vì để bài
+  // chết im lặng lúc đăng thật.
+  override async checkValidity(posts: Array<any[]>): Promise<string | true> {
+    // Zalo OA không có khái niệm chuỗi bài/bình luận nối tiếp — post() chỉ
+    // đăng được khối đầu. Trước đây các khối sau bị NUỐT IM LẶNG mà giao diện
+    // vẫn báo thành công. Chặn ngay lúc lên lịch để không mất nội dung.
+    if ((posts || []).length > 1) {
+      return 'Zalo OA chỉ đăng được 1 khối nội dung cho mỗi bài — hãy gộp lại hoặc tách thành nhiều bài riêng.';
+    }
+
+    const media = posts?.[0] || [];
+
+    if (media.some((m) => UNSUPPORTED_VIDEO_RE.test(m?.path || ''))) {
+      return 'Zalo chỉ nhận video .mp4 hoặc .avi — hãy chuyển định dạng trước khi đăng.';
+    }
+
+    const videos = media.filter((m) => isVideo(m));
+    const images = media.filter((m) => !isVideo(m));
+
+    if (videos.length > 1) {
+      return 'Một bài Zalo chỉ đăng được 1 video — hãy tách thành nhiều bài.';
+    }
+
+    // Bài dạng Video BẮT BUỘC có `avatar` (thumbnail) theo tài liệu Zalo.
+    if (videos.length === 1 && images.length === 0) {
+      return 'Bài video Zalo cần kèm 1 ảnh làm thumbnail — hãy đính thêm một ảnh.';
+    }
+
+    return true;
+  }
+
+  // Tải 1 video lên Zalo rồi CHỜ máy chủ convert xong mới trả video_id.
+  private async uploadVideo(accessToken: string, url: string): Promise<string> {
+    const file = await fetch(url);
+    if (!file.ok) {
+      throw new BadBody('zalo', url, '', 'Không tải được video từ Media Hub.');
+    }
+    const blob = await file.blob();
+    if (blob.size > MAX_VIDEO_BYTES) {
+      throw new BadBody(
+        'zalo',
+        String(blob.size),
+        '',
+        `Video ${(blob.size / 1024 / 1024).toFixed(
+          1
+        )}MB vượt trần 50MB của Zalo.`
+      );
+    }
+
+    const form = new FormData();
+    form.append('file', blob, url.split('/').pop() || 'video.mp4');
+
+    const prepared = await (
+      await fetch(`${OPENAPI}/article/upload_video/preparevideo`, {
+        method: 'POST',
+        headers: { access_token: accessToken },
+        body: form,
+      })
+    ).json();
+
+    const token = prepared?.data?.token;
+    if (!token) {
+      throw new BadBody(
+        'zalo',
+        JSON.stringify(prepared),
+        '',
+        prepared?.message || 'Zalo từ chối nhận video.'
+      );
+    }
+
+    // status: 1 = xong & dùng được, 3 = đang xử lý, 2/4/5 = khoá/lỗi/đã xoá.
+    // Convert video mất thời gian thật -> chờ tối đa 60 x 5s = 5 phút.
+    for (let i = 0; i < 60; i++) {
+      const verify = await (
+        await fetch(`${OPENAPI}/article/upload_video/verify`, {
+          headers: { access_token: accessToken, token },
+        })
+      ).json();
+
+      const status = Number(verify?.data?.status);
+      if (status === 1) {
+        return String(verify.data.video_id);
+      }
+      if (status === 2 || status === 4 || status === 5) {
+        throw new BadBody(
+          'zalo',
+          JSON.stringify(verify),
+          '',
+          verify?.data?.status_message || 'Zalo xử lý video thất bại.'
+        );
+      }
+      await new Promise((r) => setTimeout(r, 5000));
+    }
+
+    throw new BadBody(
+      'zalo',
+      token,
+      '',
+      'Zalo xử lý video quá lâu (trên 5 phút) — thử lại với video nhẹ hơn.'
+    );
+  }
+
+  // article/create chỉ trả `token`; id bài thật phải hỏi article/verify.
+  private async waitForArticleId(
+    accessToken: string,
+    token: string
+  ): Promise<string> {
+    for (let i = 0; i < 30; i++) {
+      const verify = await (
+        await fetch(`${OPENAPI}/article/verify`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            access_token: accessToken,
+          },
+          body: JSON.stringify({ token }),
+        })
+      ).json();
+
+      if (verify?.data?.id) {
+        return String(verify.data.id);
+      }
+      if (verify?.error && Number(verify.error) !== 0) {
+        throw new BadBody(
+          'zalo',
+          JSON.stringify(verify),
+          '',
+          verify?.message || 'Zalo tạo bài thất bại.'
+        );
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+
+    throw new BadBody(
+      'zalo',
+      token,
+      '',
+      'Zalo nhận bài nhưng chưa trả về id sau 60 giây.'
+    );
+  }
+
   async post(
     id: string,
     accessToken: string,
@@ -190,55 +356,76 @@ export class ZaloProvider extends SocialAbstract implements SocialProvider {
   ): Promise<PostResponse[]> {
     const [firstPost] = postDetails;
     const message = firstPost?.message || '';
-    const media = firstPost?.media || [];
-    const images = media.filter((m) => m.type === 'image');
+    const media = (firstPost?.media || []) as any[];
+    const videos = media.filter((m) => isVideo(m) && publicUrl(m));
+    const images = media.filter((m) => !isVideo(m) && publicUrl(m));
 
-    // Dựng body bài viết: đoạn text (nếu có) + từng ảnh.
-    const articleBody: any[] = [];
-    if (message.trim()) {
-      articleBody.push({ type: 0, content: message });
-    }
-    for (const img of images) {
-      articleBody.push({
-        type: 1,
-        url: img.path,
-        ...(img.alt ? { caption: img.alt } : {}),
-      });
-    }
-    // Article cần tối thiểu 1 đoạn nội dung.
-    if (!articleBody.length) {
-      articleBody.push({ type: 0, content: ' ' });
-    }
+    const settings = firstPost?.settings || ({} as ZaloDto);
+    // Trần thật của Zalo: title ≤150, author ≤50, description ≤300.
+    const title = (
+      settings.title ||
+      message.split('\n').find((l) => l.trim()) ||
+      'Bài viết'
+    )
+      .trim()
+      .slice(0, 150);
+    const author = (settings.author || '').trim().slice(0, 50);
+    const description = message.replace(/\s+/g, ' ').trim().slice(0, 300);
+    const comment = settings.allowComment === false ? 'hide' : 'show';
 
-    const title =
-      firstPost?.settings?.title ||
-      message.split('\n')[0]?.slice(0, 100) ||
-      'Bài viết';
-    const author = firstPost?.settings?.author || '';
+    let payload: any;
 
-    const payload: any = {
-      title,
-      author,
-      desc: message.replace(/\s+/g, ' ').trim().slice(0, 200),
-      body: articleBody,
-      status: 'show',
-    };
-    // Ảnh đầu làm ảnh bìa (cover) nếu có.
-    if (images[0]) {
-      payload.cover = {
-        coverType: 0, // 0 = photo
-        coverView: 3, // 3 = vuông
-        photo: images[0].path,
+    if (videos.length) {
+      // ---- Nội dung dạng VIDEO (lên mục Video của OA) ----
+      const videoId = await this.uploadVideo(accessToken, publicUrl(videos[0]));
+      payload = {
+        title,
+        description: description || title,
         status: 'show',
+        video_id: videoId,
+        // avatar = thumbnail, BẮT BUỘC. checkValidity đã ép phải có 1 ảnh.
+        avatar: publicUrl(images[0]),
+        comment,
+      };
+    } else {
+      // ---- Nội dung dạng BÀI VIẾT (type: "normal") ----
+      const body: any[] = [];
+      if (message.trim()) {
+        body.push({ type: 'text', content: message });
+      }
+      for (const img of images) {
+        body.push({
+          type: 'image',
+          url: publicUrl(img),
+          ...(img.alt ? { caption: img.alt } : {}),
+        });
+      }
+      if (!body.length) {
+        body.push({ type: 'text', content: title });
+      }
+
+      payload = {
+        type: 'normal',
+        title,
+        // author bắt buộc — bỏ trống Zalo từ chối, nên lấy tạm tiêu đề.
+        author: author || title.slice(0, 50),
+        cover: images[0]
+          ? {
+              cover_type: 'photo',
+              photo_url: publicUrl(images[0]),
+              status: 'show',
+            }
+          : { cover_type: 'photo', photo_url: '', status: 'hide' },
+        description: description || title,
+        body,
+        status: 'show',
+        comment,
       };
     }
 
-    // access_token truyền cả query lẫn header cho chắc (v2.0 openapi).
     const res = await (
       await this.fetch(
-        `${OPENAPI}/article/create?access_token=${encodeURIComponent(
-          accessToken
-        )}`,
+        `${OPENAPI}/article/create`,
         {
           method: 'POST',
           headers: {
@@ -257,16 +444,30 @@ export class ZaloProvider extends SocialAbstract implements SocialProvider {
         'zalo',
         JSON.stringify(res),
         JSON.stringify(payload),
-        res?.message || 'Zalo article create failed'
+        // Lỗi hay gặp nhất là ảnh quá 1MB — nói thẳng để người dùng biết sửa.
+        `${
+          res?.message || 'Zalo tạo bài thất bại'
+        } (lưu ý: Zalo giới hạn 1MB mỗi ảnh cho bài viết)`
       );
     }
 
-    const articleId = String(res?.data?.id || res?.data?.token || '');
+    const token = res?.data?.token;
+    if (!token) {
+      throw new BadBody(
+        'zalo',
+        JSON.stringify(res),
+        JSON.stringify(payload),
+        'Zalo không trả về token tiến trình tạo bài.'
+      );
+    }
+
+    const articleId = await this.waitForArticleId(accessToken, token);
+
     return [
       {
         id: firstPost.id,
         postId: articleId,
-        releaseURL: res?.data?.url || res?.data?.article_url || '',
+        releaseURL: '',
         status: 'success',
       },
     ];
