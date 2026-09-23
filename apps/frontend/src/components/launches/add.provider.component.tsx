@@ -23,6 +23,7 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import clsx from 'clsx';
 import copy from 'copy-to-clipboard';
 import { capitalize } from 'lodash';
+import { rememberOauthState } from '@gitroom/frontend/components/launches/oauth.state.storage';
 const resolver = classValidatorResolver(ApiKeyDto);
 
 export const useAddProvider = (update?: () => void, invite?: boolean) => {
@@ -535,6 +536,13 @@ export const AddProviderComponent: FC<{
             );
             return;
           }
+
+          // Cất `state` lại trước khi rời trang. Hầu hết nền tảng trả `state`
+          // về nguyên vẹn trong callback, nhưng MỘT SỐ THÌ KHÔNG — Zalo OA chỉ
+          // trả `?oa_id=...&code=...`. Thiếu state thì backend không tra được
+          // code_verifier trong Redis và cả lần kết nối đổ sông đổ biển.
+          // Giữ bản sao ở localStorage để trang callback tự vá vào.
+          rememberOauthState(identifier, url);
 
           if (invite) {
             toaster.show(

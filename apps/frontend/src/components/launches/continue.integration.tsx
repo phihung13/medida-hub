@@ -11,6 +11,10 @@ import { continueProviderList } from '@gitroom/frontend/components/new-launch/pr
 import { IntegrationContext } from '@gitroom/frontend/components/launches/helpers/use.integration';
 import { newDayjs } from '@gitroom/frontend/components/layout/set.timezone';
 import { useVariables } from '@gitroom/react/helpers/variable.context';
+import {
+  forgetOauthState,
+  recallOauthState,
+} from '@gitroom/frontend/components/launches/oauth.state.storage';
 
 interface TwoStepState {
   integrationId: string;
@@ -91,6 +95,16 @@ export const ContinueIntegration: FC<{
       };
     }
 
+    // Nền tảng KHÔNG trả `state` về (Zalo OA chỉ redirect ?oa_id=...&code=...)
+    // thì lấy bản đã cất ở localStorage lúc bắt đầu luồng. Thiếu state là
+    // backend không tra được code_verifier và DTO chặn ngay ở validation.
+    if (!searchParams.state) {
+      const remembered = recallOauthState(provider);
+      if (remembered) {
+        return { ...searchParams, state: remembered };
+      }
+    }
+
     return searchParams;
   }, []);
 
@@ -104,18 +118,37 @@ export const ContinueIntegration: FC<{
         body: JSON.stringify({ ...modifiedParams, timezone }),
       });
 
+      // Body của một Response chỉ đọc được MỘT LẦN. Trước đây khối 400 ở dưới
+      // gọi data.json() rồi, khối xử lý lỗi cuối lại gọi data.json() lần nữa
+      // trên cùng Response đã cạn → ném lỗi → .catch(() => ({})) nuốt sạch
+      // message thật, người dùng chỉ thấy "Could not add provider" trống rỗng.
+      // Giờ đọc đúng một lần và dùng lại kết quả.
+      let errorData: any = null;
+      const readError = async () => {
+        if (errorData === null) {
+          errorData = await data.json().catch(() => ({}));
+        }
+        return errorData;
+      };
+
       // If public endpoint fails with specific errors, try authenticated endpoint
       if (data.status === HttpStatusCode.BadRequest) {
-        const errorData = await data.json().catch(() => ({}));
+        const firstError = await readError();
+        // message của ValidationPipe là MẢNG chuỗi, còn của BadRequestException
+        // là chuỗi — gộp lại rồi mới dò cho khỏi sót.
+        const asText = Array.isArray(firstError.message)
+          ? firstError.message.join(' ')
+          : String(firstError.message || '');
         // "Invalid connection type" means this wasn't started as a public flow
         if (
-          errorData.message?.includes('Invalid connection type') ||
-          errorData.message?.includes('Invalid or expired state')
+          asText.includes('Invalid connection type') ||
+          asText.includes('Invalid or expired state')
         ) {
           data = await fetch(`/integrations/social-connect/${provider}`, {
             method: 'POST',
             body: JSON.stringify({ ...modifiedParams, timezone }),
           });
+          errorData = null; // Response mới, body lại đọc được.
         }
       }
 
@@ -139,10 +172,11 @@ export const ContinueIntegration: FC<{
         data.status !== HttpStatusCode.Ok &&
         data.status !== HttpStatusCode.Created
       ) {
-        const errorData = await data.json().catch(() => ({}));
-        setErrorMessage(
-          errorData.message || errorData.msg || 'Could not add provider'
-        );
+        const finalError = await readError();
+        const message = Array.isArray(finalError.message)
+          ? finalError.message.join(', ')
+          : finalError.message;
+        setErrorMessage(message || finalError.msg || 'Could not add provider');
         setError(true);
         return;
       }
@@ -191,6 +225,10 @@ export const ContinueIntegration: FC<{
         });
         return;
       }
+
+      // Kết nối xong thì bỏ state đã cất — để lại chỉ khiến lần sau tra nhầm
+      // một state đã bị backend xoá khỏi Redis.
+      forgetOauthState(provider);
 
       navigateOrShow(
         `/launches?added=${provider}&msg=Channel Updated${
