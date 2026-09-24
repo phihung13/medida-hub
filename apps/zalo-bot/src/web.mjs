@@ -18,7 +18,7 @@ import { formatImage } from "./format.mjs";
 import { dataPath, CRED_FILE, QR_FILE, saveToken, removeToken } from "./paths.mjs";
 import { pushToPostiz, fetchHubFacebookPages } from "./postiz.mjs";
 import { importZaloVideoSession } from "./zalovideo.mjs";
-import { enqueueZaloVideo, getZaloVideoJob, zaloVideoStatus, zaloVideoChannel, zaloVideoChannels, forgetZaloVideoChannels, zaloVideoDryRun, startZaloVideoKeepAlive } from "./zalovideojobs.mjs";
+import { enqueueZaloVideo, getZaloVideoJob, zaloVideoStatus, zaloVideoChannel, zaloVideoChannels, forgetZaloVideoChannels, startZaloVideoDryRun, getZaloVideoDryRun, startZaloVideoKeepAlive } from "./zalovideojobs.mjs";
 
 // Trang cấu hình cầu nối Postiz (Việt Anh Media Hub) — phục vụ tại GET /postiz
 const POSTIZ_CONFIG_PAGE = `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cấu hình Postiz</title><style>
@@ -1537,9 +1537,15 @@ export function startWeb(ctx = {}) {
     catch (e) { res.status(400).json({ ok: false, error: e.message }); }
   });
   // Chạy thử (KHÔNG đăng): kiểm tra chuyển kênh / ảnh bìa / nhãn AI trên máy chủ.
-  app.post("/api/zalovideo/dry-run", requireAuth, async (req, res) => {
-    try { res.json(await zaloVideoDryRun(req.body || {}, zvLog)); }
-    catch (e) { res.status(400).json({ ok: false, error: e.message, steps: e.steps || [] }); }
+  // Gửi việc rồi hỏi kết quả ở GET /api/zalovideo/dry-run/:key.
+  app.post("/api/zalovideo/dry-run", requireAuth, (req, res) => {
+    try { res.json({ ok: true, key: startZaloVideoDryRun(req.body || {}, zvLog) }); }
+    catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+  });
+  app.get("/api/zalovideo/dry-run/:key", requireAuth, (req, res) => {
+    const r = getZaloVideoDryRun(req.params.key);
+    if (!r) return res.status(404).json({ ok: false, error: "Không có lượt chạy thử với khoá này" });
+    res.json({ ok: true, ...r });
   });
   app.get("/api/zalovideo/jobs/:key", requireAuth, (req, res) => {
     const job = getZaloVideoJob(req.params.key);

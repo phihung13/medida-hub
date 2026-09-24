@@ -225,6 +225,22 @@ export async function zaloVideoDryRun(body, log = console.log) {
   }
 }
 
+// Chạy thử mất 30s–vài phút; proxy trước bot cắt kết nối sau ~60s (đo được:
+// 504). Nên gửi việc rồi hỏi kết quả, như việc đăng thật.
+const dryRuns = new Map();
+export function startZaloVideoDryRun(body, log = console.log) {
+  normalizeOptions(body || {}); // báo lỗi thông số NGAY, trước khi nhận việc
+  const key = `dryrun-${Date.now()}`;
+  dryRuns.set(key, { state: "running", startedAt: Date.now() });
+  zaloVideoDryRun(body, log).then(
+    (r) => dryRuns.set(key, { state: "done", ...r }),
+    (e) => dryRuns.set(key, { state: "failed", error: e.message, steps: e.steps || [] })
+  );
+  for (const k of [...dryRuns.keys()].slice(0, -20)) dryRuns.delete(k);
+  return key;
+}
+export const getZaloVideoDryRun = (key) => dryRuns.get(String(key)) || null;
+
 export function zaloVideoStatus() {
   const list = [...jobs.values()];
   return {
