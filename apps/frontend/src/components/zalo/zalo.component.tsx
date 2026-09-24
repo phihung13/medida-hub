@@ -6,6 +6,7 @@ import { Input } from '@gitroom/react/form/input';
 import { useToaster } from '@gitroom/react/toaster/toaster';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
+import { ChevronRightIcon, ResetIcon } from '@gitroom/frontend/components/ui/icons';
 import {
   bot,
   BridgeConfig,
@@ -16,11 +17,13 @@ import {
   isSupportedChannel,
   LiveThread,
   Overview,
-  Pill,
   PrimaryButton,
   SimpleButton,
+  StatusItem,
+  StatusSummary,
   StepBadge,
   Toggle,
+  WarningIcon,
 } from './zalo.shared';
 import { ZaloPostsTab } from './zalo.posts';
 import { ZaloRoutesTab } from './zalo.routes';
@@ -369,7 +372,22 @@ export const ZaloComponent: FC = () => {
   if (online === false) {
     return (
       <div className="bg-newBgColorInner flex-1 flex flex-col p-[20px] items-center justify-center gap-[14px]">
-        <div className="text-[44px]">🤖</div>
+        <div className="w-[64px] h-[64px] rounded-full bg-btnSimple flex items-center justify-center text-textItemBlur">
+          <svg
+            width="28"
+            height="28"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 3v8" />
+            <path d="M6.3 6.3a8 8 0 1 0 11.4 0" />
+          </svg>
+        </div>
         <div className="text-[20px] font-[600]">
           {t('zalo_bot_not_running', 'The Zalo bot is not running')}
         </div>
@@ -397,42 +415,56 @@ export const ZaloComponent: FC = () => {
     { key: 'settings', label: t('zalo_tab_settings', 'Settings') },
   ];
 
+  // Trạng thái gộp — đọc ĐÚNG các state mà 3–4 Pill cũ đã đọc. Thứ tự = ưu tiên:
+  // lỗi đầu tiên được nêu trên nút; bấm nút để xem đủ từng dòng.
+  const statusItems: StatusItem[] = [
+    {
+      ok: online,
+      onLabel: t('zalo_bot_running', 'Bot running'),
+      offLabel: t('zalo_bot_not_running_pill', 'Bot not running'),
+    },
+    {
+      ok: online === null ? null : zaloLogged,
+      onLabel: t('zalo_logged_in', 'Zalo logged in'),
+      offLabel: t('zalo_not_logged_in', 'Zalo not logged in'),
+    },
+    {
+      ok: online === null ? null : running,
+      onLabel: t('zalo_bridge_active', 'Bridge active'),
+      offLabel: t('zalo_bridge_off', 'Bridge off'),
+      tone: 'warn',
+      // Trước chỉ nằm trong tooltip (title) — nay hiện thẳng trong bảng chi tiết
+      hint:
+        !running && bridgeBlocker
+          ? t('zalo_bridge_off_because', 'Off because: {{reason}}').replace('{{reason}}', bridgeBlocker)
+          : undefined,
+    },
+  ];
+  if (overview?.paused) {
+    statusItems.push({
+      ok: false,
+      onLabel: '',
+      offLabel: t('zalo_bot_paused_pill', 'Bot is PAUSED'),
+      tone: 'warn',
+    });
+  }
+
+  // "{{n}} bài chờ duyệt" — tách quanh {{n}} để số nổi bật thành badge mà bản
+  // dịch vẫn tự do đặt vị trí con số.
+  const [pendingPre = '', pendingPost = ''] = t(
+    'zalo_pending_count',
+    '{{n}} bài chờ duyệt'
+  ).split('{{n}}');
+
   return (
     <div className="bg-newBgColorInner flex-1 flex flex-col p-[20px] mobile:p-[12px] gap-[16px] min-w-0">
-      {/* --- Thanh trạng thái --- */}
-      <div className="flex items-center gap-[8px] flex-wrap">
-        <Pill
-          ok={online}
-          onLabel={t('zalo_bot_running', 'Bot running')}
-          offLabel={t('zalo_bot_not_running_pill', 'Bot not running')}
-        />
-        <Pill
-          ok={online === null ? null : zaloLogged}
-          onLabel={t('zalo_logged_in', 'Zalo logged in')}
-          offLabel={t('zalo_not_logged_in', 'Zalo not logged in')}
-        />
-        <Pill
-          ok={online === null ? null : running}
-          onLabel={t('zalo_bridge_active', 'Bridge active')}
-          offLabel={t('zalo_bridge_off', 'Bridge off')}
-          title={
-            !running && bridgeBlocker
-              ? t('zalo_bridge_off_because', 'Off because: {{reason}}').replace('{{reason}}', bridgeBlocker)
-              : undefined
-          }
-        />
-        {overview?.paused && (
-          <Pill ok={false} onLabel="" offLabel={t('zalo_bot_paused_pill', 'Bot is PAUSED')} />
-        )}
-        <div className="flex-1" />
-        {running && (
-          <a href="/launches">
-            <SimpleButton className="!h-[32px] mobile:!h-[40px] text-[13px]">
-              {t('zalo_open_calendar_review', 'Open Calendar to review posts')}
-            </SimpleButton>
-          </a>
-        )}
-      </div>
+      {/* --- Trạng thái gộp: 1 nút gọn, bấm xổ chi tiết (trước là 3–4 Pill) ---
+          Nút "Mở Calendar duyệt bài" đã bỏ: lối sang Calendar duy nhất là nút
+          "Mở" trên từng thẻ bài (có ngữ cảnh, mở thẳng bản nháp). */}
+      <StatusSummary
+        items={statusItems}
+        okLabel={t('zalo_status_all_ok', 'Hoạt động bình thường')}
+      />
 
       {/* --- Thanh tab: desktop = gạch chân, mobile = pill 44px dính đỉnh --- */}
       <div className="flex gap-[4px] border-b border-newTableBorder overflow-x-auto scrollbar scrollbar-thumb-newColColor scrollbar-track-newBgColorInner -mx-[4px] px-[4px] mobile-hscroll mobile:sticky mobile:top-[env(safe-area-inset-top,0px)] mobile:z-[5] mobile:bg-newBgColorInner mobile:border-b-0 mobile:gap-[8px] mobile:-mx-[12px] mobile:px-[12px] mobile:py-[6px]">
@@ -460,14 +492,6 @@ export const ZaloComponent: FC = () => {
       {/* ============================ TAB TỔNG QUAN ============================ */}
       {tab === 'overview' && (
         <>
-          <div className="flex items-center gap-[8px] text-[12.5px] text-textItemBlur flex-wrap -mt-[6px]">
-            <span>{t('zalo_flow_group', 'Zalo group')}</span>
-            <span className="text-btnPrimary">→</span>
-            <span>{t('zalo_flow_ai_caption', 'AI writes caption')}</span>
-            <span className="text-btnPrimary">→</span>
-            <span>{t('zalo_flow_review_calendar', 'Awaiting review on Calendar')}</span>
-          </div>
-
           {/* QR đăng nhập Zalo */}
           {online === true && !zaloLogged && (
             <div className="border border-amber-400/40 bg-amber-400/10 rounded-[12px] p-[20px] flex gap-[20px] items-center flex-wrap">
@@ -519,6 +543,14 @@ export const ZaloComponent: FC = () => {
                   </div>
                 </div>
               </div>
+              {/* Luồng tổng quát — chỉ hiện lúc thiết lập lần đầu (chưa có key) */}
+              <div className="flex items-center gap-[8px] text-[12.5px] text-textItemBlur flex-wrap ps-[40px] mobile:ps-0">
+                <span>{t('zalo_flow_group', 'Zalo group')}</span>
+                <span aria-hidden="true">→</span>
+                <span>{t('zalo_flow_ai_caption', 'AI writes caption')}</span>
+                <span aria-hidden="true">→</span>
+                <span>{t('zalo_flow_review_calendar', 'Awaiting review on Calendar')}</span>
+              </div>
               <div className="flex items-center gap-[8px] flex-wrap">
                 <div className="flex-1 min-w-[180px]">
                   <Input
@@ -539,25 +571,15 @@ export const ZaloComponent: FC = () => {
             </Card>
           )}
 
-          {/* Bài đã gom (lịch sử) — duyệt/sửa/đăng làm ở Calendar (bài tự vào Nháp) */}
+          {/* Số bài chờ duyệt (bài đã tự vào Nháp Calendar — mở từng bài bằng nút
+              "Mở" trên thẻ bên dưới; link Calendar chung ở đây đã bỏ) */}
           {!!overview?.pendingCount && (
-            <div
-              className="border border-newTableBorder rounded-[12px] px-[16px] py-[12px] flex items-center gap-[10px] flex-wrap"
-            >
-              <span className="text-[15px]">🗂</span>
-              <span className="text-[13.5px] flex-1 min-w-[220px]">
-                {t(
-                  'zalo_history_banner',
-                  '{{n}} posts collected from Zalo groups — each is already a draft in the Calendar'
-                ).replace('{{n}}', String(overview.pendingCount))}
+            <div className="flex items-center gap-[8px] text-[13.5px] font-[600]">
+              {!!pendingPre.trim() && <span>{pendingPre.trim()}</span>}
+              <span className="min-w-[22px] h-[22px] px-[7px] rounded-full bg-btnPrimary text-white text-[12px] font-[700] inline-flex items-center justify-center">
+                {overview.pendingCount}
               </span>
-              <a
-                href="/launches"
-                onClick={(e) => e.stopPropagation()}
-                className="text-[13px] font-[600] text-btnPrimary whitespace-nowrap mobile:min-h-[44px] mobile:inline-flex mobile:items-center"
-              >
-                {t('zalo_history_banner_open', 'Open Calendar →')}
-              </a>
+              {!!pendingPost.trim() && <span>{pendingPost.trim()}</span>}
             </div>
           )}
 
@@ -565,27 +587,29 @@ export const ZaloComponent: FC = () => {
           <Card
             title={
               <div className="flex items-center w-full gap-[10px]">
-                <span
+                <button
+                  type="button"
+                  aria-expanded={groupsOpen}
                   onClick={() => setGroupsOpen((v) => !v)}
-                  className="flex-1 cursor-pointer select-none flex items-center gap-[6px] mobile:min-h-[36px]"
+                  className="flex-1 cursor-pointer select-none flex items-center gap-[6px] uppercase text-start mobile:min-h-[36px]"
                 >
-                  <span
-                    className={clsx(
-                      'inline-block transition-transform text-[10px]',
-                      groupsOpen && 'rotate-90'
-                    )}
-                  >
-                    ▶
-                  </span>
+                  <ChevronRightIcon
+                    size={14}
+                    aria-hidden="true"
+                    className={clsx('shrink-0 transition-transform', groupsOpen && 'rotate-90')}
+                  />
                   {t('zalo_listening_groups', 'Zalo groups being listened to')} ({listeningCount}/{routes.length})
-                </span>
+                </button>
                 {zaloLogged && groupsOpen && (
-                  <span
+                  <button
+                    type="button"
                     onClick={() => loadGroups(true)}
-                    className="cursor-pointer normal-case tracking-normal font-[600] text-btnPrimary mobile:min-h-[36px] mobile:inline-flex mobile:items-center"
+                    aria-label={t('zalo_refresh', 'Refresh')}
+                    title={t('zalo_refresh', 'Refresh')}
+                    className="w-[28px] h-[28px] rounded-[6px] flex items-center justify-center text-textItemBlur hover:text-newTextColor hover:bg-boxHover cursor-pointer transition-colors duration-150 mobile:w-[40px] mobile:h-[40px]"
                   >
-                    ↻ {t('zalo_refresh', 'Refresh')}
-                  </span>
+                    <ResetIcon size={15} aria-hidden="true" />
+                  </button>
                 )}
               </div>
             }
@@ -603,12 +627,15 @@ export const ZaloComponent: FC = () => {
             )}
 
             {!!unroutedListening && (
-              <div className="text-[12.5px] text-amber-400 bg-amber-400/10 border border-amber-400/30 rounded-[8px] px-[12px] py-[8px] leading-[1.5]">
-                ⚠ {t('zalo_unrouted_warn_1', 'There are')} <b>{unroutedListening}</b>{' '}
-                {t(
-                  'zalo_unrouted_warn_2',
-                  'listened groups without a publishing channel selected — their images will not be pushed anywhere. Pick a channel in the box on the right of each group.'
-                )}
+              <div className="flex items-start gap-[8px] text-[12.5px] text-amber-400 bg-amber-400/10 border border-amber-400/30 rounded-[8px] px-[12px] py-[8px] leading-[1.5]">
+                <WarningIcon size={14} className="mt-[3px]" />
+                <span>
+                  {t('zalo_unrouted_warn_1', 'There are')} <b>{unroutedListening}</b>{' '}
+                  {t(
+                    'zalo_unrouted_warn_2',
+                    'listened groups without a publishing channel selected — their images will not be pushed anywhere. Pick a channel in the box on the right of each group.'
+                  )}
+                </span>
               </div>
             )}
 
@@ -625,8 +652,20 @@ export const ZaloComponent: FC = () => {
                       key={r.threadId}
                       className="flex items-center gap-[12px] py-[9px] mobile:py-[12px] border-b border-newTableBorder last:border-b-0 hover:bg-boxHover px-[8px] -mx-[8px] rounded-[6px] flex-wrap"
                     >
-                      <div className="w-[34px] h-[34px] rounded-[8px] bg-btnSimple flex items-center justify-center text-[15px] shrink-0">
-                        💬
+                      <div className="w-[34px] h-[34px] rounded-[8px] bg-btnSimple flex items-center justify-center text-textItemBlur shrink-0">
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" />
+                        </svg>
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-[14px] font-[600] truncate">{r.label || r.threadId}</div>
@@ -752,7 +791,7 @@ export const ZaloComponent: FC = () => {
                 disabled={!cfg.hasKey}
                 onChange={() => cfg.hasKey && save(!cfg.enabled)}
               />
-              <span className={cfg.enabled ? 'text-green-500 font-[600]' : ''}>
+              <span className={cfg.enabled ? 'text-newTextColor font-[600]' : ''}>
                 {t('zalo_auto_bridge', 'Automatic bridge')}
               </span>
             </div>

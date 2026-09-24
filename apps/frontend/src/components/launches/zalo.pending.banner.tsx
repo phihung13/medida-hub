@@ -78,22 +78,31 @@ export const ZaloPendingBanner: FC = () => {
   }
 
   return (
-    <div className="border border-amber-400/40 bg-amber-400/10 rounded-[8px] px-[16px] py-[10px] flex items-center gap-[10px] text-[14px] flex-wrap mobile:flex-nowrap mobile:px-[12px] mobile:py-[6px]">
-      <span className="text-[16px]">⏳</span>
-      <div className="flex-1 min-w-[240px] mobile:min-w-0 mobile:truncate">
+    // Trước là một câu dài ("…bấm vào bài viền vàng trên lịch để sửa & lên
+    // lịch") + emoji ⏳. Viền vàng trên thẻ bài đã tự nói "chờ duyệt", và nút
+    // bên phải đã là lối vào — banner chỉ cần con số. Dùng luôn nhãn ngắn vốn
+    // chỉ dành cho mobile, cho mọi kích thước màn hình.
+    <div className="border border-amber-400/40 bg-amber-400/10 rounded-[8px] px-[16px] py-[8px] flex items-center gap-[10px] text-[14px] flex-nowrap mobile:px-[12px] mobile:py-[6px]">
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="text-amber-400 shrink-0"
+        aria-hidden="true"
+      >
+        <path d="M6 2h12M6 22h12M7 2c0 5 10 5 10 10S7 17 7 22M17 2c0 5-10 5-10 10s10 5 10 10" />
+      </svg>
+      <div className="flex-1 min-w-0 truncate">
         <b>{count}</b>{' '}
-        {/* Mobile 1 dòng: câu dài đổi thành nhãn ngắn, bấm nút để xem chi tiết */}
-        <span className="mobile:hidden">
-          {t(
-            'zalo_pending_banner',
-            'posts from the Zalo group are awaiting approval — click a post with the amber border on the calendar to edit & schedule it.'
-          )}
-        </span>
-        <span className="hidden mobile:inline">
-          {t('zalo_pending_banner_short', 'Zalo posts awaiting approval')}
-        </span>
+        {t('zalo_pending_banner_short', 'Zalo posts awaiting approval')}
       </div>
       <button
+        type="button"
         onClick={goList}
         className="cursor-pointer h-[32px] px-[14px] rounded-[6px] bg-btnSimple text-btnText text-[13px] font-[600] mobile:shrink-0 mobile:h-[44px] mobile:px-[16px] tap-shrink"
       >

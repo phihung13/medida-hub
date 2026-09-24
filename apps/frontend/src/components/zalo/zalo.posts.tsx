@@ -7,15 +7,23 @@ import { useToaster } from '@gitroom/react/toaster/toaster';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useIsMobile } from '@gitroom/frontend/components/new-layout/use.is.mobile';
 import {
+  CalendarIcon,
+  ChevronRightIcon,
+  CloseIcon,
+  DelayIcon,
+  ResetIcon,
+  TrashIcon,
+} from '@gitroom/frontend/components/ui/icons';
+import {
   bot,
   BotPost,
   Card,
-  DangerLink,
   fmtFull,
   getBotUrl,
   selectCls,
   SimpleButton,
   StatusChip,
+  WarningIcon,
 } from './zalo.shared';
 
 // ============================================================================
@@ -23,7 +31,8 @@ import {
 //  cầu nối tự đẩy mọi bài gom được vào Nháp của Calendar ngay khi gom xong,
 //  nên KHÔNG còn duyệt/từ chối/sửa/hẹn giờ ở đây — làm hết ở Calendar.
 //  1 thẻ = header (nhóm + giờ + chip trạng thái) → caption → dải media
-//  (bấm xem lớn) → Chi tiết → nút "Mở trong Calendar".
+//  (bấm xem lớn) → Chi tiết → chân thẻ: Xóa · Mở (trong Calendar).
+//  Đây là lối DUY NHẤT sang Calendar trên trang Zalo (bỏ nút/link chung ở trên).
 // ============================================================================
 
 type RouteInfo = { threadId: string; folder?: string; label?: string };
@@ -162,7 +171,7 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
     [router, refresh, t]
   );
 
-  // ---- Xóa hẳn 1 thẻ khỏi lịch sử (nút 🗑) -----------------------------------
+  // ---- Xóa hẳn 1 thẻ khỏi lịch sử (nút thùng rác) ---------------------------
   // Bài "Đã vào Media Hub" đáng lẽ tự rời danh sách; nút này để user chủ động
   // dọn. Không đụng bản nháp/bài đã lên Calendar — chỉ xóa thẻ lịch sử ở bot.
   const deletePost = useCallback(
@@ -254,7 +263,10 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
                 <StatusChip tone="ok">{t('zalo_posts_gbp_posted', 'Google posted')}</StatusChip>
               )}
               {!!d.scheduledAt && (
-                <StatusChip tone="warn">⏰ {fmtFull(d.scheduledAt)}</StatusChip>
+                <StatusChip tone="warn">
+                  <DelayIcon size={11} aria-hidden="true" className="me-[4px]" />
+                  {fmtFull(d.scheduledAt)}
+                </StatusChip>
               )}
             </div>
           </div>
@@ -317,7 +329,7 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
               </div>
             )}
             {vids.map((u, i) => (
-              // Thumbnail video (frame đầu) + nút ▶ — bấm mở lightbox player lớn.
+              // Thumbnail video (frame đầu) + icon play — bấm mở lightbox player lớn.
               <div
                 key={`v${i}`}
                 onClick={() =>
@@ -338,8 +350,10 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
                   className="h-full w-full object-cover pointer-events-none"
                 />
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="w-[28px] h-[28px] rounded-full bg-black/60 text-white text-[12px] flex items-center justify-center ps-[2px]">
-                    ▶
+                  <span className="w-[28px] h-[28px] rounded-full bg-black/60 text-white flex items-center justify-center ps-[2px]">
+                    <svg width="11" height="11" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+                      <path d="M3 1.5v9l7.5-4.5z" />
+                    </svg>
                   </span>
                 </div>
               </div>
@@ -350,12 +364,19 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
         {/* ---- Chi tiết (chú thích ảnh · bình luận · GBP) --------------------- */}
         {hasDetail && (
           <div className="px-[14px] pb-[6px]">
-            <span
+            <button
+              type="button"
+              aria-expanded={detail.has(d.id)}
               onClick={() => toggleDetail(d.id)}
-              className="text-[12px] font-[600] text-textItemBlur hover:text-newTextColor cursor-pointer transition-colors duration-150 mobile:min-h-[36px] mobile:inline-flex mobile:items-center"
+              className="inline-flex items-center gap-[4px] text-[12px] font-[600] text-textItemBlur hover:text-newTextColor cursor-pointer transition-colors duration-150 mobile:min-h-[36px]"
             >
-              {detail.has(d.id) ? '▾' : '▸'} {t('zalo_posts_detail', 'Details')}
-            </span>
+              <ChevronRightIcon
+                size={13}
+                aria-hidden="true"
+                className={clsx('transition-transform', detail.has(d.id) && 'rotate-90')}
+              />
+              {t('zalo_posts_detail', 'Details')}
+            </button>
             {detail.has(d.id) && (
               <div className="flex flex-col gap-[8px] mt-[8px]">
                 {!!(d.comment || '').trim() && (
@@ -423,24 +444,30 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
         )}
 
         {/* ---- Chân thẻ: xóa (trái) + mở nháp trong Calendar (phải) --------------- */}
-        <div className="flex items-center px-[14px] py-[10px] border-t border-newTableBorder">
-          <DangerLink
-            className={thisBusy ? 'opacity-50 pointer-events-none' : ''}
+        {/* Nhãn ngắn + icon; tên đầy đủ nằm ở aria-label/title. Handler giữ nguyên. */}
+        <div className="flex items-center px-[14px] py-[8px] border-t border-newTableBorder">
+          <button
+            type="button"
+            disabled={thisBusy}
             onClick={() => !thisBusy && deletePost(d)}
+            className="inline-flex items-center gap-[6px] h-[32px] px-[8px] -ms-[8px] rounded-[8px] text-[12.5px] font-[600] text-red-600 dark:text-red-400 hover:bg-red-500/10 cursor-pointer transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed mobile:h-[44px]"
           >
-            🗑 {t('zalo_posts_delete', 'Xóa')}
-          </DangerLink>
+            <TrashIcon size={15} aria-hidden="true" />
+            {t('zalo_posts_delete', 'Xóa')}
+          </button>
           <div className="flex-1" />
           <SimpleButton
-            className="!h-[32px] !px-[14px] text-[12.5px] mobile:!h-[40px] mobile:!px-[16px]"
+            className="!h-[32px] !px-[12px] text-[12.5px] inline-flex items-center gap-[6px] mobile:!h-[40px] mobile:!px-[16px]"
             disabled={thisBusy}
             title={t(
               'zalo_open_calendar_hint',
               "Open this post's draft in the Calendar composer (review, edit & publish there)"
             )}
+            ariaLabel={t('zalo_open_calendar', 'Open in Calendar')}
             onClick={() => openInCalendar(d)}
           >
-            📅 {t('zalo_open_calendar', 'Open in Calendar')}
+            <CalendarIcon width={14} height={16} aria-hidden="true" />
+            {t('zalo_open_short', 'Mở')}
           </SimpleButton>
         </div>
       </div>
@@ -476,12 +503,15 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
           </select>
         )}
         <div className="flex-1" />
-        <span
+        <button
+          type="button"
           onClick={refresh}
-          className="cursor-pointer text-[12.5px] font-[600] text-btnPrimary mobile:min-h-[44px] mobile:inline-flex mobile:items-center"
+          aria-label={t('zalo_refresh', 'Refresh')}
+          title={t('zalo_refresh', 'Refresh')}
+          className="w-[32px] h-[32px] rounded-[8px] flex items-center justify-center text-textItemBlur hover:text-newTextColor hover:bg-boxHover cursor-pointer transition-colors duration-150 mobile:w-[44px] mobile:h-[44px]"
         >
-          ↻ {t('zalo_refresh', 'Refresh')}
-        </span>
+          <ResetIcon size={16} aria-hidden="true" />
+        </button>
       </div>
 
       {!shown.length && (
@@ -496,7 +526,7 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
 
       <div className="flex flex-col gap-[12px]">{shown.map(renderCard)}</div>
 
-      {/* ---- Lightbox xem ảnh/video lớn (đóng: bấm nền / ✕ / Esc) ---------- */}
+      {/* ---- Lightbox xem ảnh/video lớn (đóng: bấm nền / nút X / Esc) ------ */}
       {lightbox && (
         <div
           className="fixed inset-0 z-[180] bg-black/85 flex items-center justify-center p-[20px]"
@@ -506,17 +536,17 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
             aria-label={t('zalo_close', 'Close')}
             onClick={() => setLightbox(null)}
             // Mobile: né notch/dynamic island + vùng chạm 44px
-            className="absolute top-[14px] end-[20px] w-[36px] h-[36px] rounded-full bg-white/10 hover:bg-white/25 text-white text-[17px] leading-none cursor-pointer transition-colors duration-150 mobile:top-[calc(env(safe-area-inset-top,0px)_+_10px)] mobile:end-[12px] mobile:w-[44px] mobile:h-[44px] mobile:text-[20px]"
+            className="absolute top-[14px] end-[20px] w-[36px] h-[36px] rounded-full bg-white/10 hover:bg-white/25 text-white flex items-center justify-center cursor-pointer transition-colors duration-150 mobile:top-[calc(env(safe-area-inset-top,0px)_+_10px)] mobile:end-[12px] mobile:w-[44px] mobile:h-[44px]"
           >
-            ✕
+            <CloseIcon size={18} aria-hidden="true" />
           </button>
           <div
             className="max-w-[92vw] max-h-[88vh] flex flex-col items-center gap-[10px]"
             onClick={(e) => e.stopPropagation()}
           >
             {lightboxError ? (
-              <div className="bg-newBgColorInner border border-newTableBorder rounded-[12px] px-[24px] py-[20px] text-[13.5px] leading-[1.6] max-w-[420px] text-center">
-                ⚠️{' '}
+              <div className="bg-newBgColorInner border border-newTableBorder rounded-[12px] px-[24px] py-[20px] text-[13.5px] leading-[1.6] max-w-[420px] text-center flex flex-col items-center gap-[8px]">
+                <WarningIcon size={20} className="text-amber-400" />
                 {t(
                   'zalo_media_missing',
                   'This file is no longer on the bot — it may have been cleaned up after posting or rejecting.'

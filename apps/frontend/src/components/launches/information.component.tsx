@@ -168,28 +168,39 @@ export const InformationComponent: FC<{
     return validLimit ?? limits[0];
   }, [isGlobal, selectedIntegrations, chars, isInternal, totalChars]);
 
+  // CHỈ đổi cách HIỂN THỊ, không đổi isValid (vẫn là chốt chặn khi đăng).
+  // Trước đây bài TRỐNG bị tính là không hợp lệ nên khối đỏ báo lỗi hiện ngay
+  // khi vừa mở composer, trước cả khi gõ chữ nào — đỏ là để báo lỗi thật.
+  // Số ký tự cũng chỉ hiện khi đáng để ý: gần chạm trần hoặc đã có lỗi,
+  // thay vì treo "0/63206" thường trực.
+  const isEmpty = !isPicture && !totalChars && !showStripLinkWarning;
+  const danger = !isValid && !isEmpty;
+  const limitShown = isGlobal ? globalDisplayLimit : totalAllowedChars;
+  const nearLimit = !!limitShown && totalChars >= limitShown * 0.8;
+  const showCount = danger || nearLimit;
+
   return (
     <div
       className={clsx(
         'group rounded-[6px] gap-[4px] h-[30px] px-[6px] flex justify-center items-center relative',
-        isValid ? 'border border-newColColor' : 'bg-[#FF3F3F]'
+        danger ? 'bg-[#FF3F3F]' : 'border border-newColColor'
       )}
     >
-      {isValid ? <Valid /> : <Invalid />}
+      {danger ? <Invalid /> : isEmpty ? null : <Valid />}
 
-      {!isGlobal && (
-        <div className={clsx("text-[10px] font-[600] flex justify-center items-center", !isValid && 'text-white')}>
+      {showCount && !isGlobal && (
+        <div className={clsx("text-[10px] font-[600] flex justify-center items-center", danger && 'text-white')}>
           {totalChars}/{totalAllowedChars}
         </div>
       )}
-      {isGlobal && globalDisplayLimit !== null && (
-        <div className={clsx("text-[10px] font-[600] flex justify-center items-center", !isValid && 'text-white')}>
+      {showCount && isGlobal && globalDisplayLimit !== null && (
+        <div className={clsx("text-[10px] font-[600] flex justify-center items-center", danger && 'text-white')}>
           {totalChars}/{globalDisplayLimit}
         </div>
       )}
       {((isGlobal && selectedIntegrations.length) || !isValid) && (
         <svg
-          className={clsx('group-hover:rotate-180', !isValid && 'text-white')}
+          className={clsx('group-hover:rotate-180', danger ? 'text-white' : 'text-textItemBlur')}
           xmlns="http://www.w3.org/2000/svg"
           width="16"
           height="16"
@@ -206,13 +217,14 @@ export const InformationComponent: FC<{
         <div
           className={clsx(
             'z-[300] hidden rounded-[12px] bg-newBgColorInner group-hover:flex absolute end-0 bottom-[100%] mb-[5px] p-[12px] flex-col',
-            isValid ? 'border border-newColColor' : 'border border-[#FF3F3F]'
+            danger ? 'border border-[#FF3F3F]' : 'border border-newColColor'
           )}
         >
           {!isPicture && !totalChars && (
             <div
               className={clsx(
-                'text-sm text-[#FF3F3F] whitespace-nowrap',
+                'text-sm whitespace-nowrap',
+                isEmpty ? 'text-textItemBlur' : 'text-[#FF3F3F]',
                 isGlobal && selectedIntegrations.length && 'mb-[12px]'
               )}
             >

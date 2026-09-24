@@ -58,6 +58,7 @@ import copy from 'copy-to-clipboard';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
 import { newDayjs } from '@gitroom/frontend/components/layout/set.timezone';
 import { Button } from '@gitroom/react/form/button';
+import { useMediaDirectory } from '@gitroom/react/helpers/use.media.directory';
 
 // Extend dayjs with necessary plugins
 extend(isSameOrAfter);
@@ -557,6 +558,7 @@ export const ListView = () => {
                   integrations={integrations}
                   deletePost={deletePost(post)}
                   showTime={true}
+                  showThumbnail={true}
                 />
               ))}
             </div>
@@ -1056,6 +1058,8 @@ const CalendarItem: FC<{
   state: State;
   display: 'day' | 'week' | 'month';
   showTime?: boolean;
+  // Ảnh thu nhỏ chỉ bật ở chế độ Danh sách — ô tuần/tháng quá chật.
+  showThumbnail?: boolean;
   post: Post & {
     integration: Integration;
     tags: {
@@ -1076,8 +1080,27 @@ const CalendarItem: FC<{
     display,
     deletePost,
     showTime,
+    showThumbnail,
     missingRelease,
   } = props;
+  const mediaDirectory = useMediaDirectory();
+  // Ảnh đầu tiên KHÔNG bị ẩn (ảnh ẩn không được đăng, không nên đại diện cho bài).
+  const thumbnail = useMemo(() => {
+    if (!showThumbnail) return '';
+    try {
+      const list = JSON.parse((post as any).image || '[]');
+      const first = (Array.isArray(list) ? list : []).find(
+        (m: any) =>
+          m?.path &&
+          !m?.hidden &&
+          !/\.(mp4|mov|webm|avi|mkv)(\?|$)/i.test(m.path)
+      );
+      return first ? mediaDirectory.set(first.path) : '';
+    } catch {
+      return '';
+    }
+  }, [showThumbnail, (post as any).image, mediaDirectory]);
+  const tagColor = post?.tags?.[0]?.tag?.color;
   const { disableXAnalytics } = useVariables();
   const user = useUser();
   const showCreationMethodBadge =
@@ -1138,7 +1161,20 @@ const CalendarItem: FC<{
             'Post from Zalo group — waiting for your approval: click the post to edit & schedule'
           )}
         >
-          ⏳
+          {/* SVG thay emoji ⏳ — emoji vẽ khác nhau tuỳ máy và không đổi màu được. */}
+          <svg
+            width="11"
+            height="11"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#1a1a1a"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M6 2h12M6 22h12M7 2c0 5 10 5 10 10S7 17 7 22M17 2c0 5-10 5-10 10s10 5 10 10" />
+          </svg>
         </div>
       )}
       {showCreationMethodBadge && (
@@ -1149,13 +1185,22 @@ const CalendarItem: FC<{
           />
         </div>
       )}
+      {/* Vạch màu tag bên trái thẻ — thay cho việc tô NGUYÊN thanh trên bằng
+          màu tag (hoặc xanh đặc khi không có tag). */}
+      {tagColor && (
+        <span
+          aria-hidden="true"
+          className="absolute start-0 top-[6px] bottom-[6px] w-[3px] rounded-full z-[1]"
+          style={{ backgroundColor: tagColor }}
+        />
+      )}
+      {/* Dòng thông tin trên đầu thẻ: trước là KHỐI MÀU ĐẶC (xanh chính hoặc màu
+          tag) — mỗi thẻ một khối màu, cả lịch loè loẹt. Giờ trung tính, chữ mờ,
+          canh trái; các nút thao tác vẫn hiện khi rê chuột (mobile: luôn hiện). */}
       <div
         className={clsx(
-          'text-white text-[11px] max-h-[24px] h-[24px] min-h-[24px] w-full rounded-tr-[10px] rounded-tl-[10px] flex items-center justify-center gap-[10px] px-[5px] bg-btnPrimary'
+          'text-textItemBlur text-[11px] max-h-[24px] h-[24px] min-h-[24px] w-full rounded-tr-[10px] rounded-tl-[10px] flex items-center justify-start gap-[10px] ps-[10px] pe-[8px] bg-newColColor border-b border-newBgColorInner'
         )}
-        style={{
-          backgroundColor: post?.tags?.[0]?.tag?.color,
-        }}
       >
         {/* Thanh trên đầu thẻ: trước đây CHỈ hiện tên thẻ (tag), nên nhìn một
             lưới bài không biết bài nào của kênh nào — phải mở ra mới biết.
@@ -1164,8 +1209,7 @@ const CalendarItem: FC<{
             cắt thì đẩy vỡ hàng; title để xem đủ khi trỏ chuột. */}
         <div
           className={clsx(
-            post?.tags?.[0]?.tag?.color ? 'mix-blend-difference' : '',
-            'group-hover:hidden cursor-pointer min-w-0 truncate'
+                        'group-hover:hidden cursor-pointer min-w-0 truncate'
           )}
           title={[
             post?.integration?.name,
@@ -1184,8 +1228,7 @@ const CalendarItem: FC<{
         {copyDebugJson && (
           <div
             className={clsx(
-              'hidden group-hover:block mobile:block hover:underline cursor-pointer',
-              post?.tags?.[0]?.tag?.color && 'mix-blend-difference'
+              'hidden group-hover:block mobile:block hover:underline cursor-pointer'
             )}
             onClick={copyDebugJson}
           >
@@ -1194,8 +1237,7 @@ const CalendarItem: FC<{
         )}
         <div
           className={clsx(
-            'hidden group-hover:block mobile:block hover:underline cursor-pointer',
-            post?.tags?.[0]?.tag?.color && 'mix-blend-difference'
+            'hidden group-hover:block mobile:block hover:underline cursor-pointer'
           )}
           onClick={duplicatePost}
         >
@@ -1203,8 +1245,7 @@ const CalendarItem: FC<{
         </div>
         <div
           className={clsx(
-            'hidden group-hover:block mobile:block hover:underline cursor-pointer',
-            post?.tags?.[0]?.tag?.color && 'mix-blend-difference'
+            'hidden group-hover:block mobile:block hover:underline cursor-pointer'
           )}
           onClick={preview}
         >
@@ -1215,8 +1256,7 @@ const CalendarItem: FC<{
         ) : post.releaseId === 'missing' && missingRelease ? (
           <div
             className={clsx(
-              'hidden group-hover:block mobile:block hover:underline cursor-pointer',
-              post?.tags?.[0]?.tag?.color && 'mix-blend-difference'
+              'hidden group-hover:block mobile:block hover:underline cursor-pointer'
             )}
             onClick={missingRelease}
           >
@@ -1225,8 +1265,7 @@ const CalendarItem: FC<{
         ) : post.releaseId !== 'missing' ? (
           <div
             className={clsx(
-              'hidden group-hover:block mobile:block hover:underline cursor-pointer',
-              post?.tags?.[0]?.tag?.color && 'mix-blend-difference'
+              'hidden group-hover:block mobile:block hover:underline cursor-pointer'
             )}
             onClick={statistics}
           >
@@ -1237,8 +1276,7 @@ const CalendarItem: FC<{
         )}{' '}
         <div
           className={clsx(
-            'hidden group-hover:block mobile:block hover:underline cursor-pointer',
-            post?.tags?.[0]?.tag?.color && 'mix-blend-difference'
+            'hidden group-hover:block mobile:block hover:underline cursor-pointer'
           )}
           onClick={deletePost}
         >
@@ -1278,6 +1316,18 @@ const CalendarItem: FC<{
               </div>
             </div>
         </div>
+        {/* Ảnh đầu tiên của bài (chế độ Danh sách): nhìn ảnh là nhận ra bài,
+            khỏi đọc dòng chữ bị cắt. alt rỗng vì chỉ mang tính minh hoạ —
+            nội dung bài đã có ở dòng chữ bên cạnh. */}
+        {!!thumbnail && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={thumbnail}
+            alt=""
+            loading="lazy"
+            className="w-[40px] h-[40px] min-w-[40px] rounded-[6px] object-cover self-center"
+          />
+        )}
         {showTime && (
           <div className="text-textColor/50 text-[12px] whitespace-nowrap flex items-center">
             {newDayjs(post.publishDate).local().format(isUSCitizen() ? 'hh:mm A' : 'HH:mm')}

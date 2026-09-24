@@ -41,6 +41,7 @@ import SkoolProvider from '@gitroom/frontend/components/new-launch/providers/sko
 import WhopProvider from '@gitroom/frontend/components/new-launch/providers/whop/whop.provider';
 import MeweProvider from '@gitroom/frontend/components/new-launch/providers/mewe/mewe.provider';
 import ZaloProvider from '@gitroom/frontend/components/new-launch/providers/zalo/zalo.provider';
+import { EmptyPreview } from '@gitroom/frontend/components/new-launch/empty.preview';
 
 export const Providers = [
   {
@@ -229,12 +230,7 @@ export const ShowAllProviders = forwardRef((props, ref) => {
           }}
         >
           {global?.[0]?.content?.length === 0 ? (
-            <div>
-              {t(
-                'start_writing_your_post',
-                'Start writing your post for a preview'
-              )}
-            </div>
+            <EmptyPreview />
           ) : (
             <>
               {/* Mobile: nhãn kênh dính đỉnh — định hướng khi cuộn preview dài */}

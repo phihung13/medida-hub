@@ -355,6 +355,8 @@ export const Filters: FC<{ onOpenChannels?: () => void }> = ({
       )}
       {isListView && (
         <div className="flex flex-grow flex-row items-center gap-[10px] flex-wrap">
+          {/* Chỉ có 1 trang thì "Page 1 of 1" + hai mũi tên mờ chỉ là nhiễu. */}
+          {calendar.listTotalPages > 1 && (
           <div className="border h-[42px] border-newTableBorder bg-newTableBorder gap-[1px] flex items-center rounded-[8px] overflow-hidden mobile:w-full">
             <div
               onClick={previousPage}
@@ -412,6 +414,7 @@ export const Filters: FC<{ onOpenChannels?: () => void }> = ({
               </svg>
             </div>
           </div>
+          )}
           <div className="flex flex-row p-[4px] border border-newTableBorder rounded-[8px] text-[14px] font-[500] mobile:w-full">
             {listStateOptions.map((option) => (
               <div

@@ -159,10 +159,15 @@ export const AiImage: FC<{
 
   return (
     <div className="relative">
-      <div
+      {/* Desktop chỉ icon + tooltip, mobile giữ chữ (cảm ứng không có tooltip). */}
+      <button
+        type="button"
         onClick={openImageModal}
+        aria-label={t('generate_ai_image', 'Generate AI image')}
+        data-tooltip-id="tooltip"
+        data-tooltip-content={t('generate_ai_image', 'Generate AI image')}
         className={clsx(
-          'cursor-pointer h-[30px] rounded-[6px] justify-center items-center flex bg-newColColor px-[8px]'
+          'cursor-pointer h-[30px] mobile:h-[40px] mobile:px-[12px] rounded-[6px] justify-center items-center flex bg-newColColor hover:bg-boxHover px-[8px] outline-none focus-visible:ring-2 focus-visible:ring-btnPrimary'
         )}
       >
         {loading && (
@@ -200,11 +205,11 @@ export const AiImage: FC<{
               </defs>
             </svg>
           </div>
-          <div className="text-[10px] font-[600] iconBreak:hidden block">
-            {t('ai', 'AI')} Image
-          </div>
+          <span className="text-[12px] font-[600] hidden mobile:block">
+            {t('generate_ai_image', 'Generate AI image')}
+          </span>
         </div>
-      </div>
+      </button>
     </div>
   );
 };

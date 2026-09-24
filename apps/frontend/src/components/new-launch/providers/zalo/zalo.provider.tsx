@@ -38,11 +38,16 @@ const ZaloSettings: FC = () => {
         label={t('zalo_allow_comment', 'Cho phép bình luận trên bài')}
         {...register('allowComment')}
       />
-      <div className="text-[12px] leading-[1.5] opacity-70">
-        {t(
-          'zalo_limits_hint',
-          'Zalo OA chỉ đăng bài dạng ảnh, ảnh đầu tiên làm ảnh bìa. Giới hạn của Zalo: mỗi ảnh tối đa 1MB, tiêu đề 150 ký tự, mô tả 300 ký tự. Không đính video vào bài Zalo. OA phải đã được xác minh mới đăng được.'
-        )}
+      {/* Rút đoạn văn giới hạn còn các "chip" ngắn — người dùng đọc lướt được.
+          Các giới hạn khác (không video, 1 khối, tiêu đề 150) đã được chặn và
+          báo lỗi rõ ràng ngay lúc lên lịch (checkValidity) nên không cần in sẵn. */}
+      <div className="flex flex-wrap gap-[6px] text-[12px] text-textItemBlur">
+        <span className="rounded-[4px] border border-newBorder px-[6px] py-[2px]">
+          {t('zalo_chip_images_only', 'Chỉ ảnh')}
+        </span>
+        <span className="rounded-[4px] border border-newBorder px-[6px] py-[2px]">
+          {t('zalo_chip_max_1mb', '≤ 1MB / ảnh')}
+        </span>
       </div>
     </div>
   );

@@ -1,8 +1,9 @@
 'use client';
 
-import { FC, ReactNode } from 'react';
+import { FC, ReactNode, useId, useState } from 'react';
 import clsx from 'clsx';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
+import { ChevronDownIcon } from '@gitroom/frontend/components/ui/icons';
 
 // ============================================================================
 //  Dùng chung cho các tab trang Zalo (Tổng quan / Bài viết / Nhóm → Trang /
@@ -248,6 +249,116 @@ export const Pill: FC<{
   );
 };
 
+// ---- Trạng thái gộp -----------------------------------------------------------
+// Thay cho hàng 3–4 Pill xanh: 1 nút gọn "● Hoạt động bình thường"; có lỗi thì
+// nêu ĐÚNG lỗi đầu tiên (theo thứ tự mảng items). Bấm để xổ danh sách chi tiết —
+// thông tin không mất, chỉ gập lại. Luôn có chữ, không chỉ dựa vào màu.
+export type StatusItem = {
+  ok: boolean | null; // null = đang kiểm tra
+  onLabel: string;
+  offLabel: string;
+  hint?: string; // lý do khi đang lỗi (trước chỉ nằm trong tooltip)
+  tone?: 'error' | 'warn'; // mức độ khi ok === false (mặc định error)
+};
+
+const StatusDot: FC<{ ok: boolean | null; tone?: 'error' | 'warn' }> = ({ ok, tone }) => (
+  <span
+    aria-hidden="true"
+    className={clsx(
+      'w-[8px] h-[8px] rounded-full shrink-0',
+      ok === true && 'bg-green-500',
+      ok === false && (tone === 'warn' ? 'bg-amber-400' : 'bg-red-500'),
+      ok === null && 'bg-textItemBlur animate-pulse'
+    )}
+  />
+);
+
+export const StatusSummary: FC<{ items: StatusItem[]; okLabel: string }> = ({
+  items,
+  okLabel,
+}) => {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+
+  const problem = items.find((i) => i.ok === false);
+  const checking = !problem && items.some((i) => i.ok === null);
+  const tone = problem ? problem.tone || 'error' : null;
+  const label = problem
+    ? problem.offLabel
+    : checking
+    ? t('zalo_checking', 'Checking…')
+    : okLabel;
+
+  return (
+    <div className="flex flex-col items-start gap-[8px]">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => setOpen((v) => !v)}
+        onKeyDown={(e) => e.key === 'Escape' && setOpen(false)}
+        className={clsx(
+          'inline-flex items-center gap-[8px] h-[30px] px-[12px] rounded-full border text-[12.5px] font-[600] cursor-pointer transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-btnPrimary mobile:h-[40px] mobile:px-[14px]',
+          // Chữ đậm hơn ở nền sáng / nhạt hơn ở nền tối để giữ tương phản >= 4.5:1
+          tone === 'error' && 'border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400',
+          tone === 'warn' && 'border-amber-400/40 bg-amber-400/10 text-amber-700 dark:text-amber-400',
+          !tone && 'border-newTableBorder hover:bg-boxHover',
+          !tone && (checking ? 'text-textItemBlur' : 'text-newTextColor')
+        )}
+      >
+        <StatusDot ok={problem ? false : checking ? null : true} tone={problem?.tone} />
+        {label}
+        <ChevronDownIcon size={14} rotated={open} aria-hidden="true" className="-me-[2px] opacity-70" />
+      </button>
+      {/* Luôn có trong DOM để aria-controls trỏ đúng; ẩn/hiện bằng class */}
+      <ul
+        id={panelId}
+        className={clsx(
+          'flex-col gap-[8px] border border-newTableBorder rounded-[10px] px-[14px] py-[10px] text-[12.5px] min-w-[220px]',
+          open ? 'flex' : 'hidden'
+        )}
+      >
+        {items.map((i, idx) => (
+          <li key={idx} className="flex items-start gap-[8px]">
+            <span className="h-[18px] flex items-center">
+              <StatusDot ok={i.ok} tone={i.tone} />
+            </span>
+            <span className="leading-[18px]">
+              {i.ok === true ? i.onLabel : i.ok === false ? i.offLabel : t('zalo_checking', 'Checking…')}
+              {i.ok === false && !!i.hint && (
+                <span className="block text-[12px] text-textItemBlur leading-[1.5]">{i.hint}</span>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
+
+// Icon cảnh báo nhỏ (thay emoji cảnh báo) — dùng cùng currentColor của dòng chữ.
+export const WarningIcon: FC<{ size?: number; className?: string }> = ({
+  size = 14,
+  className,
+}) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    className={clsx('shrink-0', className)}
+  >
+    <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+    <path d="M12 9v4M12 17h.01" />
+  </svg>
+);
+
 // Nhãn trạng thái nhỏ trong thẻ bài (chờ / đã đăng / đã bỏ).
 export const StatusChip: FC<{
   tone: 'ok' | 'off' | 'wait' | 'warn';
@@ -324,12 +435,15 @@ export const SimpleButton: FC<{
   disabled?: boolean;
   className?: string;
   title?: string;
+  // Nút rút gọn nhãn (vd. chỉ "Mở") vẫn cần tên đầy đủ cho trình đọc màn hình
+  ariaLabel?: string;
   children: ReactNode;
-}> = ({ onClick, disabled, className, title, children }) => (
+}> = ({ onClick, disabled, className, title, ariaLabel, children }) => (
   <button
     onClick={onClick}
     disabled={disabled}
     title={title}
+    aria-label={ariaLabel}
     className={clsx(
       'h-[40px] px-[18px] rounded-[8px] bg-btnSimple text-btnText text-[14px] font-[600] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap',
       className

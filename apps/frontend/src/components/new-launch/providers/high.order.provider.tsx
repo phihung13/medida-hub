@@ -31,6 +31,7 @@ class Empty {
 
 export { PostComment } from '@gitroom/frontend/components/new-launch/providers/post-comment.enum';
 import { PostComment } from '@gitroom/frontend/components/new-launch/providers/post-comment.enum';
+import { EmptyPreview } from '@gitroom/frontend/components/new-launch/empty.preview';
 
 interface CharacterCondition {
   format: 'no-pictures' | 'with-pictures';
@@ -251,12 +252,7 @@ export const withProvider = function <T extends object>(params: {
               (tab === 0 ||
                 (!SettingsComponent && !data?.internalPlugs?.length)) &&
               !value?.[0]?.content?.length && (
-                <div>
-                  {t(
-                    'start_writing_your_post',
-                    'Start writing your post for a preview'
-                  )}
-                </div>
+                <EmptyPreview />
               )}
             {current &&
               (tab === 0 ||

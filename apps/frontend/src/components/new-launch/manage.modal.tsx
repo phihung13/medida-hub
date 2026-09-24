@@ -107,9 +107,9 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
       return (
         <div className="flex items-center gap-[10px]">
           <div className="relative">
-            <SettingsIcon size={15} className="text-white" />
+            <SettingsIcon size={15} className="text-textItemBlur" />
           </div>
-          <div>Settings</div>
+          <div>{t('settings', 'Settings')}</div>
         </div>
       );
     }
@@ -126,7 +126,7 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
           />
           <SettingsIcon
             size={15}
-            className="text-white absolute -end-[5px] -bottom-[5px]"
+            className="text-textItemBlur absolute -end-[5px] -bottom-[5px]"
           />
         </div>
         <div>
@@ -503,19 +503,10 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
                   )}
                 >
                   <div className="flex flex-col gap-[8px]">
-                    {!existingData?.integration &&
-                      selectedIntegrations.length === 0 && (
-                        <div className="flex items-center gap-[6px] text-[13px] text-textItemBlur">
-                          <span
-                            className="inline-block w-[8px] h-[8px] rounded-full bg-[#622FF6] animate-pulse"
-                            aria-hidden="true"
-                          />
-                          {t(
-                            'select_channel_hint',
-                            'Click a channel avatar below to start your post'
-                          )}
-                        </div>
-                      )}
+                    {/* Đã bỏ câu gợi ý "Nhấp vào ảnh đại diện của một kênh bên dưới
+                        để bắt đầu bài đăng": nó chỉ hiện khi chưa chọn kênh — đúng lúc
+                        nút chính cũng đang ghi "Chọn một kênh ở trên", tức hai câu nói
+                        cùng một ý. Chấm tím nhấp nháy đi kèm cũng là màu nhấn thứ ba. */}
                     <div className="flex w-full">
                       <div className="flex flex-1">
                         <PicksSocialsComponent toolTip={true} />
@@ -594,23 +585,30 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
                 )}
               >
                 <div className="flex-1 flex flex-col rounded-[12px] gap-[12px] overflow-hidden bg-newSettings">
-                  <div
+                  {/* Thanh mở cài đặt kênh: trước là khối xanh đặc phủ kín chiều
+                      ngang (mã màu cứng #1e6fd9) — màu nhấn chính bị dùng cho một
+                      thứ phụ, giành chú ý với nút Lên lịch. Giờ là một hàng mảnh
+                      trung tính. <button> + aria-expanded thay cho <div onClick>
+                      để bàn phím và trình đọc màn hình dùng được. */}
+                  <button
+                    type="button"
                     onClick={() => setShowSettings(!showSettings)}
+                    aria-expanded={showSettings}
                     className={clsx(
-                      'bg-[#1e6fd9] rounded-[12px] flex items-center gap-[8px] cursor-pointer p-[12px]',
+                      'w-full text-start bg-newBgColorInner border border-newBorder hover:bg-boxHover transition-colors rounded-[12px] flex items-center gap-[8px] cursor-pointer px-[12px] py-[10px] outline-none focus-visible:ring-2 focus-visible:ring-btnPrimary',
                       showSettings ? '!rounded-b-none' : ''
                     )}
                   >
-                    <div className="flex-1 text-[14px] font-[600] text-white">
+                    <div className="flex-1 text-[13px] font-[500] text-newTextColor">
                       {currentIntegrationText}
                     </div>
                     <div>
                       <ChevronDownIcon
                         rotated={showSettings}
-                        className="text-white"
+                        className="text-textItemBlur"
                       />
                     </div>
-                  </div>
+                  </button>
                   <div
                     className={clsx(
                       !showSettings ? 'hidden' : 'flex-1',

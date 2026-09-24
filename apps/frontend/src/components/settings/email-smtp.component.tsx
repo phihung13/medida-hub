@@ -6,6 +6,12 @@ import { Button } from '@gitroom/react/form/button';
 import { Input } from '@gitroom/react/form/input';
 import { useToaster } from '@gitroom/react/toaster/toaster';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
+import {
+  KeyStatus,
+  SettingsCardHeader,
+  settingsPrimaryBtn,
+  settingsSelect,
+} from '@gitroom/frontend/components/settings/settings-card.component';
 
 // Nhập TÀI KHOẢN GỬI EMAIL (Gmail/SMTP hoặc Resend) ngay trong UI Settings —
 // khỏi sửa env trên Coolify. Dùng để gửi BẢN TIN trang Phát hiện + thông báo.
@@ -108,18 +114,27 @@ export const EmailSmtpComponent: FC = () => {
 
   return (
     <div className="my-[16px] bg-sixth border-fifth border rounded-[4px] p-[24px]">
-      <h3 className="text-[18px] mb-[4px]">📧 {t('email_title', 'Tài khoản gửi email (Gmail / SMTP)')}</h3>
-      <div className="text-[13px] opacity-70 mb-[12px] leading-[1.6]">
-        {t(
-          'email_desc',
-          'Dùng để gửi bản tin trang Phát hiện qua email. Gmail: bật Xác minh 2 bước rồi tạo "App password" tại myaccount.google.com/apppasswords — dùng chuỗi 16 ký tự đó làm mật khẩu (không phải mật khẩu đăng nhập Gmail).'
-        )}
-        {st?.configured ? ` — ✅ ${t('email_configured', 'Đã cấu hình.')}` : ` — ⚠ ${t('email_not_configured', 'Chưa cấu hình.')}`}
-      </div>
+      <SettingsCardHeader
+        title={t('email_title', 'Tài khoản gửi email (Gmail / SMTP)')}
+        status={
+          <KeyStatus
+            ok={!!st?.configured}
+            okLabel={t('key_status_configured', 'Đã cấu hình')}
+            missingLabel={t('email_status_missing', 'Chưa cấu hình')}
+          />
+        }
+      >
+        <p>
+          {t(
+            'email_desc',
+            'Dùng để gửi bản tin trang Phát hiện qua email. Gmail: bật Xác minh 2 bước rồi tạo "App password" tại myaccount.google.com/apppasswords — dùng chuỗi 16 ký tự đó làm mật khẩu (không phải mật khẩu đăng nhập Gmail).'
+          )}
+        </p>
+      </SettingsCardHeader>
 
       <div className="flex items-center gap-[8px] mb-[10px]">
         <span className="text-[13px] font-[600]">{t('email_provider', 'Nhà gửi:')}</span>
-        <select value={provider} onChange={(e) => setProvider(e.target.value)} className="bg-input border border-fifth rounded-[6px] h-[38px] px-[10px] text-[13px] text-inputText outline-none">
+        <select value={provider} onChange={(e) => setProvider(e.target.value)} aria-label={t('email_provider', 'Nhà gửi:')} className={settingsSelect}>
           <option value="nodemailer">{t('email_provider_smtp', 'Gmail / SMTP')}</option>
           <option value="resend">Resend</option>
         </select>
@@ -156,13 +171,13 @@ export const EmailSmtpComponent: FC = () => {
       </div>
 
       <div className="flex items-center gap-[8px] flex-wrap mt-[14px]">
-        <Button className="h-[40px]" onClick={save} disabled={saving}>
-          {saving ? t('saving', 'Saving...') : `💾 ${t('save', 'Lưu')}`}
+        <Button className={settingsPrimaryBtn} onClick={save} disabled={saving}>
+          {saving ? t('saving', 'Saving...') : t('save', 'Lưu')}
         </Button>
         <div className="flex-1" />
-        <input value={testTo} onChange={(e) => setTestTo(e.target.value)} placeholder={t('email_test_to', 'Email nhận thử (trống = chính bạn)')} className="bg-input border border-fifth rounded-[6px] h-[40px] px-[10px] text-[13px] text-inputText outline-none w-[240px] mobile:w-full" />
-        <button onClick={sendTest} disabled={testing} className="h-[40px] px-[14px] rounded-[8px] text-[13px] font-[700] border border-newBgLineColor text-textItemBlur hover:text-textColor disabled:opacity-50">
-          {testing ? t('email_testing', 'Đang gửi…') : `📨 ${t('email_test', 'Gửi thử')}`}
+        <input value={testTo} onChange={(e) => setTestTo(e.target.value)} placeholder={t('email_test_to', 'Email nhận thử (trống = chính bạn)')} className="bg-newBgColorInner border border-newTableBorder rounded-[8px] h-[42px] px-[12px] text-[14px] text-textColor outline-none w-[240px] mobile:w-full" />
+        <button type="button" onClick={sendTest} disabled={testing} className="h-[42px] px-[16px] rounded-[8px] text-[14px] bg-btnSimple text-btnText hover:opacity-80 transition-opacity disabled:opacity-50">
+          {testing ? t('email_testing', 'Đang gửi…') : t('email_test', 'Gửi thử')}
         </button>
       </div>
     </div>

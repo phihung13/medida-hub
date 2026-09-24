@@ -102,7 +102,11 @@
     --color-secondary: #090b13;
     --color-text: #ffffff;
     --color-third: #080b13;
-    --color-forth: #612ad5;
+    /* Tím #612ad5 cũ là màu nhấn THỨ HAI: component Button dùng chung luôn gắn
+       bg-forth, nên mọi nút chính mặc định tím trong khi phần còn lại dùng xanh
+       --new-btn-primary. Đổi GIÁ TRỊ biến thay vì đổi tên class: thứ tự CSS giữ
+       nguyên, nên các nút đang tự ghi đè màu (vd nút xoá màu đỏ) không bị lật. */
+    --color-forth: #1e6fd9;
     --color-fifth: var(--new-bgLineColor);
     --color-sixth: var(--new-table-header);
     --color-seventh: #7236f1;
@@ -172,7 +176,11 @@
     --color-secondary: #fff;
     --color-text: #000;
     --color-third: white;
-    --color-forth: #612ad5;
+    /* Tím #612ad5 cũ là màu nhấn THỨ HAI: component Button dùng chung luôn gắn
+       bg-forth, nên mọi nút chính mặc định tím trong khi phần còn lại dùng xanh
+       --new-btn-primary. Đổi GIÁ TRỊ biến thay vì đổi tên class: thứ tự CSS giữ
+       nguyên, nên các nút đang tự ghi đè màu (vd nút xoá màu đỏ) không bị lật. */
+    --color-forth: #1e6fd9;
     --color-fifth: var(--new-bgLineColor);
     --color-sixth: var(--new-table-header);
     --color-seventh: #7236f1;

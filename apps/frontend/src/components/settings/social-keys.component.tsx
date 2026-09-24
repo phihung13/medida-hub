@@ -1,12 +1,18 @@
 'use client';
 
 import { FC, useCallback, useEffect, useState } from 'react';
-import clsx from 'clsx';
 import { Button } from '@gitroom/react/form/button';
 import { Input } from '@gitroom/react/form/input';
 import { useToaster } from '@gitroom/react/toaster/toaster';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
+import { ChevronDownIcon } from '@gitroom/frontend/components/ui/icons';
+import {
+  KeyStatus,
+  SettingsCardHeader,
+  settingsNeutralBtn,
+  settingsPrimaryBtn,
+} from '@gitroom/frontend/components/settings/settings-card.component';
 
 // ============================================================================
 //  OAuth keys các kênh — nhập qua UI + hướng dẫn đăng ký từng nền tảng.
@@ -333,7 +339,7 @@ export const SocialKeyGuideForm: FC<{
       <div className="flex flex-col gap-[8px]">
         {guide.steps.map((s, i) => (
           <div key={i} className="flex gap-[10px] text-[13px] leading-[1.5]">
-            <div className="w-[20px] h-[20px] rounded-full bg-forth flex items-center justify-center text-[11px] font-[700] shrink-0 mt-[1px]">
+            <div className="w-[20px] h-[20px] rounded-full bg-btnSimple text-btnText flex items-center justify-center text-[12px] font-[700] shrink-0 mt-[1px]">
               {i + 1}
             </div>
             <div className="opacity-85">{s}</div>
@@ -353,8 +359,11 @@ export const SocialKeyGuideForm: FC<{
             </div>
             <div className="text-[12px] font-mono truncate">{redirectUri}</div>
           </div>
-          <Button className="h-[34px] shrink-0" onClick={copyRedirect}>
-            Copy
+          <Button
+            className="!bg-btnSimple !text-btnText rounded-[8px] h-[34px] shrink-0"
+            onClick={copyRedirect}
+          >
+            {t('copy', 'Copy')}
           </Button>
         </div>
       )}
@@ -375,7 +384,7 @@ export const SocialKeyGuideForm: FC<{
             <div className="w-[190px] mobile:w-full text-[12.5px] opacity-80 shrink-0">
               {f.label}
               {status?.[f.env]?.has && (
-                <span className="text-green-400"> ✓ ({status[f.env].masked})</span>
+                <span className="text-newTextColor"> ✓ ({status[f.env].masked})</span>
               )}
             </div>
             <div className="flex-1">
@@ -403,12 +412,12 @@ export const SocialKeyGuideForm: FC<{
 
       <div className="flex items-center gap-[8px]">
         <a href={guide.portal} target="_blank" rel="noreferrer">
-          <Button className="bg-transparent border border-fifth">
+          <Button className={settingsNeutralBtn}>
             {guide.portalLabel} ↗
           </Button>
         </a>
         <div className="flex-1" />
-        <Button onClick={save} disabled={saving}>
+        <Button className={settingsPrimaryBtn} onClick={save} disabled={saving}>
           {saving
             ? t('social_keys_saving', 'Saving...')
             : t('social_keys_save_button', 'Save keys')}
@@ -456,15 +465,16 @@ export const SocialKeysComponent: FC = () => {
 
   return (
     <div className="my-[16px] bg-sixth border-fifth border rounded-[4px] p-[24px]">
-      <h3 className="text-[18px] mb-[4px]">
-        {t('social_keys_title', 'Connect channels — OAuth keys')}
-      </h3>
-      <div className="text-[13px] opacity-70 mb-[14px]">
-        {t(
-          'social_keys_description',
-          'Each platform needs its own developer app (free). Click a channel to see the guide and enter the key right here — no file editing needed.'
-        )}
-      </div>
+      <SettingsCardHeader
+        title={t('social_keys_title', 'Connect channels — OAuth keys')}
+      >
+        <p>
+          {t(
+            'social_keys_description',
+            'Each platform needs its own developer app (free). Click a channel to see the guide and enter the key right here — no file editing needed.'
+          )}
+        </p>
+      </SettingsCardHeader>
       <div className="flex flex-col gap-[8px]">
         {ORDER.map((id) => {
           const g = PLATFORM_GUIDES[id];
@@ -473,26 +483,29 @@ export const SocialKeysComponent: FC = () => {
           const isOpen = open === id;
           return (
             <div key={id} className="border-fifth border rounded-[8px] overflow-hidden">
-              <div
-                className="flex items-center gap-[10px] px-[14px] py-[11px] cursor-pointer hover:bg-fifth/30 select-none"
+              {/* type="button": nằm trong <form> của SettingsPopup */}
+              <button
+                type="button"
+                aria-expanded={isOpen}
+                className="w-full text-start flex items-center gap-[10px] px-[14px] py-[11px] hover:bg-boxHover transition-colors select-none"
                 onClick={() => setOpen(isOpen ? '' : id)}
               >
-                <span className="text-[18px]">{g.icon}</span>
+                <img
+                  src={`/icons/platforms/${id}.png`}
+                  alt=""
+                  className="w-[20px] h-[20px] rounded-[4px] shrink-0"
+                />
                 <span className="text-[14px] font-[600] flex-1">{g.name}</span>
-                <span
-                  className={clsx(
-                    'text-[11px] font-[700] px-[8px] py-[2px] rounded-full',
-                    ok
-                      ? 'bg-green-500/15 text-green-400'
-                      : 'bg-fifth opacity-70'
-                  )}
-                >
-                  {ok
-                    ? t('social_keys_status_configured', 'CONFIGURED')
-                    : t('social_keys_status_missing', 'NO KEY')}
-                </span>
-                <span className="opacity-50 text-[12px]">{isOpen ? '▲' : '▼'}</span>
-              </div>
+                <KeyStatus
+                  ok={!!ok}
+                  okLabel={t('key_status_configured', 'Đã cấu hình')}
+                />
+                <ChevronDownIcon
+                  size={16}
+                  rotated={isOpen}
+                  className="text-newTextColor/60 shrink-0"
+                />
+              </button>
               {isOpen && (
                 <div className="px-[14px] pb-[14px] pt-[4px] border-t border-fifth">
                   <SocialKeyGuideForm identifier={id} onSaved={load} />

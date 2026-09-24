@@ -1568,41 +1568,43 @@ export const MultiMediaComponent: FC<{
         <div className="flex flex-wrap mobile:flex-nowrap mobile-hscroll gap-[8px] px-[12px] border-t border-newColColor w-full b1 text-textColor">
           {!mediaNotAvailable && (
             <div className="flex py-[10px] b2 items-center gap-[4px]">
-              <div
+              {/* Desktop: chỉ icon + tooltip (chữ 10px cũ dưới mức đọc được 12px,
+                  và code vốn đã tự ẩn chữ ở màn hẹp). Mobile GIỮ chữ vì cảm ứng
+                  không rê chuột để xem tooltip được. <button> thay <div onClick>. */}
+              <button
+                type="button"
                 onClick={showModal}
-                className="cursor-pointer h-[30px] mobile:h-[40px] mobile:px-[12px] rounded-[6px] justify-center items-center flex bg-newColColor px-[8px] tap-shrink"
+                aria-label={t('insert_media', 'Insert Media')}
+                data-tooltip-id="tooltip"
+                data-tooltip-content={t('insert_media', 'Insert Media')}
+                className="cursor-pointer h-[30px] mobile:h-[40px] mobile:px-[12px] rounded-[6px] justify-center items-center flex bg-newColColor hover:bg-boxHover px-[8px] tap-shrink outline-none focus-visible:ring-2 focus-visible:ring-btnPrimary"
               >
                 <div className="flex gap-[8px] items-center">
-                  <div>
-                    <InsertMediaIcon />
-                  </div>
-                  <div className="text-[10px] mobile:text-[12px] font-[600] maxMedia:hidden block">
+                  <InsertMediaIcon />
+                  <span className="text-[12px] font-[600] hidden mobile:block">
                     {t('insert_media', 'Insert Media')}
-                  </div>
+                  </span>
                 </div>
-              </div>
+              </button>
               {canDesign && (
-                <div
+                <button
+                  type="button"
                   onClick={designMedia}
-                  title={t(
+                  aria-label={t('design_media', 'Design Media')}
+                  data-tooltip-id="tooltip"
+                  data-tooltip-content={t(
                     'design_media_tooltip',
                     'Design media — open image editor'
                   )}
-                  aria-label={t(
-                    'design_media_tooltip',
-                    'Design media — open image editor'
-                  )}
-                  className="cursor-pointer h-[30px] mobile:h-[40px] mobile:px-[12px] rounded-[6px] justify-center items-center flex bg-newColColor px-[8px] tap-shrink"
+                  className="cursor-pointer h-[30px] mobile:h-[40px] mobile:px-[12px] rounded-[6px] justify-center items-center flex bg-newColColor hover:bg-boxHover px-[8px] tap-shrink outline-none focus-visible:ring-2 focus-visible:ring-btnPrimary"
                 >
                   <div className="flex gap-[5px] items-center">
-                    <div>
-                      <DesignMediaIcon />
-                    </div>
-                    <div className="text-[10px] font-[600] iconBreak:hidden block">
+                    <DesignMediaIcon />
+                    <span className="text-[12px] font-[600] hidden mobile:block">
                       {t('design_media', 'Design Media')}
-                    </div>
+                    </span>
                   </div>
-                </div>
+                </button>
               )}
 
               <ThirdPartyMedia allData={allData} onChange={changeMedia} />
@@ -1612,21 +1614,44 @@ export const MultiMediaComponent: FC<{
 
               {/* Bật/tắt khung xem trước bài đăng (FB collage / lưới) */}
               {!!currentMedia?.length && currentMedia.length > 1 && (
-                <div
+                <button
+                  type="button"
                   onClick={() => setFrame(!frame)}
-                  title={t('media_frame_toggle', 'Preview post frame & reorder')}
+                  aria-pressed={frame}
+                  aria-label={t('media_frame', 'Frame')}
+                  data-tooltip-id="tooltip"
+                  data-tooltip-content={t(
+                    'media_frame_toggle',
+                    'Preview post frame & reorder'
+                  )}
                   className={clsx(
-                    'cursor-pointer h-[30px] mobile:h-[40px] mobile:px-[12px] rounded-[6px] justify-center items-center flex px-[8px] tap-shrink',
-                    frame ? 'bg-forth text-white' : 'bg-newColColor'
+                    'cursor-pointer h-[30px] mobile:h-[40px] mobile:px-[12px] rounded-[6px] justify-center items-center flex px-[8px] tap-shrink outline-none focus-visible:ring-2 focus-visible:ring-btnPrimary',
+                    frame ? 'bg-btnPrimary text-white' : 'bg-newColColor hover:bg-boxHover'
                   )}
                 >
                   <div className="flex gap-[5px] items-center">
-                    <span className="text-[13px] leading-none">🖼</span>
-                    <div className="text-[10px] font-[600] iconBreak:hidden block">
+                    {/* SVG thay cho emoji 🖼 — emoji hiển thị khác nhau tuỳ máy. */}
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <rect x="3" y="3" width="8" height="8" rx="1.5" />
+                      <rect x="13" y="3" width="8" height="8" rx="1.5" />
+                      <rect x="3" y="13" width="8" height="8" rx="1.5" />
+                      <rect x="13" y="13" width="8" height="8" rx="1.5" />
+                    </svg>
+                    <span className="text-[12px] font-[600] hidden mobile:block">
                       {t('media_frame', 'Frame')}
-                    </div>
+                    </span>
                   </div>
-                </div>
+                </button>
               )}
 
               {!!user?.tier?.ai && (
