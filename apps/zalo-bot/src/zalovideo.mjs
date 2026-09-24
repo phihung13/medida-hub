@@ -80,11 +80,34 @@ export async function loginZaloVideo({ sessionFile = ZALOVIDEO_SESSION_FILE } = 
   const page = await ctx.newPage();
   await page.goto(CREATOR_URL);
   console.log("\n📲 Đăng nhập Zalo trong cửa sổ trình duyệt vừa mở (bấm 'Đăng nhập Zalo để bắt đầu').");
-  console.log("   Đăng nhập xong, quay lại đây nhấn ENTER để lưu phiên...\n");
-  await new Promise((res) => {
-    process.stdin.resume();
-    process.stdin.once("data", () => { process.stdin.pause(); res(); });
-  });
+  console.log("   KHÔNG cần nhấn gì ở đây — đăng nhập xong là tự lưu phiên rồi đóng.\n");
+
+  // TỰ nhận biết thay vì chờ ENTER: script hay được chạy ở nơi không có stdin
+  // tương tác (chạy qua công cụ, CI, hoặc `!` trong Claude Code) — lúc đó
+  // process.stdin.once("data") treo vĩnh viễn và chẳng bao giờ lưu được gì.
+  // Chưa đăng nhập thì Zalo giữ ở /creator/register; vào được trang trong là xong.
+  const DEADLINE = Date.now() + 5 * 60_000;
+  let loggedIn = false;
+  while (Date.now() < DEADLINE) {
+    if (page.isClosed()) break;
+    let url = "";
+    try { url = page.url(); } catch { break; }
+    if (/\/creator\//.test(url) && !/\/creator\/register/.test(url)) {
+      loggedIn = true;
+      break;
+    }
+    await page.waitForTimeout(2000);
+  }
+
+  if (!loggedIn) {
+    await browser.close();
+    throw new Error(
+      "Hết 5 phút mà chưa thấy đăng nhập xong (vẫn ở màn hình đăng ký). Chạy lại và đăng nhập trong cửa sổ vừa mở."
+    );
+  }
+
+  // Zalo còn ghi tiếp cookie sau khi chuyển trang — chờ một nhịp cho chắc.
+  await page.waitForTimeout(3000);
   fs.mkdirSync(path.dirname(sessionFile), { recursive: true });
   await ctx.storageState({ path: sessionFile });
   await browser.close();
