@@ -288,10 +288,10 @@ export async function getZaloVideoChannel({
 //  NHIỀU KÊNH
 //
 //  Một tài khoản Zalo quản trị nhiều OA, mỗi OA có một kênh Zalo Video. Creator
-//  Center chỉ làm việc với MỘT kênh "đang chọn" tại một thời điểm, và lựa chọn
-//  đó lưu ở PHÍA MÁY CHỦ Zalo (theo tài khoản, không theo trình duyệt). Nên
-//  trước mỗi lần đăng bot phải chuyển đúng kênh rồi kiểm lại — và kiểm lần nữa
-//  ngay trước cú bấm Đăng, phòng khi có người đổi kênh trên máy khác.
+//  Center chỉ làm việc với MỘT kênh "đang chọn" tại một thời điểm, lưu theo
+//  PHIÊN đăng nhập (đã đo: bot chuyển sang Thái Sơn, trình duyệt của người dùng
+//  cùng tài khoản vẫn ở Trường Việt Anh). Nên trước mỗi lần đăng bot chuyển
+//  đúng kênh rồi kiểm lại — và kiểm lần nữa ngay trước cú bấm Đăng.
 //
 //  Đã đo trên trang thật:
 //   - GET /v2/public-api/user/oas-by-admin -> [{id: oaId, name, avatar, channelId}]
@@ -597,38 +597,78 @@ async function pickCover(page, seconds, log) {
       );
       const sec = label?.parentElement;
       const video = sec?.querySelector("video");
-      const strip = sec?.querySelector(".cursor-grab")?.parentElement;
+      const handle = sec?.querySelector(".cursor-grab");
+      const strip = handle?.parentElement;
       if (!video || !strip) return null;
       const r = strip.getBoundingClientRect();
-      return { dur: video.duration, t: video.currentTime, x: r.x, y: r.y, w: r.width, h: r.height };
+      const imgs = [...(handle.previousElementSibling?.querySelectorAll("img") || [])];
+      return {
+        dur: video.duration,
+        t: video.currentTime,
+        seeking: video.seeking,
+        frames: imgs.length,
+        framesReady: imgs.length > 0 && imgs.every((m) => m.complete && m.naturalWidth > 0),
+        x: r.x, y: r.y, w: r.width, h: r.height,
+      };
     });
 
   await page.getByText("Chọn ảnh bìa", { exact: true }).scrollIntoViewIfNeeded().catch(() => {});
+
+  // Gắn file xong, Zalo tua video ẩn qua từng mốc để cắt dải khung hình (đo
+  // được: 8 mốc, video 10s mất ~1s; video lớn trên máy chủ lâu hơn nhiều). Bấm
+  // lúc đó thì bị tua đè — lần chạy thử đầu muốn 3.0s mà ra 7.3s. Chờ đủ ảnh
+  // khung + video đứng yên ≥1.5s rồi mới bấm. Lớp skeleton của Zalo nằm dưới
+  // dải ảnh và KHÔNG bao giờ ẩn, không dùng làm dấu hiệu được.
   let i = null;
-  for (let k = 0; k < 40; k++) {
+  let lastT = null;
+  let stable = 0;
+  const readyBy = Date.now() + 90_000;
+  while (Date.now() < readyBy) {
     i = await info().catch(() => null);
-    if (i && Number.isFinite(i.dur) && i.dur > 0 && i.w > 0) break;
+    const ok = i && Number.isFinite(i.dur) && i.dur > 0 && i.w > 0 && i.framesReady && !i.seeking;
+    stable = ok && i.t === lastT ? stable + 1 : 0;
+    lastT = i?.t ?? null;
+    if (stable >= 3) break;
     await page.waitForTimeout(500);
   }
   if (!i || !(i.dur > 0) || !(i.w > 0)) {
     throw new Error("Không tìm thấy dải chọn ảnh bìa trên form Zalo — dừng, KHÔNG bấm Đăng.");
+  }
+  if (stable < 3) {
+    throw new Error("Zalo chưa cắt xong dải khung ảnh bìa sau 90 giây — dừng, KHÔNG bấm Đăng.");
   }
 
   const want = Math.min(Math.max(Number(seconds) || 0, 0), i.dur);
   const f = want / i.dur;
   const y = i.y + i.h / 2;
   const xAt = (frac) => i.x + Math.min(Math.max(frac, 0.005), 0.995) * i.w;
-  // Đẩy ô chọn ra xa điểm đích, rồi bấm đích.
-  await page.mouse.click(xAt(f < 0.5 ? 0.97 : 0.03), y);
-  await page.waitForTimeout(500);
-  await page.mouse.click(xAt(f), y);
-  await page.waitForTimeout(700);
-
-  const after = await info().catch(() => null);
   const tol = Math.max(0.3, i.dur * 0.02);
-  if (!after || Math.abs(after.t - want) > tol) {
+  let after = null;
+  // Thử tay trên Chrome: đôi khi vài cú bấm đầu bị dải bỏ qua (ô chọn đứng
+  // yên), bấm lại thì ăn — nên thử tối đa 4 lượt, lượt nào cũng đọc lại giây.
+  // Rê chuột tới trước và giữ nút ~60ms như người bấm thật.
+  const press = async (x) => {
+    await page.mouse.move(x, y, { steps: 4 });
+    await page.mouse.down();
+    await page.waitForTimeout(60);
+    await page.mouse.up();
+  };
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    // Đẩy ô chọn ra xa điểm đích, rồi bấm đích.
+    await press(xAt(f < 0.5 ? 0.97 : 0.03));
+    await page.waitForTimeout(600);
+    await press(xAt(f));
+    await page.waitForTimeout(900);
+    after = await info().catch(() => null);
+    if (after && !after.seeking && Math.abs(after.t - want) <= tol) break;
+    log(`   ...ảnh bìa lần ${attempt} ra ${after ? after.t.toFixed(1) : "?"}s, thử lại`);
+    after = null;
+    await page.waitForTimeout(1500);
+  }
+  if (!after) {
+    const now = await info().catch(() => null);
     throw new Error(
-      `Chọn ảnh bìa lệch: muốn ${want.toFixed(1)}s, Zalo đang ở ${after ? after.t.toFixed(1) : "?"}s — dừng, KHÔNG bấm Đăng.`
+      `Chọn ảnh bìa lệch: muốn ${want.toFixed(1)}s, Zalo đang ở ${now ? now.t.toFixed(1) : "?"}s — dừng, KHÔNG bấm Đăng.`
     );
   }
   log(`→ Ảnh bìa: khung ${after.t.toFixed(1)}s / ${i.dur.toFixed(1)}s`);
@@ -823,8 +863,7 @@ export async function postToZaloVideo({
         "Không xác định chắc được nút Đăng của form (vị trí bất thường) — dừng để không bấm nhầm."
       );
     }
-    // Kênh đang chọn lưu ở máy chủ Zalo theo TÀI KHOẢN: ai đó đổi kênh trên
-    // máy khác trong lúc bot điền form thì bài sẽ lên nhầm kênh. Kiểm lần cuối.
+    // Kiểm lần cuối: đăng nhầm kênh thì không gỡ lặng lẽ được — thà dừng.
     if (channelId) {
       const cur = await readCurrentChannel(page);
       if (cur?.id !== String(channelId)) {
