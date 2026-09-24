@@ -247,6 +247,63 @@ export async function withZaloVideoPage(
   }
 }
 
+/**
+ * Thông tin kênh Zalo Video (id, tên, avatar) — Hub dùng để tạo kênh đúng
+ * tên/ảnh. Đọc từ CHÍNH response API /v2/public-api/channel mà trang Creator
+ * tự gọi (đã đo: {"error":0,"data":{"id","name","avatar",...}}), không dò chữ.
+ * Đồng thời là phép kiểm tra phiên còn dùng được.
+ */
+export async function getZaloVideoChannel({
+  sessionFile = ZALOVIDEO_SESSION_FILE,
+  log = () => {},
+} = {}) {
+  return withZaloVideoPage(
+    async (page) => {
+      const wait = page
+        .waitForResponse((r) => /\/v\d\/public-api\/channel(\?|$)/.test(r.url()), { timeout: TIMEOUT })
+        .catch(() => null);
+      await page.goto(`${CREATOR_URL}/video?tab=tong-quat&type=public`, {
+        waitUntil: "domcontentloaded",
+        timeout: TIMEOUT,
+      });
+      const res = await wait;
+      let j = null;
+      try { j = res ? await res.json() : null; } catch {}
+      if (!j || j.error !== 0 || !j.data?.id) {
+        throw new Error(
+          `Không đọc được thông tin kênh Zalo Video (${j ? `[${j.error}] ${j.msg || ""}` : "không có phản hồi"}).`
+        );
+      }
+      return {
+        id: String(j.data.id),
+        name: String(j.data.name || "Zalo Video"),
+        avatar: String(j.data.avatar || ""),
+      };
+    },
+    { sessionFile, log }
+  );
+}
+
+/**
+ * Nạp file phiên (storageState) tải lên từ MÁY CÓ MÀN HÌNH — quét QR đăng nhập
+ * bắt buộc phải có màn hình, máy chủ không làm được. Cùng khuôn với GBP.
+ */
+export function importZaloVideoSession(state, { sessionFile = ZALOVIDEO_SESSION_FILE } = {}) {
+  let obj = state;
+  if (typeof state === "string") {
+    try { obj = JSON.parse(state); } catch { throw new Error("File không phải JSON hợp lệ."); }
+  }
+  const cookies = Array.isArray(obj?.cookies) ? obj.cookies : null;
+  if (!cookies || !cookies.some((c) => String(c.domain || "").includes("zalo"))) {
+    throw new Error(
+      "File phiên không hợp lệ (không có cookie Zalo). Phải là data/zalo-video-session.json tạo bởi `npm run zalovideo:login`."
+    );
+  }
+  fs.mkdirSync(path.dirname(sessionFile), { recursive: true });
+  fs.writeFileSync(sessionFile, JSON.stringify(obj), { encoding: "utf8" });
+  return inspectZaloVideoSession({ sessionFile });
+}
+
 /** Kiểm tra file trước khi mở trình duyệt — hỏng sớm, đỡ tốn thời gian. */
 export function validateVideo(videoPath) {
   if (!fs.existsSync(videoPath)) throw new Error(`Không thấy file: ${videoPath}`);

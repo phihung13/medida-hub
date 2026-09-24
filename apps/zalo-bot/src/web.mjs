@@ -17,6 +17,8 @@ import { rewriteCaption, reapplyTail } from "./caption.mjs";
 import { formatImage } from "./format.mjs";
 import { dataPath, CRED_FILE, QR_FILE, saveToken, removeToken } from "./paths.mjs";
 import { pushToPostiz, fetchHubFacebookPages } from "./postiz.mjs";
+import { importZaloVideoSession } from "./zalovideo.mjs";
+import { enqueueZaloVideo, getZaloVideoJob, zaloVideoStatus, zaloVideoChannel, startZaloVideoKeepAlive } from "./zalovideojobs.mjs";
 
 // Trang cấu hình cầu nối Postiz (Việt Anh Media Hub) — phục vụ tại GET /postiz
 const POSTIZ_CONFIG_PAGE = `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cấu hình Postiz</title><style>
@@ -1498,6 +1500,35 @@ export function startWeb(ctx = {}) {
       res.json({ ok: true, session });
     } catch (e) { res.status(400).json({ error: e.message }); }
   });
+  // ===== Zalo Video (Media Hub gọi qua x-hub-token) =====
+  // Không có API chính thức -> bot điều khiển trình duyệt (xem zalovideo.mjs).
+  const zvLog = (m) => store.pushLog(m);
+  startZaloVideoKeepAlive(zvLog);
+  app.get("/api/zalovideo/status", requireAuth, (req, res) => res.json({ ok: true, ...zaloVideoStatus() }));
+  // Tải file phiên lên (đăng nhập bằng `npm run zalovideo:login` ở máy có màn hình)
+  app.post("/api/zalovideo/session/upload", requireAuth, (req, res) => {
+    try {
+      const session = importZaloVideoSession(req.body?.session);
+      store.pushLog("Zalo Video: đã tải phiên đăng nhập lên (từ máy local).");
+      res.json({ ok: true, session });
+    } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+  });
+  // Kiểm tra phiên + lấy thông tin kênh — Hub gọi khi thêm kênh
+  app.post("/api/zalovideo/channel", requireAuth, async (req, res) => {
+    try { res.json({ ok: true, channel: await zaloVideoChannel(zvLog) }); }
+    catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+  });
+  // Gửi việc đăng. Cùng `key` (id bài trên Hub) -> trả việc cũ, chống đăng trùng
+  app.post("/api/zalovideo/jobs", requireAuth, (req, res) => {
+    try { res.json({ ok: true, job: enqueueZaloVideo(req.body || {}, zvLog) }); }
+    catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+  });
+  app.get("/api/zalovideo/jobs/:key", requireAuth, (req, res) => {
+    const job = getZaloVideoJob(req.params.key);
+    if (!job) return res.status(404).json({ ok: false, error: "Không có việc với khoá này" });
+    res.json({ ok: true, job });
+  });
+
   app.get("/api/gbp/businesses", requireAuth, (req, res) => res.json(loadGbpBusinesses()));
   app.post("/api/gbp/businesses", requireAuth, (req, res) => {
     try {
