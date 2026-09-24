@@ -626,7 +626,11 @@ export async function postToZaloVideo({
     // Kiểm chứng bằng chính API danh sách của Zalo, KHÔNG dò chữ trên giao
     // diện (cách cũ báo sai khi bảng chưa tải xong).
     log("→ Kiểm tra qua API danh sách video của kênh...");
+    // TỪ ĐÂY Zalo đã tạo bài KHÔNG lỗi. Mọi trục trặc ở bước kiểm chứng (trang
+    // tải quá giờ...) KHÔNG được biến thành "thất bại": Hub sẽ thử lại và video
+    // bị đăng TRÙNG. Lỗi kiểm chứng chỉ dẫn tới trạng thái "chờ xác minh".
     let listJson = null;
+    try {
     for (let attempt = 1; attempt <= 3 && !listJson?.data; attempt++) {
       const wait = page.waitForResponse((r) => /\/v\d\/public-api\/video\/list/.test(r.url()), { timeout: 60_000 }).catch(() => null);
       await page.goto(`${CREATOR_URL}/video?tab=tong-quat&type=public`, { waitUntil: "domcontentloaded", timeout: TIMEOUT });
@@ -634,6 +638,10 @@ export async function postToZaloVideo({
       try { listJson = res ? await res.json() : null; } catch { listJson = null; }
       log(`   video/list lần ${attempt}:`, JSON.stringify(listJson).slice(0, 200));
       if (!listJson?.data) await page.waitForTimeout(20_000);
+    }
+    } catch (e) {
+      log("   (kiểm chứng gặp trục trặc, không ảnh hưởng bài đã tạo):", String(e?.message || e).split("\n")[0]);
+      listJson = null;
     }
     // Mới chỉ thấy phản hồi lúc TRỐNG ({"error":-404}); chưa biết lúc có video
     // Zalo bọc danh sách dưới tên trường nào -> tìm mảng khác rỗng đầu tiên

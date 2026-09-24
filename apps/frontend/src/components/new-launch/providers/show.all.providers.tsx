@@ -41,12 +41,17 @@ import SkoolProvider from '@gitroom/frontend/components/new-launch/providers/sko
 import WhopProvider from '@gitroom/frontend/components/new-launch/providers/whop/whop.provider';
 import MeweProvider from '@gitroom/frontend/components/new-launch/providers/mewe/mewe.provider';
 import ZaloProvider from '@gitroom/frontend/components/new-launch/providers/zalo/zalo.provider';
+import ZaloVideoProvider from '@gitroom/frontend/components/new-launch/providers/zalo-video/zalo-video.provider';
 import { EmptyPreview } from '@gitroom/frontend/components/new-launch/empty.preview';
 
 export const Providers = [
   {
     identifier: 'zalo',
     component: ZaloProvider,
+  },
+  {
+    identifier: 'zalo-video',
+    component: ZaloVideoProvider,
   },
   {
     identifier: 'devto',

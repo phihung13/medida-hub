@@ -15,6 +15,7 @@ import {
   StatusChip,
   Toggle,
 } from './zalo.shared';
+import { ZaloVideoCard } from '@gitroom/frontend/components/zalo/zalo.video.card';
 
 // ============================================================================
 //  Tab "Cài đặt" — thay tab Settings của dashboard bot: tạm dừng nhận ảnh,
@@ -186,6 +187,9 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
           </DangerLink>
         </div>
       </Card>
+
+      {/* Zalo Video: phiên trình duyệt để bot đăng video hộ (không có API). */}
+      <ZaloVideoCard />
 
       {/* Key & model Claude đặt ở Settings CHUNG của Hub — tự đồng bộ sang bot,
           không quản lý key riêng ở đây nữa. */}
