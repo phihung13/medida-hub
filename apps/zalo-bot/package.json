@@ -14,7 +14,8 @@
     "test": "node test/extract.test.mjs && node test/batcher.test.mjs && node test/curate.test.mjs && node test/format.test.mjs && node test/caption.test.mjs && node test/config.test.mjs && node test/gbp.test.mjs && node test/pipeline.test.mjs",
     "zalovideo:login": "node scripts/zalovideo-login.mjs",
     "zalovideo:inspect": "node scripts/zalovideo-inspect.mjs",
-    "zalovideo:post": "node scripts/zalovideo-post.mjs"
+    "zalovideo:post": "node scripts/zalovideo-post.mjs",
+    "zalovideo:check": "node scripts/zalovideo-check.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.105.0",

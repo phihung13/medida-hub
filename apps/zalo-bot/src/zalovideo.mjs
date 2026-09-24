@@ -66,6 +66,49 @@ async function waitUrlSettled(page, { quietMs = 5000, timeoutMs = 90_000, log } 
   return last;
 }
 
+/**
+ * Vào Creator Center ở trạng thái ĐÃ ĐĂNG NHẬP, rồi lưu cookie mới về file.
+ *
+ * Phiên có HAI lớp: cookie tài khoản Zalo (id.zalo.me — sống lâu) và phiên
+ * riêng của video.zalo.me (ngắn hơn). Hết lớp thứ hai thì Zalo đưa về
+ * /creator/register với nút "Đăng nhập Zalo để bắt đầu" — bấm vào là Zalo TỰ
+ * đăng nhập lại bằng lớp thứ nhất, KHÔNG đòi quét QR (đã thử thực tế). Đây là
+ * nút đăng nhập bình thường của chính Zalo cho người dùng quay lại — không nhập
+ * mật khẩu, không vượt CAPTCHA.
+ *
+ * Mỗi lần như vậy Zalo cấp cookie MỚI và vô hiệu cookie cũ. Bản trước KHÔNG
+ * lưu lại -> lần chạy sau dùng cookie đã bị huỷ và hỏng. Giờ lưu storageState
+ * ngay khi vào được, như một trình duyệt thật tự nhớ phiên.
+ */
+async function ensureLoggedIn(page, ctx, { sessionFile, log }) {
+  await page.goto(CREATOR_URL, { timeout: TIMEOUT, waitUntil: "domcontentloaded" });
+  log("→ Chờ Zalo xong vòng xác thực và trang đứng yên...");
+  let settled = await waitUrlSettled(page, { log });
+
+  if (/\/creator\/register/.test(settled)) {
+    log("→ Phiên video.zalo.me hết hạn — bấm 'Đăng nhập Zalo để bắt đầu' để Zalo tự đăng nhập lại...");
+    const btn = page.getByText("Đăng nhập Zalo để bắt đầu", { exact: false });
+    if (await btn.count()) {
+      await btn.first().click({ timeout: TIMEOUT });
+      settled = await waitUrlSettled(page, { log });
+    }
+  }
+
+  // Vẫn kẹt ở đăng ký, hoặc bị đưa sang trang đăng nhập/QR của Zalo -> lớp
+  // cookie tài khoản cũng đã hết thật, lúc này mới cần người đăng nhập tay.
+  if (
+    !/video\.zalo\.me\/creator\//.test(settled) ||
+    /\/creator\/register/.test(settled)
+  ) {
+    throw new Error(
+      "Phiên Zalo đã hết hạn thật (cần quét QR) — chạy lại: npm run zalovideo:login"
+    );
+  }
+
+  await ctx.storageState({ path: sessionFile });
+  log("→ Đã vào Creator Center, cập nhật phiên:", sessionFile);
+}
+
 const MAX_BYTES = 500 * 1024 * 1024;
 const ALLOWED_EXT = /\.(mp4|mov)$/i;
 
@@ -146,6 +189,34 @@ export async function loginZaloVideo({ sessionFile = ZALOVIDEO_SESSION_FILE } = 
   console.log("✅ Đã lưu phiên Zalo Video:", sessionFile);
 }
 
+/**
+ * Mở Creator Center ngầm, đăng nhập lại nếu cần và lưu cookie mới — KHÔNG đăng
+ * gì. Dùng để: kiểm tra phiên còn sống, và "giữ ấm" phiên định kỳ (mỗi lần gọi
+ * Zalo cấp cookie mới, nên gọi đều thì phiên không bao giờ nguội tới mức cần
+ * quét QR lại).
+ */
+export async function checkZaloVideoSession({
+  sessionFile = ZALOVIDEO_SESSION_FILE,
+  log = console.log,
+} = {}) {
+  if (!fs.existsSync(sessionFile)) {
+    throw new Error("Chưa có phiên Zalo Video — chạy: npm run zalovideo:login");
+  }
+  const chromium = await getChromium();
+  const browser = await chromium.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+  });
+  const ctx = await browser.newContext({ storageState: sessionFile });
+  const page = await ctx.newPage();
+  try {
+    await ensureLoggedIn(page, ctx, { sessionFile, log });
+    return { ok: true, url: page.url() };
+  } finally {
+    await browser.close();
+  }
+}
+
 /** Kiểm tra file trước khi mở trình duyệt — hỏng sớm, đỡ tốn thời gian. */
 export function validateVideo(videoPath) {
   if (!fs.existsSync(videoPath)) throw new Error(`Không thấy file: ${videoPath}`);
@@ -181,13 +252,7 @@ export async function inspectUploadForm({
   const page = await ctx.newPage();
 
   try {
-    await page.goto(CREATOR_URL, { timeout: TIMEOUT, waitUntil: "domcontentloaded" });
-    log("→ Chờ Zalo xong vòng xác thực và trang đứng yên...");
-    const settled = await waitUrlSettled(page, { log });
-    // Phiên hết hạn -> Zalo đá về /creator/register
-    if (/\/creator\/register/.test(settled)) {
-      throw new Error("Phiên đã hết hạn — chạy lại: npm run zalovideo:login");
-    }
+    await ensureLoggedIn(page, ctx, { sessionFile, log });
 
     log("→ Mở hộp thoại Đăng video...");
     await page.getByRole("button", { name: "Đăng video" }).first().click({ timeout: TIMEOUT });
@@ -299,12 +364,7 @@ export async function postToZaloVideo({
   };
 
   try {
-    await page.goto(CREATOR_URL, { timeout: TIMEOUT, waitUntil: "domcontentloaded" });
-    log("→ Chờ Zalo xong vòng xác thực và trang đứng yên...");
-    const settled = await waitUrlSettled(page, { log });
-    if (/\/creator\/register/.test(settled)) {
-      throw new Error("Phiên đã hết hạn — chạy lại: npm run zalovideo:login");
-    }
+    await ensureLoggedIn(page, ctx, { sessionFile, log });
 
     log("→ Mở hộp thoại Đăng video...");
     await page.getByRole("button", { name: "Đăng video", exact: true }).first().click({ timeout: TIMEOUT });
