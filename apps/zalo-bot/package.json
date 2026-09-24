@@ -12,8 +12,8 @@
     "gbp:login": "node --env-file=.env scripts/gbp-login.mjs",
     "recover": "node --env-file=.env scripts/recover.mjs",
     "test": "node test/extract.test.mjs && node test/batcher.test.mjs && node test/curate.test.mjs && node test/format.test.mjs && node test/caption.test.mjs && node test/config.test.mjs && node test/gbp.test.mjs && node test/pipeline.test.mjs",
-    "zalovideo:login": "node --env-file=.env scripts/zalovideo-login.mjs",
-    "zalovideo:inspect": "node --env-file=.env scripts/zalovideo-inspect.mjs"
+    "zalovideo:login": "node scripts/zalovideo-login.mjs",
+    "zalovideo:inspect": "node scripts/zalovideo-inspect.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.105.0",
