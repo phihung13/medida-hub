@@ -7,7 +7,8 @@ import { postToZaloVideo } from "../src/zalovideo.mjs";
 
 const args = process.argv.slice(2);
 const headless = !args.includes("--show");
-const rest = args.filter((a) => a !== "--show");
+const dryRun = args.includes("--dry-run");
+const rest = args.filter((a) => a !== "--show" && a !== "--dry-run");
 const [videoPath, description = ""] = rest;
 
 if (!videoPath) {
@@ -15,9 +16,13 @@ if (!videoPath) {
   process.exit(1);
 }
 
-console.log("⚠️  Lệnh này ĐĂNG THẬT lên kênh Zalo Video. Ctrl+C trong 5 giây nếu muốn dừng.");
-await new Promise((r) => setTimeout(r, 5000));
+if (dryRun) {
+  console.log("🧪 DRY RUN — chạy trọn luồng nhưng KHÔNG bấm Đăng.");
+} else {
+  console.log("⚠️  Lệnh này ĐĂNG THẬT lên kênh Zalo Video. Ctrl+C trong 5 giây nếu muốn dừng.");
+  await new Promise((r) => setTimeout(r, 5000));
+}
 
-postToZaloVideo({ videoPath, description, headless })
+postToZaloVideo({ videoPath, description, headless, dryRun })
   .then((r) => console.log("Xong:", r))
   .catch((e) => { console.error("Lỗi:", e.message); process.exit(1); });

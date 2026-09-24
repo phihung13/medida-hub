@@ -324,7 +324,13 @@ export async function inspectUploadForm({
 //   - "Gắn nhãn video" / "Thêm vào danh sách phát": tuỳ chọn, chưa dùng.
 //   - "Nội dung do AI tạo": công tắc, mặc định tắt.
 //   - Nút "Đăng video" màu xanh ở cuối form.
-const DESC_SELECTOR = 'textarea[placeholder*="Nhập nội dung mô tả"]';
+// Ô "Nội dung video" là DIV contenteditable (class "input-conteneditable"),
+// KHÔNG phải <textarea>, và KHÔNG có thuộc tính placeholder — chữ gợi ý vẽ
+// bằng CSS. Bản cũ chọn textarea[placeholder…] nên khớp 0 phần tử và chờ
+// tới hết giờ dù form đã hiện (đã đo trên DOM thật). Dấu hiệu ổn định nhất
+// là maxlength="4000" — khớp đúng bộ đếm "0 / 4000" trên màn hình.
+const DESC_SELECTOR =
+  '[contenteditable="true"][maxlength="4000"], div.input-conteneditable[contenteditable="true"]';
 
 /**
  * Đăng 1 video lên Zalo Video.
@@ -342,6 +348,9 @@ export async function postToZaloVideo({
   description = "",
   sessionFile = ZALOVIDEO_SESSION_FILE,
   headless = true,
+  // dryRun: chạy trọn luồng nhưng DỪNG ngay trước cú bấm Đăng — để kiểm tra
+  // an toàn bằng video thử mà không đăng gì lên kênh.
+  dryRun = false,
   log = console.log,
 } = {}) {
   validateVideo(videoPath);
@@ -382,7 +391,19 @@ export async function postToZaloVideo({
     const desc = String(description || "").slice(0, 4000);
     if (desc) {
       log("→ Điền nội dung:", desc.slice(0, 60) + (desc.length > 60 ? "..." : ""));
-      await page.fill(DESC_SELECTOR, desc);
+      // contenteditable của React: bấm vào rồi insertText (bắn đủ sự kiện
+      // beforeinput/input như dán chữ) chắc hơn fill().
+      const box = page.locator(DESC_SELECTOR).first();
+      await box.click();
+      await page.keyboard.insertText(desc);
+      // Kiểm tra lại: chữ phải thật sự nằm trong ô rồi mới được đi tiếp.
+      const typed = (await box.innerText()).replace(/\s+/g, " ").trim();
+      const want = desc.replace(/\s+/g, " ").trim().slice(0, 30);
+      if (!typed.includes(want)) {
+        throw new Error(
+          `Không điền được nội dung vào ô (đọc lại được: "${typed.slice(0, 60)}") — dừng, KHÔNG bấm Đăng.`
+        );
+      }
     }
 
     // CÓ HAI nút tên "Đăng video": một ở thanh điều hướng trái (mở hộp thoại)
@@ -400,6 +421,10 @@ export async function postToZaloVideo({
       throw new Error(
         "Không xác định chắc được nút Đăng của form (vị trí bất thường) — dừng để không bấm nhầm."
       );
+    }
+    if (dryRun) {
+      log("🧪 DRY RUN: mọi bước đều ổn — dừng tại đây, KHÔNG bấm Đăng.");
+      return { ok: true, dryRun: true, url: page.url() };
     }
     log("→ Bấm ĐĂNG...");
     await publish.click({ timeout: TIMEOUT });
