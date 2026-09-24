@@ -1502,7 +1502,13 @@ export function startWeb(ctx = {}) {
   });
   // ===== Zalo Video (Media Hub gọi qua x-hub-token) =====
   // Không có API chính thức -> bot điều khiển trình duyệt (xem zalovideo.mjs).
-  const zvLog = (m) => store.pushLog(m);
+  // Nhật ký bot là nơi NGƯỜI DÙNG đọc: chỉ giữ dòng có ý nghĩa (đăng xong /
+  // lỗi kèm lý do / giữ ấm phiên). Các bước điều hướng trang chỉ để gỡ lỗi —
+  // lý do lỗi thật đã nằm trong dòng "Zalo Video: đăng LỖI ...".
+  const zvLog = (...a) => {
+    const m = a.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(" ").trim();
+    if (/^(Zalo Video:|✅|⚠️)/.test(m)) store.pushLog(m);
+  };
   startZaloVideoKeepAlive(zvLog);
   app.get("/api/zalovideo/status", requireAuth, (req, res) => res.json({ ok: true, ...zaloVideoStatus() }));
   // Tải file phiên lên (đăng nhập bằng `npm run zalovideo:login` ở máy có màn hình)
