@@ -15,7 +15,8 @@
     "zalovideo:login": "node scripts/zalovideo-login.mjs",
     "zalovideo:inspect": "node scripts/zalovideo-inspect.mjs",
     "zalovideo:post": "node scripts/zalovideo-post.mjs",
-    "zalovideo:check": "node scripts/zalovideo-check.mjs"
+    "zalovideo:check": "node scripts/zalovideo-check.mjs",
+    "zalovideo:channels": "node scripts/zalovideo-channels.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.105.0",

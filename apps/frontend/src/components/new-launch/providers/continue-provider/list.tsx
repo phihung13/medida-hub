@@ -5,6 +5,7 @@ import { FacebookContinue } from '@gitroom/frontend/components/new-launch/provid
 import { LinkedinContinue } from '@gitroom/frontend/components/new-launch/providers/continue-provider/linkedin/linkedin.continue';
 import { GmbContinue } from '@gitroom/frontend/components/new-launch/providers/continue-provider/gmb/gmb.continue';
 import { YoutubeContinue } from '@gitroom/frontend/components/new-launch/providers/continue-provider/youtube/youtube.continue';
+import { ZaloVideoContinue } from '@gitroom/frontend/components/new-launch/providers/continue-provider/zalo-video/zalo-video.continue';
 
 export const continueProviderList = {
   instagram: InstagramContinue,
@@ -12,4 +13,5 @@ export const continueProviderList = {
   'linkedin-page': LinkedinContinue,
   gmb: GmbContinue,
   youtube: YoutubeContinue,
+  'zalo-video': ZaloVideoContinue,
 };

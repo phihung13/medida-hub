@@ -5,9 +5,10 @@ import clsx from 'clsx';
 export const Slider: FC<{
   value: 'on' | 'off';
   fill?: boolean;
+  ariaLabel?: string;
   onChange: (value: 'on' | 'off') => void;
 }> = (props) => {
-  const { value, onChange, fill } = props;
+  const { value, onChange, fill, ariaLabel } = props;
   const change = useCallback(() => {
     onChange(value === 'on' ? 'off' : 'on');
   }, [value]);
@@ -32,6 +33,7 @@ export const Slider: FC<{
     <div
       role="switch"
       aria-checked={value === 'on'}
+      aria-label={ariaLabel}
       tabIndex={0}
       onKeyDown={onKeyDown}
       className={clsx(

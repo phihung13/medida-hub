@@ -26,6 +26,7 @@ import {
 import { useShallow } from 'zustand/react/shallow';
 import { AddPostButton } from '@gitroom/frontend/components/new-launch/add.post.button';
 import { MultiMediaComponent } from '@gitroom/frontend/components/media/media.component';
+import { isVideoOnlyProvider } from '@gitroom/frontend/components/new-launch/providers/video.only';
 import { UpDownArrow } from '@gitroom/frontend/components/launches/up.down.arrow';
 import { deleteDialog } from '@gitroom/react/helpers/delete.dialog';
 import { useExistingData } from '@gitroom/frontend/components/launches/helpers/use.existing.data';
@@ -191,6 +192,23 @@ export const EditorWrapper: FC<{
   const canEdit = useMemo(() => {
     return current === 'global' || !!internal;
   }, [current, internal]);
+
+  // Kênh chỉ nhận video (Zalo Video): đang sửa riêng kênh đó, hoặc ở chế độ
+  // chung mà MỌI kênh đã chọn đều thế. Kênh loại này chỉ có MỘT khối nội dung
+  // nên cũng tắt luôn nút thêm bài/bình luận nối tiếp — ở chế độ chung store
+  // luôn bật `comments`, nên phải tính ở đây.
+  const videoOnly = useMemo(() => {
+    if (current !== 'global') {
+      return isVideoOnlyProvider(internalFromAll?.identifier);
+    }
+    return (
+      !!selectedIntegration?.length &&
+      selectedIntegration.every((p) =>
+        isVideoOnlyProvider(p.integration.identifier)
+      )
+    );
+  }, [current, internalFromAll, selectedIntegration]);
+  const threadAllowed = videoOnly ? false : comments;
 
   const items = useMemo(() => {
     if (internal) {
@@ -366,8 +384,8 @@ export const EditorWrapper: FC<{
     <div
       className={clsx(
         'relative flex-col gap-[20px] flex-1',
-        (items.length === 1 || !canEdit || !comments) && 'flex',
-        ((!canEdit && !isCreateSet) || !comments) &&
+        (items.length === 1 || !canEdit || !threadAllowed) && 'flex',
+        ((!canEdit && !isCreateSet) || !threadAllowed) &&
           'bg-newSettings rounded-[12px]'
       )}
     >
@@ -426,9 +444,9 @@ export const EditorWrapper: FC<{
           className={clsx(
             'relative flex flex-col gap-[20px] flex-1 bg-newSettings',
             index === 0 && 'rounded-t-[12px]',
-            (index === items.length - 1 || !comments) && 'rounded-b-[12px]',
+            (index === items.length - 1 || !threadAllowed) && 'rounded-b-[12px]',
             !canEdit && !isCreateSet && 'blur-s',
-            ((!canEdit && index > 0) || (!comments && index > 0)) && 'hidden'
+            ((!canEdit && index > 0) || (!threadAllowed && index > 0)) && 'hidden'
           )}
         >
           <div className="flex gap-[5px] flex-1 w-full">
@@ -439,7 +457,8 @@ export const EditorWrapper: FC<{
                 </div>
               )}
               <Editor
-                comments={comments}
+                comments={threadAllowed}
+                videoOnly={videoOnly}
                 editorType={editor}
                 allValues={items}
                 onChange={changeValue(index)}
@@ -459,10 +478,10 @@ export const EditorWrapper: FC<{
                 chars={chars}
                 childButton={
                   <>
-                    {(canEdit && items.length - 1 === index) || !comments ? (
+                    {(canEdit && items.length - 1 === index) || !threadAllowed ? (
                       <div className="flex items-center">
                         <div className="flex-1">
-                          {comments && (
+                          {threadAllowed && (
                             <AddPostButton
                               num={index}
                               onClick={addValue(index)}
@@ -500,7 +519,7 @@ export const EditorWrapper: FC<{
                 }
               />
             </div>
-            {comments && (
+            {threadAllowed && (
               <div className="flex flex-col items-center gap-[10px] pe-[12px]">
                 <UpDownArrow
                   isUp={index !== 0}
@@ -567,6 +586,7 @@ export const Editor: FC<{
   autoComplete?: boolean;
   validateChars?: boolean;
   comments: boolean | 'no-media';
+  videoOnly?: boolean;
   identifier?: string;
   totalChars?: number;
   selectedIntegration: SelectedIntegrations[];
@@ -586,6 +606,7 @@ export const Editor: FC<{
     chars,
     childButton,
     comments,
+    videoOnly,
   } = props;
   const [id] = useState(makeId(10));
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
@@ -604,8 +625,34 @@ export const Editor: FC<{
     onEnd: () => setLoading(false),
   });
 
+  // Kênh chỉ nhận video: bỏ ảnh NGAY lúc thả/dán — khỏi tải lên rồi mới bị
+  // từ chối lúc lên lịch.
+  const keepAllowed = useCallback(
+    (files: File[]) => {
+      if (!videoOnly) {
+        return files;
+      }
+      const kept = files.filter((f) => f.type.startsWith('video/'));
+      if (kept.length < files.length) {
+        toaster.show(
+          t(
+            'video_only_skipped',
+            'Kênh này chỉ nhận video — đã bỏ qua {{n}} ảnh.'
+          ).replace('{{n}}', String(files.length - kept.length)),
+          'warning'
+        );
+      }
+      return kept;
+    },
+    [videoOnly, toaster, t]
+  );
+
   const onDrop = useCallback(
-    (acceptedFiles: File[]) => {
+    (droppedFiles: File[]) => {
+      const acceptedFiles = keepAllowed(droppedFiles);
+      if (!acceptedFiles.length) {
+        return;
+      }
       const totalSize = acceptedFiles.reduce((acc, file) => acc + file.size, 0);
 
       if (totalSize > MAX_UPLOAD_SIZE) {
@@ -625,7 +672,7 @@ export const Editor: FC<{
         uppy.addFile(file);
       }
     },
-    [uppy, toaster, t]
+    [uppy, toaster, t, keepAllowed]
   );
 
   const paste = useCallback(
@@ -639,16 +686,17 @@ export const Editor: FC<{
         return;
       }
 
-      const files: File[] = [];
+      const pasted: File[] = [];
       // @ts-ignore
       for (const item of clipboardItems) {
         if (item.kind === 'file') {
           const file = item.getAsFile();
           if (file) {
-            files.push(file);
+            pasted.push(file);
           }
         }
       }
+      const files = keepAllowed(pasted);
 
       const totalSize = files.reduce((acc, file) => acc + file.size, 0);
 
@@ -671,7 +719,7 @@ export const Editor: FC<{
         uppy.addFile(file);
       }
     },
-    [uppy, num, comments, toaster, t]
+    [uppy, num, comments, toaster, t, keepAllowed]
   );
 
   const { getRootProps, isDragActive } = useDropzone({
@@ -788,12 +836,15 @@ export const Editor: FC<{
             {setImages && !(num > 0 && comments === 'no-media') && (
               <label className="hidden mobile:flex bg-newBgColorInner px-[10px] pb-[8px] cursor-pointer">
                 <span className="w-full h-[44px] rounded-[8px] border border-dashed border-newTableBorder flex items-center justify-center gap-[8px] text-[14px] font-[600] text-textItemBlur tap-shrink">
-                  📎 {t('composer_add_media', 'Thêm ảnh/video')}
+                  📎{' '}
+                  {videoOnly
+                    ? t('composer_add_video', 'Thêm video')
+                    : t('composer_add_media', 'Thêm ảnh/video')}
                 </span>
                 <input
                   type="file"
                   multiple
-                  accept="image/*,video/mp4"
+                  accept={videoOnly ? 'video/mp4' : 'image/*,video/mp4'}
                   className="hidden"
                   onChange={(e) => {
                     const files = Array.from(e.target.files || []);
@@ -817,6 +868,7 @@ export const Editor: FC<{
               {setImages && (
                 <MultiMediaComponent
                   mediaNotAvailable={num > 0 && comments === 'no-media'}
+                  videoOnly={videoOnly}
                   allData={allValues}
                   text={valueWithoutHtml}
                   label={t('attachments', 'Attachments')}

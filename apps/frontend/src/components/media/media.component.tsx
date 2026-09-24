@@ -65,6 +65,7 @@ import { useIsMobile } from '@gitroom/frontend/components/new-layout/use.is.mobi
 import { LoadingComponent } from '@gitroom/frontend/components/layout/loading';
 import { useDebounce } from 'use-debounce';
 import { MediaFromUrl } from '@gitroom/frontend/components/new-launch/media.from.url';
+import { isVideoPath } from '@gitroom/frontend/components/new-launch/providers/video.only';
 // Editor ảnh: dùng Filerobot (MIT, miễn phí, không cần license key) thay Polotno.
 const FilerobotEditor = dynamic(
   () => import('@gitroom/frontend/components/launches/filerobot.editor')
@@ -1205,6 +1206,8 @@ export const MultiMediaComponent: FC<{
   label: string;
   description: string;
   mediaNotAvailable?: boolean;
+  // Kênh chỉ nhận video (vd Zalo Video): bỏ ảnh khi chọn media, ẩn công cụ ảnh.
+  videoOnly?: boolean;
   dummy: boolean;
   allData: {
     content: string;
@@ -1249,9 +1252,11 @@ export const MultiMediaComponent: FC<{
     toolBar,
     information,
     mediaNotAvailable,
+    videoOnly,
   } = props;
   const user = useUser();
   const modals = useModals();
+  const toaster = useToaster();
   const t = useT();
   useEffect(() => {
     if (value) {
@@ -1279,7 +1284,23 @@ export const MultiMediaComponent: FC<{
             id: string;
           }[]
     ) => {
-      const mediaArray = Array.isArray(m) ? m : [m];
+      const picked = Array.isArray(m) ? m : [m];
+      // Chọn từ thư viện / URL / AI đều đổ qua đây — kênh chỉ-video bỏ ảnh.
+      const mediaArray = videoOnly
+        ? picked.filter((x) => isVideoPath(x?.path))
+        : picked;
+      if (mediaArray.length < picked.length) {
+        toaster.show(
+          t(
+            'video_only_skipped',
+            'Kênh này chỉ nhận video — đã bỏ qua {{n}} ảnh.'
+          ).replace('{{n}}', String(picked.length - mediaArray.length)),
+          'warning'
+        );
+      }
+      if (!mediaArray.length) {
+        return;
+      }
       const newMedia = [...(currentMedia || []), ...mediaArray];
       setCurrentMedia(newMedia);
       onChange({
@@ -1289,7 +1310,7 @@ export const MultiMediaComponent: FC<{
         },
       });
     },
-    [currentMedia]
+    [currentMedia, videoOnly, toaster, t]
   );
   const showModal = useCallback(() => {
     modals.openModal({
@@ -1323,9 +1344,10 @@ export const MultiMediaComponent: FC<{
     [currentMedia]
   );
 
-  // Nút "Design Media" LUÔN hiện — dùng Filerobot Image Editor (MIT, miễn phí,
-  // không cần license key, không watermark). Xem filerobot.editor.tsx.
-  const canDesign = true;
+  // Nút "Design Media" hiện với mọi kênh nhận ảnh — dùng Filerobot Image Editor
+  // (MIT, miễn phí, không cần license key, không watermark). Xem
+  // filerobot.editor.tsx. Kênh chỉ-video thì trình sửa ảnh vô nghĩa.
+  const canDesign = !videoOnly;
   // Sua thang anh da dinh kem trong bai: mo Filerobot voi chinh anh do lam nguon,
   // luu xong thay luon anh cu trong bai (khong phai vao thu vien chon lai).
   const editAttachedMedia = useCallback(
@@ -1613,7 +1635,7 @@ export const MultiMediaComponent: FC<{
               <MediaFromUrl onMedia={changeMedia} />
 
               {/* Bật/tắt khung xem trước bài đăng (FB collage / lưới) */}
-              {!!currentMedia?.length && currentMedia.length > 1 && (
+              {!videoOnly && !!currentMedia?.length && currentMedia.length > 1 && (
                 <button
                   type="button"
                   onClick={() => setFrame(!frame)}
@@ -1656,13 +1678,15 @@ export const MultiMediaComponent: FC<{
 
               {!!user?.tier?.ai && (
                 <>
-                  <span
-                    title={t('generate_ai_image', 'Generate AI image')}
-                    aria-label={t('generate_ai_image', 'Generate AI image')}
-                    className="flex"
-                  >
-                    <AiImage value={text} onChange={changeMedia} />
-                  </span>
+                  {!videoOnly && (
+                    <span
+                      title={t('generate_ai_image', 'Generate AI image')}
+                      aria-label={t('generate_ai_image', 'Generate AI image')}
+                      className="flex"
+                    >
+                      <AiImage value={text} onChange={changeMedia} />
+                    </span>
+                  )}
                   <AiVideo value={text} onChange={changeMedia} />
                 </>
               )}

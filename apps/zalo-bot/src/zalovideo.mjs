@@ -284,6 +284,160 @@ export async function getZaloVideoChannel({
   );
 }
 
+// ---------------------------------------------------------------------------
+//  NHIỀU KÊNH
+//
+//  Một tài khoản Zalo quản trị nhiều OA, mỗi OA có một kênh Zalo Video. Creator
+//  Center chỉ làm việc với MỘT kênh "đang chọn" tại một thời điểm, và lựa chọn
+//  đó lưu ở PHÍA MÁY CHỦ Zalo (theo tài khoản, không theo trình duyệt). Nên
+//  trước mỗi lần đăng bot phải chuyển đúng kênh rồi kiểm lại — và kiểm lần nữa
+//  ngay trước cú bấm Đăng, phòng khi có người đổi kênh trên máy khác.
+//
+//  Đã đo trên trang thật:
+//   - GET /v2/public-api/user/oas-by-admin -> [{id: oaId, name, avatar, channelId}]
+//   - GET /v2/public-api/channel           -> kênh đang chọn {id, name, avatar}
+//   - Chuyển kênh = POST /v2/public-api/user/choose-oa (oaId, cid) kèm header
+//     X-CSRF-TOKEN mà trang giữ trong bộ nhớ JS -> KHÔNG gọi thẳng được. Bot
+//     bấm menu như người dùng: tên kênh ở góc phải thanh trên -> menu "Kênh OA
+//     đang quản lý" (chỉ liệt kê vài OA đầu) -> "Xem tất cả kênh OA" (đủ hết).
+// ---------------------------------------------------------------------------
+
+// Gọi API nội bộ của Creator Center TỪ TRONG trang (cùng origin, cookie phiên
+// tự đi kèm) — đúng như chính trang gọi. Zalo luôn trả HTTP 200, lỗi nằm ở
+// trường `error`. Lỗi mạng / trang đang tải lại -> {error:-1}, không ném.
+async function zvApi(page, apiPath) {
+  try {
+    const j = await page.evaluate(async (p) => {
+      try {
+        const r = await fetch(p, { credentials: "include" });
+        return await r.json();
+      } catch (e) {
+        return { error: -1, msg: String(e?.message || e) };
+      }
+    }, apiPath);
+    return j || { error: -1, msg: "không có phản hồi" };
+  } catch (e) {
+    return { error: -1, msg: String(e?.message || e).split("\n")[0] };
+  }
+}
+
+async function readCurrentChannel(page) {
+  const j = await zvApi(page, "/v2/public-api/channel");
+  if (j.error !== 0 || !j.data?.id) return null;
+  return {
+    id: String(j.data.id),
+    name: String(j.data.name || "").trim(),
+    avatar: String(j.data.avatar || ""),
+  };
+}
+
+async function readManagedChannels(page) {
+  const [oas, current, user] = await Promise.all([
+    zvApi(page, "/v2/public-api/user/oas-by-admin"),
+    readCurrentChannel(page),
+    zvApi(page, "/v2/public-api/user"),
+  ]);
+  const channels = (oas.error === 0 && Array.isArray(oas.data) ? oas.data : [])
+    .filter((o) => o?.channelId)
+    .map((o) => ({
+      id: String(o.channelId),
+      oaId: String(o.id),
+      name: String(o.name || "").trim(),
+      avatar: String(o.avatar || ""),
+    }));
+  // Kênh đang chọn không thuộc OA nào (kênh cá nhân) vẫn đăng được — nhưng
+  // không có đường chuyển về nó, nên chỉ liệt kê khi nó đang là kênh chọn.
+  if (current && !channels.some((c) => c.id === current.id)) {
+    channels.unshift({ ...current, oaId: null });
+  }
+  const u = user.error === 0 ? user.data || {} : {};
+  return {
+    account: { id: String(u.id || ""), name: String(u.name || ""), avatar: String(u.avatar || "") },
+    current,
+    channels,
+  };
+}
+
+/** Mọi kênh Zalo Video mà tài khoản đang quản lý — Hub dùng để chọn kênh. */
+export async function listZaloVideoChannels({
+  sessionFile = ZALOVIDEO_SESSION_FILE,
+  log = () => {},
+} = {}) {
+  return withZaloVideoPage(
+    async (page) => {
+      const r = await readManagedChannels(page);
+      if (!r.channels.length) {
+        throw new Error("Tài khoản Zalo này chưa quản lý kênh Zalo Video nào (hoặc không đọc được danh sách kênh).");
+      }
+      return r;
+    },
+    { sessionFile, log }
+  );
+}
+
+/**
+ * Chuyển Creator Center sang kênh `channelId` (id kênh Zalo Video, KHÔNG phải
+ * id OA) rồi đọc lại để chắc chắn. Đã ở đúng kênh thì không bấm gì.
+ */
+export async function switchZaloVideoChannel(page, channelId, { log = () => {} } = {}) {
+  const want = String(channelId);
+  let cur = await readCurrentChannel(page);
+  if (cur?.id === want) return cur;
+
+  const { channels } = await readManagedChannels(page);
+  const target = channels.find((c) => c.id === want);
+  if (!target) {
+    throw new Error(
+      `Tài khoản Zalo không còn quản lý kênh Zalo Video này (id ${want}) — kiểm tra quyền quản trị OA, hoặc kết nối lại kênh trên Hub.`
+    );
+  }
+  log(`→ Chuyển kênh: ${cur?.name || "?"} → ${target.name}`);
+
+  const header = page.locator("header.ant-layout-header");
+  const chosen = page
+    .waitForResponse((r) => /\/public-api\/user\/choose-oa/.test(r.url()), { timeout: TIMEOUT })
+    .catch(() => null);
+  const trigger = cur?.name
+    ? header.getByText(cur.name, { exact: true }).last()
+    : header.locator("p.text-white").last();
+  await trigger.click({ timeout: TIMEOUT });
+
+  const pop = page.locator(".ant-popover").filter({ hasText: "Kênh OA đang quản lý" }).last();
+  await pop.waitFor({ state: "visible", timeout: TIMEOUT });
+  // Menu nhanh chỉ có vài OA đầu danh sách (đã thấy 2/3) — OA còn lại phải
+  // mở "Xem tất cả kênh OA".
+  const quick = pop.getByText(target.name, { exact: true });
+  if ((await quick.count()) && (await quick.first().isVisible())) {
+    await quick.first().click({ timeout: TIMEOUT });
+  } else {
+    await pop.getByText("Xem tất cả kênh OA", { exact: true }).click({ timeout: TIMEOUT });
+    const modal = page.locator(".ant-modal-content").filter({ hasText: "Kênh OA đang quản lý" }).last();
+    await modal.waitFor({ state: "visible", timeout: TIMEOUT });
+    await modal.getByText(target.name, { exact: true }).first().click({ timeout: TIMEOUT });
+  }
+
+  const res = await chosen;
+  let j = null;
+  try { j = res ? await res.json() : null; } catch {}
+  if (j && typeof j.error === "number" && j.error !== 0) {
+    throw new Error(`Zalo không cho chuyển sang kênh "${target.name}": [${j.error}] ${j.msg || ""}`);
+  }
+
+  // Chọn xong trang tự tải lại — đọc lại tới khi thấy đúng kênh (tối đa 30s).
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(1500);
+    cur = await readCurrentChannel(page);
+    if (cur?.id === want) break;
+  }
+  if (cur?.id !== want) {
+    throw new Error(`Đã bấm chuyển sang "${target.name}" nhưng kênh đang chọn vẫn là "${cur?.name || "?"}".`);
+  }
+  await waitUrlSettled(page, { quietMs: 3000, log });
+  log(`→ Đang ở kênh: ${cur.name}`);
+  return cur;
+}
+
 /**
  * Nạp file phiên (storageState) tải lên từ MÁY CÓ MÀN HÌNH — quét QR đăng nhập
  * bắt buộc phải có màn hình, máy chủ không làm được. Cùng khuôn với GBP.
@@ -419,6 +573,141 @@ export async function inspectUploadForm({
 const DESC_SELECTOR =
   '[contenteditable="true"][maxlength="4000"], div.input-conteneditable[contenteditable="true"]';
 
+// Khối form nhỏ nhất chứa nhãn `label` (vd "Chọn ảnh bìa"). filter({has}) trả
+// mọi thẻ div tổ tiên theo thứ tự tài liệu -> phần tử CUỐI là khối trong cùng.
+const formSection = (page, label) =>
+  page.locator("div").filter({ has: page.getByText(label, { exact: true }) }).last();
+
+/**
+ * Chọn ẢNH BÌA = khung hình tại giây `seconds`.
+ *
+ * Đã đo trên form thật: "Chọn ảnh bìa" là một dải khung hình + ô chọn kéo được
+ * (.cursor-grab, rộng 62px). Bấm vào điểm nào trên dải thì ô chọn nhảy tới đó
+ * và thẻ <video> ẩn trong khối tua tới giây = (vị trí bấm / bề rộng) × thời
+ * lượng — đó là khung dùng làm ảnh bìa. Bấm TRÚNG ô chọn thì không có gì xảy
+ * ra, nên trước tiên "đẩy" ô chọn sang đầu bên kia của dải rồi mới bấm đích.
+ * Lúc mới mở form, currentTime của video ẩn còn là rác từ lúc Zalo cắt dải
+ * khung (đo được 8.75s trong khi ô chọn ở 0) — chỉ tin nó SAU khi đã bấm.
+ */
+async function pickCover(page, seconds, log) {
+  const info = () =>
+    page.evaluate(() => {
+      const label = [...document.querySelectorAll("div")].find(
+        (e) => e.childElementCount === 0 && e.textContent.trim() === "Chọn ảnh bìa"
+      );
+      const sec = label?.parentElement;
+      const video = sec?.querySelector("video");
+      const strip = sec?.querySelector(".cursor-grab")?.parentElement;
+      if (!video || !strip) return null;
+      const r = strip.getBoundingClientRect();
+      return { dur: video.duration, t: video.currentTime, x: r.x, y: r.y, w: r.width, h: r.height };
+    });
+
+  await page.getByText("Chọn ảnh bìa", { exact: true }).scrollIntoViewIfNeeded().catch(() => {});
+  let i = null;
+  for (let k = 0; k < 40; k++) {
+    i = await info().catch(() => null);
+    if (i && Number.isFinite(i.dur) && i.dur > 0 && i.w > 0) break;
+    await page.waitForTimeout(500);
+  }
+  if (!i || !(i.dur > 0) || !(i.w > 0)) {
+    throw new Error("Không tìm thấy dải chọn ảnh bìa trên form Zalo — dừng, KHÔNG bấm Đăng.");
+  }
+
+  const want = Math.min(Math.max(Number(seconds) || 0, 0), i.dur);
+  const f = want / i.dur;
+  const y = i.y + i.h / 2;
+  const xAt = (frac) => i.x + Math.min(Math.max(frac, 0.005), 0.995) * i.w;
+  // Đẩy ô chọn ra xa điểm đích, rồi bấm đích.
+  await page.mouse.click(xAt(f < 0.5 ? 0.97 : 0.03), y);
+  await page.waitForTimeout(500);
+  await page.mouse.click(xAt(f), y);
+  await page.waitForTimeout(700);
+
+  const after = await info().catch(() => null);
+  const tol = Math.max(0.3, i.dur * 0.02);
+  if (!after || Math.abs(after.t - want) > tol) {
+    throw new Error(
+      `Chọn ảnh bìa lệch: muốn ${want.toFixed(1)}s, Zalo đang ở ${after ? after.t.toFixed(1) : "?"}s — dừng, KHÔNG bấm Đăng.`
+    );
+  }
+  log(`→ Ảnh bìa: khung ${after.t.toFixed(1)}s / ${i.dur.toFixed(1)}s`);
+  return after.t;
+}
+
+/**
+ * Thêm video vào DANH SÁCH PHÁT tên `name`. Có sẵn thì chọn, chưa có thì tạo
+ * (hộp "Tạo danh sách phát": tên 3–40 ký tự, quyền riêng tư mặc định Công khai).
+ * dryRun: không tạo gì trên kênh — chỉ báo sẽ tạo.
+ */
+async function pickPlaylist(page, name, { dryRun, log }) {
+  const want = String(name).trim();
+  const section = formSection(page, "Thêm vào danh sách phát");
+  const isChosen = async () => {
+    // Đã chọn thì tên danh sách hiện NGAY trong khối (ngoài menu thả xuống).
+    const txt = await section.innerText().catch(() => "");
+    return txt.split("\n").some((l) => l.trim() === want);
+  };
+  if (await isChosen()) return;
+
+  const openMenu = async () => {
+    await section.getByRole("button").filter({ hasText: /^\s*\+?\s*Thêm\s*$/ }).first().click({ timeout: TIMEOUT });
+    const menu = page.locator(".ant-dropdown:not(.ant-dropdown-hidden)").last();
+    await menu.waitFor({ state: "visible", timeout: TIMEOUT });
+    return menu;
+  };
+
+  let menu = await openMenu();
+  const existing = menu.getByText(want, { exact: true });
+  if (await existing.count()) {
+    await existing.first().click({ timeout: TIMEOUT });
+  } else if (dryRun) {
+    log(`🧪 DRY RUN: chưa có danh sách phát "${want}" — lúc đăng thật sẽ tạo mới.`);
+    await page.keyboard.press("Escape");
+    return;
+  } else {
+    log(`→ Tạo danh sách phát mới: ${want}`);
+    await menu.getByText("Tạo danh sách phát", { exact: true }).click({ timeout: TIMEOUT });
+    const modal = page.locator(".ant-modal-content").filter({ hasText: "Tạo danh sách phát" }).last();
+    await modal.waitFor({ state: "visible", timeout: TIMEOUT });
+    await modal.locator('input[placeholder="Nhập tên danh sách phát"]').fill(want);
+    const created = page
+      .waitForResponse((r) => /playlist/i.test(r.url()) && r.request().method() !== "GET", { timeout: TIMEOUT })
+      .catch(() => null);
+    await modal.getByRole("button", { name: "Tạo", exact: true }).click({ timeout: TIMEOUT });
+    const res = await created;
+    let j = null;
+    try { j = res ? await res.json() : null; } catch {}
+    if (j && typeof j.error === "number" && j.error !== 0) {
+      throw new Error(`Zalo không tạo được danh sách phát "${want}": [${j.error}] ${j.msg || ""}`);
+    }
+    await modal.waitFor({ state: "hidden", timeout: TIMEOUT }).catch(() => {});
+    await page.waitForTimeout(800);
+    // Tạo xong có thể Zalo đã tự chọn luôn; chưa thì mở menu chọn lại.
+    if (!(await isChosen())) {
+      menu = await openMenu();
+      await menu.getByText(want, { exact: true }).first().click({ timeout: TIMEOUT });
+    }
+  }
+  await page.waitForTimeout(500);
+  if (!(await isChosen())) {
+    throw new Error(`Không chọn được danh sách phát "${want}" trên form Zalo — dừng, KHÔNG bấm Đăng.`);
+  }
+  log(`→ Danh sách phát: ${want}`);
+}
+
+/** Công tắc "Nội dung do AI tạo" (mặc định tắt). */
+async function setAiLabel(page, on, log) {
+  const sw = formSection(page, "Nội dung do AI tạo").locator('button.ant-switch, [role="switch"]').first();
+  const read = async () => (await sw.getAttribute("aria-checked")) === "true";
+  if ((await read()) !== on) await sw.click({ timeout: TIMEOUT });
+  await page.waitForTimeout(300);
+  if ((await read()) !== on) {
+    throw new Error("Không gạt được công tắc 'Nội dung do AI tạo' — dừng, KHÔNG bấm Đăng.");
+  }
+  log(`→ Nội dung do AI tạo: ${on ? "bật" : "tắt"}`);
+}
+
 /**
  * Đăng 1 video lên Zalo Video.
  *
@@ -427,12 +716,20 @@ const DESC_SELECTOR =
  * @param {object} o
  * @param {string} o.videoPath    — đường dẫn file .mp4/.mov, ≤500MB
  * @param {string} o.description  — nội dung video (≤4000 ký tự)
+ * @param {string} [o.channelId]  — id kênh Zalo Video cần đăng; bỏ trống = kênh đang chọn
+ * @param {number} [o.coverTime]  — giây lấy khung làm ảnh bìa; bỏ trống = khung đầu (mặc định Zalo)
+ * @param {string} [o.playlist]   — tên danh sách phát; chưa có thì tạo
+ * @param {boolean} [o.aiGenerated] — bật nhãn "Nội dung do AI tạo"
  * @param {boolean} [o.headless]  — false để xem tận mắt lần chạy đầu
  * @returns {Promise<{ok:boolean, url:string}>}
  */
 export async function postToZaloVideo({
   videoPath,
   description = "",
+  channelId = "",
+  coverTime = null,
+  playlist = "",
+  aiGenerated = false,
   sessionFile = ZALOVIDEO_SESSION_FILE,
   headless = true,
   // dryRun: chạy trọn luồng nhưng DỪNG ngay trước cú bấm Đăng — để kiểm tra
@@ -461,6 +758,11 @@ export async function postToZaloVideo({
 
   try {
     await ensureLoggedIn(page, ctx, { sessionFile, log });
+    if (channelId) {
+      await switchZaloVideoChannel(page, channelId, { log });
+      // Chuyển kênh làm cookie xoay vòng — lưu ngay, lỡ bước sau hỏng.
+      await ctx.storageState({ path: sessionFile });
+    }
 
     log("→ Mở hộp thoại Đăng video...");
     // KHÔNG dùng exact: tên truy cập của nút không khớp tuyệt đối "Đăng video"
@@ -493,6 +795,18 @@ export async function postToZaloVideo({
       }
     }
 
+    // Tuỳ chọn của form. Mỗi bước tự kiểm lại và NÉM LỖI nếu không làm được —
+    // thà không đăng còn hơn đăng thiếu cái người dùng đã chọn.
+    if (coverTime !== null && coverTime !== undefined && coverTime !== "") {
+      await pickCover(page, Number(coverTime), log);
+    }
+    if (String(playlist || "").trim()) {
+      await pickPlaylist(page, playlist, { dryRun, log });
+    }
+    if (aiGenerated) {
+      await setAiLabel(page, true, log);
+    }
+
     // CÓ HAI nút tên "Đăng video": một ở thanh điều hướng trái (mở hộp thoại)
     // và một màu xanh ở cuối form (đăng thật). Nút ở nav đứng TRƯỚC trong DOM,
     // nên .last() là nút đăng. Bấm nhầm nút nav chỉ mở lại hộp thoại và mất bài.
@@ -508,6 +822,16 @@ export async function postToZaloVideo({
       throw new Error(
         "Không xác định chắc được nút Đăng của form (vị trí bất thường) — dừng để không bấm nhầm."
       );
+    }
+    // Kênh đang chọn lưu ở máy chủ Zalo theo TÀI KHOẢN: ai đó đổi kênh trên
+    // máy khác trong lúc bot điền form thì bài sẽ lên nhầm kênh. Kiểm lần cuối.
+    if (channelId) {
+      const cur = await readCurrentChannel(page);
+      if (cur?.id !== String(channelId)) {
+        throw new Error(
+          `Kênh đang chọn bị đổi giữa chừng (giờ là "${cur?.name || "?"}") — dừng, KHÔNG bấm Đăng.`
+        );
+      }
     }
     if (dryRun) {
       log("🧪 DRY RUN: mọi bước đều ổn — dừng tại đây, KHÔNG bấm Đăng.");

@@ -18,7 +18,7 @@ import { formatImage } from "./format.mjs";
 import { dataPath, CRED_FILE, QR_FILE, saveToken, removeToken } from "./paths.mjs";
 import { pushToPostiz, fetchHubFacebookPages } from "./postiz.mjs";
 import { importZaloVideoSession } from "./zalovideo.mjs";
-import { enqueueZaloVideo, getZaloVideoJob, zaloVideoStatus, zaloVideoChannel, startZaloVideoKeepAlive } from "./zalovideojobs.mjs";
+import { enqueueZaloVideo, getZaloVideoJob, zaloVideoStatus, zaloVideoChannel, zaloVideoChannels, forgetZaloVideoChannels, zaloVideoDryRun, startZaloVideoKeepAlive } from "./zalovideojobs.mjs";
 
 // Trang cấu hình cầu nối Postiz (Việt Anh Media Hub) — phục vụ tại GET /postiz
 const POSTIZ_CONFIG_PAGE = `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cấu hình Postiz</title><style>
@@ -1515,6 +1515,7 @@ export function startWeb(ctx = {}) {
   app.post("/api/zalovideo/session/upload", requireAuth, (req, res) => {
     try {
       const session = importZaloVideoSession(req.body?.session);
+      forgetZaloVideoChannels();
       store.pushLog("Zalo Video: đã tải phiên đăng nhập lên (từ máy local).");
       res.json({ ok: true, session });
     } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
@@ -1524,10 +1525,21 @@ export function startWeb(ctx = {}) {
     try { res.json({ ok: true, channel: await zaloVideoChannel(zvLog) }); }
     catch (e) { res.status(400).json({ ok: false, error: e.message }); }
   });
+  // Mọi kênh Zalo Video tài khoản đang quản lý (mỗi OA một kênh) — Hub dùng khi
+  // thêm kênh để người dùng tick chọn. {fresh:true} bỏ qua bộ nhớ 5 phút.
+  app.post("/api/zalovideo/channels", requireAuth, async (req, res) => {
+    try { res.json({ ok: true, ...(await zaloVideoChannels(zvLog, { fresh: !!req.body?.fresh })) }); }
+    catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+  });
   // Gửi việc đăng. Cùng `key` (id bài trên Hub) -> trả việc cũ, chống đăng trùng
   app.post("/api/zalovideo/jobs", requireAuth, (req, res) => {
     try { res.json({ ok: true, job: enqueueZaloVideo(req.body || {}, zvLog) }); }
     catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+  });
+  // Chạy thử (KHÔNG đăng): kiểm tra chuyển kênh / ảnh bìa / nhãn AI trên máy chủ.
+  app.post("/api/zalovideo/dry-run", requireAuth, async (req, res) => {
+    try { res.json(await zaloVideoDryRun(req.body || {}, zvLog)); }
+    catch (e) { res.status(400).json({ ok: false, error: e.message, steps: e.steps || [] }); }
   });
   app.get("/api/zalovideo/jobs/:key", requireAuth, (req, res) => {
     const job = getZaloVideoJob(req.params.key);

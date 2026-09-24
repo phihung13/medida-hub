@@ -1,5 +1,6 @@
 import {
   AuthTokenDetails,
+  FetchPageInformationResult,
   PostDetails,
   PostResponse,
   SocialProvider,
@@ -18,7 +19,10 @@ import { ZaloVideoDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-set
 //  Zalo KHÔNG có API công khai cho Zalo Video, nên Hub không tự đăng: Hub nhờ
 //  bot (apps/zalo-bot) điều khiển trình duyệt bằng phiên đăng nhập đã lưu.
 //  Không có OAuth — thêm kênh chỉ là bấm "Kết nối": Hub hỏi bot xem phiên còn
-//  dùng được không và lấy tên/ảnh kênh thật.
+//  dùng được không, rồi hiện MỌI kênh tài khoản đang quản lý (mỗi OA một kênh
+//  Zalo Video) để tick chọn một hay nhiều kênh — cùng khuôn "chọn Trang" của
+//  Facebook. Mỗi kênh Hub = một kênh Zalo Video, internalId = id KÊNH; lúc đăng
+//  bot tự chuyển Creator Center sang đúng kênh đó.
 //
 //  CHỐNG ĐĂNG TRÙNG: Temporal cho mỗi lượt đăng tối đa 10 phút rồi TỰ THỬ LẠI
 //  (tới 3 lần). Hub gửi việc cho bot với khoá = id bài; bot nhận lại cùng khoá
@@ -31,6 +35,13 @@ import { ZaloVideoDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-set
 
 const BOT = () =>
   (process.env.ZALO_BOT_URL || 'http://127.0.0.1:8088').replace(/\/$/, '');
+
+type ZaloVideoChannel = {
+  id: string;
+  name: string;
+  picture: string;
+  oaId: string | null;
+};
 
 const VIDEO_RE = /\.(mp4|mov)(\?|$)/i;
 const ANY_VIDEO_RE = /\.(mp4|mov|avi|webm|mkv|m4v|3gp|flv|wmv)(\?|$)/i;
@@ -77,13 +88,14 @@ async function bot(method: 'GET' | 'POST', path: string, body?: any) {
 }
 
 @Rules(
-  'Zalo Video posts exactly ONE video (.mp4 or .mov, max 500MB) with a text description of up to 4000 characters. No images. One content block per post.'
+  'Zalo Video posts exactly ONE video (.mp4 or .mov, max 500MB) with a text description of up to 4000 characters. No images. One content block per post. Optional settings: coverTime (seconds of the frame used as cover), playlist (name, 3-40 chars), aiGenerated (boolean).'
 )
 export class ZaloVideoProvider extends SocialAbstract implements SocialProvider {
   identifier = 'zalo-video';
   name = 'Zalo Video';
   toolTip = 'Đăng video qua bot Zalo — cần tải phiên đăng nhập lên bot trước.';
-  isBetweenSteps = false;
+  // Bước 2 sau "Kết nối": chọn kênh (pages/fetchPageInformation bên dưới).
+  isBetweenSteps = true;
   scopes = [] as string[];
   editor = 'normal' as const;
   dto = ZaloVideoDto;
@@ -124,23 +136,78 @@ export class ZaloVideoProvider extends SocialAbstract implements SocialProvider 
   }
 
   async authenticate(): Promise<AuthTokenDetails | string> {
-    const r: any = await bot('POST', '/api/zalovideo/channel');
-    if (!r?.ok || !r?.channel?.id) {
+    // fresh: mở trình duyệt thật — vừa lấy danh sách kênh mới nhất, vừa là
+    // phép thử phiên còn dùng được.
+    const r: any = await bot('POST', '/api/zalovideo/channels', { fresh: true });
+    if (!r?.ok || !Array.isArray(r?.channels) || !r.channels.length) {
       return (
         r?.error ||
         'Bot chưa có phiên Zalo Video — đăng nhập bằng `npm run zalovideo:login` rồi tải file phiên lên bot.'
       );
     }
+    const acc = r.account || {};
     return {
-      id: r.channel.id,
-      name: r.channel.name,
-      picture: r.channel.avatar,
-      username: r.channel.name,
+      // Chỉ là mục TẠM để qua bước chọn kênh: lưu kênh xong Postiz thay bằng id
+      // KÊNH (fetchPageInformation). Có tiền tố để không bao giờ trùng id kênh.
+      id: `zalo-video-account-${acc.id || 'default'}`,
+      name: acc.name || 'Zalo Video',
+      picture: acc.avatar || '',
+      username: acc.name || '',
       // Không dùng để gọi Zalo — chỉ đánh dấu kênh do bot đăng hộ.
       accessToken: 'zalo-video-bot',
       refreshToken: '',
       // Rất dài: không để Postiz đòi "kết nối lại" theo hạn token.
       expiresIn: 100 * 365 * 24 * 3600,
+    };
+  }
+
+  // Danh sách kênh để tick chọn. Bot giữ kết quả 5 phút, nên các lần gọi liền
+  // nhau trong cùng lượt thêm kênh không mở lại trình duyệt.
+  async pages(): Promise<ZaloVideoChannel[]> {
+    const r: any = await bot('POST', '/api/zalovideo/channels', {});
+    if (!r?.ok) {
+      throw new Error(r?.error || 'Không lấy được danh sách kênh Zalo Video từ bot.');
+    }
+    return (r.channels || []).map((c: any) => ({
+      id: String(c.id),
+      name: String(c.name || 'Zalo Video'),
+      picture: String(c.avatar || ''),
+      oaId: c.oaId ? String(c.oaId) : null,
+    }));
+  }
+
+  async fetchPageInformation(
+    accessToken: string,
+    data: { id: string }
+  ): Promise<FetchPageInformationResult> {
+    const channel = (await this.pages()).find((c) => c.id === String(data?.id));
+    if (!channel) {
+      throw new Error(
+        'Tài khoản Zalo không còn quản lý kênh Zalo Video này — kiểm tra quyền quản trị OA.'
+      );
+    }
+    return {
+      id: channel.id,
+      name: channel.name,
+      picture: channel.picture,
+      username: channel.name,
+      access_token: 'zalo-video-bot',
+    };
+  }
+
+  // Nút "kết nối lại" trên một kênh đã có: xác thực lại rồi giữ đúng kênh đó.
+  async reConnect(
+    id: string,
+    requiredId: string,
+    accessToken: string
+  ): Promise<Omit<AuthTokenDetails, 'refreshToken' | 'expiresIn'>> {
+    const info = await this.fetchPageInformation(accessToken, { id: requiredId });
+    return {
+      id: info.id,
+      name: info.name,
+      picture: info.picture,
+      username: info.username,
+      accessToken: info.access_token,
     };
   }
 
@@ -179,6 +246,17 @@ export class ZaloVideoProvider extends SocialAbstract implements SocialProvider 
       );
     }
 
+    const settings: Partial<ZaloVideoDto> = first.settings || {};
+    // Ảnh bìa: ưu tiên giây chọn trong phần cài đặt Zalo Video; không có thì
+    // dùng khung đã chọn ở "Media settings" của Postiz (thumbnailTimestamp, ms)
+    // — cái đó chỉ có nghĩa khi ảnh thumbnail còn (xoá thumbnail không xoá mốc).
+    const coverTime =
+      typeof settings.coverTime === 'number'
+        ? settings.coverTime
+        : video?.thumbnail && Number.isFinite(Number(video?.thumbnailTimestamp))
+        ? Number(video.thumbnailTimestamp) / 1000
+        : null;
+
     // Khoá chống trùng = id bài. Lượt thử lại của Temporal gửi cùng khoá ->
     // bot trả đúng việc đang chạy/đã xong, không đăng lần hai.
     const key = `hub-${first.id}`;
@@ -186,6 +264,13 @@ export class ZaloVideoProvider extends SocialAbstract implements SocialProvider 
       key,
       videoUrl,
       description: first.message || '',
+      // id = internalId của kênh Hub = id kênh Zalo Video. Mục tạm lúc chọn
+      // kênh (zalo-video-account-…) không bao giờ tới đây — kênh chưa chọn
+      // xong không lên lịch được.
+      channelId: /^\d+$/.test(String(id)) ? String(id) : '',
+      coverTime,
+      playlist: (settings.playlist || '').trim(),
+      aiGenerated: !!settings.aiGenerated,
     });
     if (!r?.ok) {
       throw new BadBody('zalo-video', JSON.stringify(r), '', r?.error || 'Bot Zalo không nhận việc đăng.');

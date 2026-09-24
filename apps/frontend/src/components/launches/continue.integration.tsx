@@ -297,6 +297,7 @@ export const ContinueIntegration: FC<{
       'linkedin-page': 'LinkedIn',
       youtube: 'YouTube',
       gmb: 'Google Business',
+      'zalo-video': 'Zalo Video',
     };
     return names[provider] || provider;
   }, [provider]);

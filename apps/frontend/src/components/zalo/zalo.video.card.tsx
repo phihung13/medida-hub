@@ -30,7 +30,8 @@ export const ZaloVideoCard: FC = () => {
   const fileRef = useRef<HTMLInputElement>(null);
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [busy, setBusy] = useState<'' | 'upload' | 'check'>('');
-  const [channel, setChannel] = useState<string>('');
+  // Tên các kênh Zalo Video tài khoản đang quản lý (mỗi OA một kênh).
+  const [channels, setChannels] = useState<string[]>([]);
   const [showHelp, setShowHelp] = useState(false);
 
   const load = useCallback(async () => {
@@ -60,7 +61,7 @@ export const ZaloVideoCard: FC = () => {
         });
         if (!r?.ok) throw new Error(r?.error || 'Tải phiên lên thất bại');
         setSession(r.session);
-        setChannel('');
+        setChannels([]);
         toaster.show(t('zalo_video_session_uploaded', 'Đã tải phiên Zalo Video lên bot'), 'success');
       } catch (err: any) {
         toaster.show(err?.message || 'Tải phiên lên thất bại', 'warning');
@@ -75,16 +76,24 @@ export const ZaloVideoCard: FC = () => {
   const check = useCallback(async () => {
     setBusy('check');
     try {
-      const r = await bot('/api/zalovideo/channel', { method: 'POST', body: '{}' }, 150000);
+      const r = await bot(
+        '/api/zalovideo/channels',
+        { method: 'POST', body: JSON.stringify({ fresh: true }) },
+        150000
+      );
       if (!r?.ok) throw new Error(r?.error || 'Phiên không dùng được');
-      setChannel(r.channel?.name || '');
+      const names: string[] = (r.channels || []).map((c: any) => c.name);
+      setChannels(names);
       toaster.show(
-        `${t('zalo_video_session_ok', 'Phiên dùng được')}: ${r.channel?.name || ''}`,
+        `${t('zalo_video_session_ok', 'Phiên dùng được')}: ${names.length} ${t(
+          'zalo_video_channels_unit',
+          'kênh'
+        )}`,
         'success'
       );
       load();
     } catch (err: any) {
-      setChannel('');
+      setChannels([]);
       toaster.show(err?.message || 'Phiên không dùng được', 'warning');
     } finally {
       setBusy('');
@@ -123,16 +132,23 @@ export const ZaloVideoCard: FC = () => {
           ? t('zalo_video_loading', 'Đang kiểm tra…')
           : has
           ? `${t('zalo_video_has_session', 'Đã có phiên')}${
-              channel ? ` · ${channel}` : ''
+              channels.length
+                ? ` · ${channels.length} ${t('zalo_video_channels_unit', 'kênh')}`
+                : ''
             }${session?.expiresAt ? ` · ${t('zalo_video_until', 'hạn tới')} ${fmtDate(session.expiresAt)}` : ''}`
           : t('zalo_video_no_session', 'Chưa có phiên — tải file phiên lên để bắt đầu')}
       </div>
+      {has && !!channels.length && (
+        <div className="text-[13px] text-textItemBlur ps-[16px]">
+          {channels.join(' · ')}
+        </div>
+      )}
 
       {showHelp && (
         <div className="text-[13px] text-textItemBlur leading-[1.55] border-s-2 border-newSep ps-[10px]">
           {t(
             'zalo_video_help_text',
-            'Trên máy có màn hình: mở thư mục apps/zalo-bot, chạy "npm run zalovideo:login", đăng nhập Zalo bằng tài khoản quản trị kênh video. Xong sẽ có file data/zalo-video-session.json — tải file đó lên đây. Sau đó bot tự giữ phiên, không cần đăng nhập lại.'
+            'Trên máy có màn hình: mở thư mục apps/zalo-bot, chạy "npm run zalovideo:login", đăng nhập Zalo bằng tài khoản quản trị kênh video. Xong sẽ có file data/zalo-video-session.json — tải file đó lên đây. Sau đó bot tự giữ phiên, không cần đăng nhập lại. Thêm kênh: Thêm kênh → Zalo Video → Kết nối → tick một hay nhiều kênh.'
           )}
         </div>
       )}
