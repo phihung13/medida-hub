@@ -1,12 +1,13 @@
 'use client';
 
-import { FC, useCallback, useEffect, useMemo, useRef } from 'react';
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useSWR from 'swr';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { useCalendar } from '@gitroom/frontend/components/launches/calendar.context';
 import { expandPosts } from '@gitroom/helpers/utils/posts.list.minify';
 import { newDayjs } from '@gitroom/frontend/components/layout/set.timezone';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
+import { CloseIcon } from '@gitroom/frontend/components/ui/icons';
 
 // ============================================================================
 //  Banner "chờ duyệt" trên trang Calendar: đếm bài DRAFT gắn tag "Zalo"
@@ -36,13 +37,12 @@ const useZaloPendingDrafts = () => {
   });
 };
 
-export const ZaloPendingBanner: FC = () => {
-  const t = useT();
+// Số bài Zalo đang chờ duyệt — dùng chung cho banner VÀ chấm đỏ trên thanh
+// lọc (nút Danh sách, tab Bản nháp). Cùng khoá SWR 'zalo-pending-drafts' nên
+// SWR gộp lại: gọi hook này ở nhiều nơi KHÔNG phát sinh thêm request nào.
+export const useZaloPendingCount = () => {
   const { data } = useZaloPendingDrafts();
-  const { reloadCalendarView, setFilters, startDate, endDate, customer, setListState } =
-    useCalendar();
-
-  const count = useMemo(
+  return useMemo(
     () =>
       (data?.posts || []).filter(
         (p: any) =>
@@ -53,6 +53,82 @@ export const ZaloPendingBanner: FC = () => {
       ).length,
     [data]
   );
+};
+
+// Chấm đỏ có số — báo còn bài Zalo chờ duyệt kể cả khi đã ẩn banner.
+//  - variant 'corner': đè lên góc nút icon (nút chế độ Danh sách).
+//  - variant 'inline': nằm sau chữ (tab Bản nháp).
+// Số thật cho trình đọc màn hình nằm trong sr-only; số hiển thị để aria-hidden
+// cho khỏi đọc lặp. Quá 99 thì hiện "99+" để không làm phình chấm.
+export const PendingBadge: FC<{
+  count: number;
+  variant?: 'corner' | 'inline';
+}> = ({ count, variant = 'corner' }) => {
+  const t = useT();
+  if (!count) {
+    return null;
+  }
+  const label = `${count} ${t(
+    'zalo_pending_banner_short',
+    'Zalo posts awaiting approval'
+  )}`;
+  return (
+    <span
+      data-tooltip-id="tooltip"
+      data-tooltip-content={label}
+      className={
+        variant === 'corner'
+          ? 'absolute -top-[6px] -end-[6px] z-[1] min-w-[18px] h-[18px] px-[5px] rounded-full bg-red-500 text-white text-[11px] font-[700] leading-[18px] text-center pointer-events-none'
+          : 'inline-flex items-center justify-center ms-[6px] min-w-[18px] h-[18px] px-[5px] rounded-full bg-red-500 text-white text-[11px] font-[700] leading-none align-middle'
+      }
+    >
+      <span aria-hidden="true">{count > 99 ? '99+' : count}</span>
+      <span className="sr-only">{label}</span>
+    </span>
+  );
+};
+
+// Nhớ đã ẩn banner ở con số bao nhiêu (localStorage — chỉ là tuỳ chọn hiển
+// thị của từng người, mất cũng không sao). Ẩn VĨNH VIỄN thì bài Zalo mới về
+// sẽ không bao giờ được báo lại; nên chỉ ẩn tới khi số bài chờ duyệt TĂNG.
+const DISMISS_KEY = 'zaloPendingBannerDismissedAt';
+const readDismissed = () => {
+  try {
+    const v = Number(localStorage.getItem(DISMISS_KEY));
+    return Number.isFinite(v) ? v : 0;
+  } catch {
+    return 0;
+  }
+};
+const writeDismissed = (n: number) => {
+  try {
+    localStorage.setItem(DISMISS_KEY, String(n));
+  } catch {
+    /* chế độ ẩn danh / bị chặn lưu trữ: ẩn trong phiên này thôi */
+  }
+};
+
+export const ZaloPendingBanner: FC = () => {
+  const t = useT();
+  const count = useZaloPendingCount();
+  const { reloadCalendarView, setFilters, startDate, endDate, customer, setListState } =
+    useCalendar();
+
+  const [dismissedAt, setDismissedAt] = useState(0);
+  useEffect(() => {
+    setDismissedAt(readDismissed());
+  }, []);
+  // Duyệt bớt bài thì hạ mốc theo — để bài mới về sau đó vẫn làm banner hiện lại.
+  useEffect(() => {
+    if (count < dismissedAt) {
+      setDismissedAt(count);
+      writeDismissed(count);
+    }
+  }, [count, dismissedAt]);
+  const dismiss = useCallback(() => {
+    setDismissedAt(count);
+    writeDismissed(count);
+  }, [count]);
 
   // Bài mới từ Zalo → reload calendar cho hiện ngay.
   const prev = useRef(-1);
@@ -73,7 +149,9 @@ export const ZaloPendingBanner: FC = () => {
     });
   }, [setListState, setFilters, startDate, endDate, customer]);
 
-  if (!count) {
+  // Hook (kể cả effect reload calendar ở trên) vẫn chạy khi banner bị ẩn —
+  // chỉ phần hiển thị bị bỏ, bài mới vẫn tự hiện lên lịch như cũ.
+  if (!count || count <= dismissedAt) {
     return null;
   }
 
@@ -107,6 +185,16 @@ export const ZaloPendingBanner: FC = () => {
         className="cursor-pointer h-[32px] px-[14px] rounded-[6px] bg-btnSimple text-btnText text-[13px] font-[600] mobile:shrink-0 mobile:h-[44px] mobile:px-[16px] tap-shrink"
       >
         {t('zalo_pending_view_list', 'View list')}
+      </button>
+      <button
+        type="button"
+        onClick={dismiss}
+        aria-label={t('dismiss_notification', 'Dismiss')}
+        data-tooltip-id="tooltip"
+        data-tooltip-content={t('dismiss_notification', 'Dismiss')}
+        className="shrink-0 w-[32px] h-[32px] mobile:w-[44px] mobile:h-[44px] rounded-[6px] flex items-center justify-center text-textItemBlur hover:text-newTextColor hover:bg-boxHover transition-colors outline-none focus-visible:ring-2 focus-visible:ring-btnPrimary"
+      >
+        <CloseIcon size={14} />
       </button>
     </div>
   );

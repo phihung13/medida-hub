@@ -8,6 +8,10 @@ import { SelectCustomer } from '@gitroom/frontend/components/launches/select.cus
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import i18next from 'i18next';
 import { newDayjs } from '@gitroom/frontend/components/layout/set.timezone';
+import {
+  PendingBadge,
+  useZaloPendingCount,
+} from '@gitroom/frontend/components/launches/zalo.pending.banner';
 
 // Helper function to get start and end dates based on display type
 function getDateRange(
@@ -262,6 +266,10 @@ export const Filters: FC<{ onOpenChannels?: () => void }> = ({
   );
 
   const isListView = calendar.display === 'list';
+  // Số bài Zalo chờ duyệt: chấm đỏ trên nút Danh sách + tab Bản nháp, để ẩn
+  // banner rồi vẫn biết còn bài đang chờ. Cùng khoá SWR với banner -> không
+  // thêm request.
+  const zaloPendingCount = useZaloPendingCount();
 
   const setListStateFilter = useCallback(
     (next: ListStateFilter) => () => {
@@ -427,6 +435,9 @@ export const Filters: FC<{ onOpenChannels?: () => void }> = ({
                 )}
               >
                 {option.label}
+                {option.value === 'draft' && (
+                  <PendingBadge count={zaloPendingCount} variant="inline" />
+                )}
               </div>
             ))}
           </div>
@@ -513,10 +524,11 @@ export const Filters: FC<{ onOpenChannels?: () => void }> = ({
         <div
           onClick={setList}
           className={clsx(
-            'pt-[6px] pb-[5px] flex justify-center items-center cursor-pointer w-[34px] text-center rounded-[6px] mobile:w-[48px] mobile:pt-[10px] mobile:pb-[9px]',
+            'relative pt-[6px] pb-[5px] flex justify-center items-center cursor-pointer w-[34px] text-center rounded-[6px] mobile:w-[48px] mobile:pt-[10px] mobile:pb-[9px]',
             isListView && 'text-textItemFocused bg-boxFocused'
           )}
         >
+          <PendingBadge count={zaloPendingCount} variant="corner" />
           {/*list*/}
           <svg
             xmlns="http://www.w3.org/2000/svg"
