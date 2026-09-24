@@ -578,9 +578,19 @@ export async function postToZaloVideo({
       log(`   video/list lần ${attempt}:`, JSON.stringify(listJson).slice(0, 200));
       if (!listJson?.data) await page.waitForTimeout(20_000);
     }
-    const items = Array.isArray(listJson?.data) ? listJson.data
-      : Array.isArray(listJson?.data?.items) ? listJson.data.items
-      : Array.isArray(listJson?.data?.videos) ? listJson.data.videos : [];
+    // Mới chỉ thấy phản hồi lúc TRỐNG ({"error":-404}); chưa biết lúc có video
+    // Zalo bọc danh sách dưới tên trường nào -> tìm mảng khác rỗng đầu tiên
+    // trong data, không đoán cứng tên trường.
+    const firstArray = (v, depth = 0) => {
+      if (Array.isArray(v)) return v;
+      if (!v || typeof v !== "object" || depth > 3) return null;
+      for (const k of Object.keys(v)) {
+        const a = firstArray(v[k], depth + 1);
+        if (a && a.length) return a;
+      }
+      return null;
+    };
+    const items = listJson?.error === 0 ? firstArray(listJson.data) || [] : [];
     if (!items.length) {
       await shoot("chua-thay-video");
       log("⚠️  Zalo đã NHẬN file (tải lên 200) nhưng API danh sách chưa có video — có thể đang xử lý/kiểm duyệt, hoặc bị giữ lại. Xem các dòng ⇠ phía trên.");
