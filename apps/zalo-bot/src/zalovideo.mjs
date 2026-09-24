@@ -484,6 +484,41 @@ export async function postToZaloVideo({
       log("   ↓", line);
     };
     page.on("requestfinished", onEnd(true));
+
+    // Zalo LUÔN trả HTTP 200, lỗi thật nằm trong trường "error" của JSON
+    // (đo được: video/list -> {"error":-404}, ekyc-c06 -> {"error":-142}).
+    // Chỉ xem mã HTTP là tin nhầm — phải đọc nội dung.
+    const apiErrors = [];
+    const apiReplies = [];
+    page.on("response", async (res) => {
+      const u = res.url();
+      if (!/video\.zalo\.me\/(upload-api|v\d\/public-api)\//.test(u)) return;
+      if (res.request().method() === "GET") return;
+      let body = "";
+      try { body = await res.text(); } catch { return; }
+      const short = body.replace(/\s+/g, " ").replace(/[A-Za-z0-9_\-]{40,}/g, "<long>").slice(0, 300);
+      const path = u.split("?")[0].replace("https://video.zalo.me", "");
+      apiReplies.push(`${path} -> ${short}`);
+      try {
+        const j = JSON.parse(body);
+        if (j && typeof j.error === "number" && j.error !== 0) {
+          apiErrors.push(`${path}: [${j.error}] ${j.msg || j.message || ""}`);
+        }
+      } catch {}
+    });
+    // Thông báo nổi (toast) Zalo hiện sau khi bấm Đăng — thường chứa lý do từ chối.
+    const toasts = new Set();
+    const toastTimer = setInterval(async () => {
+      try {
+        const t = await page.evaluate(() =>
+          [...document.querySelectorAll(".ant-message, .ant-notification, [role=alert]")]
+            .map((e) => (e.innerText || "").trim()).filter(Boolean));
+        t.forEach((x) => toasts.add(x.replace(/\s+/g, " ").slice(0, 200)));
+      } catch {}
+    }, 700);
+    // unref: lỗi xảy ra trước clearInterval thì bộ đếm này không được giữ
+    // tiến trình sống — nếu không script sẽ treo mãi sau khi báo lỗi.
+    toastTimer.unref?.();
     page.on("requestfailed", onEnd(false));
 
     log("→ Bấm ĐĂNG...");
@@ -520,26 +555,39 @@ export async function postToZaloVideo({
       throw new Error("Có request tới Zalo bị lỗi khi đăng: " + failed.join(" | "));
     }
 
-    // Kiểm chứng THẬT: video phải xuất hiện trong danh sách của kênh
-    // (Công khai hoặc Riêng tư). Chưa thấy thì báo rõ, không báo thành công giả.
-    log("→ Kiểm tra video đã có trên kênh chưa...");
-    let found = "";
-    for (const type of ["public", "private"]) {
-      await page.goto(`${CREATOR_URL}/video?tab=tong-quat&type=${type}`, { waitUntil: "domcontentloaded", timeout: TIMEOUT });
-      await page.waitForTimeout(6000);
-      const txt = await page.evaluate(() => document.body.innerText);
-      if (!/Không có video nào/.test(txt)) {
-        found = type;
-        break;
-      }
+    clearInterval(toastTimer);
+    for (const line of apiReplies) log("   ⇠", line);
+    if (toasts.size) log("   💬 Zalo báo:", [...toasts].join(" | "));
+    if (apiErrors.length) {
+      await shoot("zalo-tu-choi");
+      throw new Error(
+        "Zalo từ chối (HTTP 200 nhưng error ≠ 0): " + apiErrors.join(" | ") +
+        (toasts.size ? " — thông báo: " + [...toasts].join(" | ") : "")
+      );
     }
-    if (!found) {
+
+    // Kiểm chứng bằng chính API danh sách của Zalo, KHÔNG dò chữ trên giao
+    // diện (cách cũ báo sai khi bảng chưa tải xong).
+    log("→ Kiểm tra qua API danh sách video của kênh...");
+    let listJson = null;
+    for (let attempt = 1; attempt <= 3 && !listJson?.data; attempt++) {
+      const wait = page.waitForResponse((r) => /\/v\d\/public-api\/video\/list/.test(r.url()), { timeout: 60_000 }).catch(() => null);
+      await page.goto(`${CREATOR_URL}/video?tab=tong-quat&type=public`, { waitUntil: "domcontentloaded", timeout: TIMEOUT });
+      const res = await wait;
+      try { listJson = res ? await res.json() : null; } catch { listJson = null; }
+      log(`   video/list lần ${attempt}:`, JSON.stringify(listJson).slice(0, 200));
+      if (!listJson?.data) await page.waitForTimeout(20_000);
+    }
+    const items = Array.isArray(listJson?.data) ? listJson.data
+      : Array.isArray(listJson?.data?.items) ? listJson.data.items
+      : Array.isArray(listJson?.data?.videos) ? listJson.data.videos : [];
+    if (!items.length) {
       await shoot("chua-thay-video");
-      log("⚠️  Tải lên đã xong nhưng CHƯA thấy video trong danh sách — có thể Zalo còn đang xử lý/kiểm duyệt. Kiểm tra lại sau vài phút.");
-      return { ok: false, pending: true, netLog };
+      log("⚠️  Zalo đã NHẬN file (tải lên 200) nhưng API danh sách chưa có video — có thể đang xử lý/kiểm duyệt, hoặc bị giữ lại. Xem các dòng ⇠ phía trên.");
+      return { ok: false, pending: true, netLog, apiReplies, toasts: [...toasts] };
     }
-    log(`✅ Đã đăng — video có trong danh sách (${found === "public" ? "Công khai" : "Riêng tư"}).`);
-    return { ok: true, visibility: found, url: page.url(), netLog };
+    log(`✅ Đã đăng — API danh sách có ${items.length} video.`);
+    return { ok: true, count: items.length, url: page.url(), netLog, apiReplies };
   } catch (e) {
     await shoot("loi");
     throw e;
