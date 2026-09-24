@@ -34,6 +34,38 @@ const TIMEOUT = 60_000;
 // không cần mô phỏng kéo thả.
 const FILE_INPUT = 'input[type=file][accept="video/mp4,video/quicktime"]';
 
+/**
+ * Chờ trang ĐỨNG YÊN trước khi thao tác.
+ *
+ * Vì sao cần: vào video.zalo.me bằng phiên đã lưu, Zalo vẫn nhảy một vòng qua
+ * oauth.zaloapp.com/v4/permission rồi mới quay lại /creator/... Nếu mình bấm
+ * mở hộp thoại và gắn file TRƯỚC khi vòng đó xong, cú điều hướng sẽ cuốn phăng
+ * hộp thoại đang mở — lần chạy đầu chết đúng kiểu này ("Target page, context
+ * or browser has been closed" trong lúc chờ textarea).
+ */
+async function waitUrlSettled(page, { quietMs = 5000, timeoutMs = 90_000, log } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let last = "";
+  let stableSince = Date.now();
+  while (Date.now() < deadline) {
+    let url = "";
+    try { url = page.url(); } catch { break; }
+    if (url !== last) {
+      last = url;
+      stableSince = Date.now();
+      log?.("   ...trang chuyển tới:", url.slice(0, 90));
+    } else if (
+      Date.now() - stableSince >= quietMs &&
+      /\/creator\//.test(url) &&
+      !/oauth\.zaloapp\.com|\/login/.test(url)
+    ) {
+      return url;
+    }
+    await page.waitForTimeout(500);
+  }
+  return last;
+}
+
 const MAX_BYTES = 500 * 1024 * 1024;
 const ALLOWED_EXT = /\.(mp4|mov)$/i;
 
@@ -150,8 +182,10 @@ export async function inspectUploadForm({
 
   try {
     await page.goto(CREATOR_URL, { timeout: TIMEOUT, waitUntil: "domcontentloaded" });
+    log("→ Chờ Zalo xong vòng xác thực và trang đứng yên...");
+    const settled = await waitUrlSettled(page, { log });
     // Phiên hết hạn -> Zalo đá về /creator/register
-    if (/\/creator\/register/.test(page.url())) {
+    if (/\/creator\/register/.test(settled)) {
       throw new Error("Phiên đã hết hạn — chạy lại: npm run zalovideo:login");
     }
 
@@ -266,7 +300,9 @@ export async function postToZaloVideo({
 
   try {
     await page.goto(CREATOR_URL, { timeout: TIMEOUT, waitUntil: "domcontentloaded" });
-    if (/\/creator\/register/.test(page.url())) {
+    log("→ Chờ Zalo xong vòng xác thực và trang đứng yên...");
+    const settled = await waitUrlSettled(page, { log });
+    if (/\/creator\/register/.test(settled)) {
       throw new Error("Phiên đã hết hạn — chạy lại: npm run zalovideo:login");
     }
 

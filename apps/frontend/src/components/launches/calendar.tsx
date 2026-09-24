@@ -1157,13 +1157,29 @@ const CalendarItem: FC<{
           backgroundColor: post?.tags?.[0]?.tag?.color,
         }}
       >
+        {/* Thanh trên đầu thẻ: trước đây CHỈ hiện tên thẻ (tag), nên nhìn một
+            lưới bài không biết bài nào của kênh nào — phải mở ra mới biết.
+            Giờ hiện TÊN KÊNH trước, thẻ nối sau bằng dấu chấm giữa.
+            min-w-0 + truncate: thanh cao cố định 24px, tên kênh dài mà không
+            cắt thì đẩy vỡ hàng; title để xem đủ khi trỏ chuột. */}
         <div
           className={clsx(
             post?.tags?.[0]?.tag?.color ? 'mix-blend-difference' : '',
-            'group-hover:hidden cursor-pointer'
+            'group-hover:hidden cursor-pointer min-w-0 truncate'
           )}
+          title={[
+            post?.integration?.name,
+            post.tags.map((p) => p.tag.name).join(', '),
+          ]
+            .filter(Boolean)
+            .join(' · ')}
         >
-          {post.tags.map((p) => p.tag.name).join(', ')}
+          {[
+            post?.integration?.name,
+            post.tags.map((p) => p.tag.name).join(', '),
+          ]
+            .filter(Boolean)
+            .join(' · ')}
         </div>
         {copyDebugJson && (
           <div
