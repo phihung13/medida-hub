@@ -775,7 +775,19 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
   ): Promise<PostResponse[]> {
     accessToken = await this.ensurePageToken(id, accessToken);
     const [commentPost] = postDetails;
-    const replyToId = lastCommentId || postId;
+    // HAI LUỒNG, do người dùng chọn ở ô "Trả lời bình luận phía trên":
+    //  - Mặc định: gắn vào BÀI -> bình luận riêng, ngang hàng nhau.
+    //  - Bật: gắn vào bình luận trước -> bình luận con (trả lời).
+    // Graph API: POST /{post-id}/comments tạo bình luận trên bài, còn
+    // POST /{comment-id}/comments tạo TRẢ LỜI lồng trong bình luận đó.
+    // Trước đây luôn dùng `lastCommentId || postId` nên bình luận thứ 2 trở đi
+    // luôn bị lồng vào bình luận trước, càng nhiều càng lồng sâu — không ai
+    // chọn được kiểu bình luận riêng. (Instagram provider vốn đã luôn dùng
+    // postId, tức đây là chỗ Facebook lệch chuẩn.)
+    const replyToId =
+      commentPost.settings?.replyToPrevious && lastCommentId
+        ? lastCommentId
+        : postId;
 
     const data = await (
       await this.fetch(
