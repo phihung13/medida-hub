@@ -573,10 +573,13 @@ export async function inspectUploadForm({
 const DESC_SELECTOR =
   '[contenteditable="true"][maxlength="4000"], div.input-conteneditable[contenteditable="true"]';
 
-// Khối form nhỏ nhất chứa nhãn `label` (vd "Chọn ảnh bìa"). filter({has}) trả
-// mọi thẻ div tổ tiên theo thứ tự tài liệu -> phần tử CUỐI là khối trong cùng.
+// Khối form chứa nhãn `label` = thẻ CHA của nhãn (đã đo trên form thật: nhãn
+// "Thêm vào danh sách phát" / "Nội dung do AI tạo" là một div chữ, nút nằm
+// cạnh nó trong cùng thẻ cha). Bản trước dùng div.filter({has}).last() — bộ
+// lọc khớp luôn CHÍNH thẻ nhãn nên .last() trỏ vào nhãn, tìm nút mãi không ra
+// (chạy thử trên máy chủ: hết 60s ở bước danh sách phát).
 const formSection = (page, label) =>
-  page.locator("div").filter({ has: page.getByText(label, { exact: true }) }).last();
+  page.getByText(label, { exact: true }).first().locator("xpath=..");
 
 /**
  * Chọn ẢNH BÌA = khung hình tại giây `seconds`.
