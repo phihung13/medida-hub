@@ -162,9 +162,28 @@ export async function inspectUploadForm({
     log("→ Gắn file:", videoPath);
     await page.setInputFiles(FILE_INPUT, videoPath);
 
-    // Zalo cần thời gian tải lên + dựng form nhập tiêu đề/mô tả.
-    log("→ Đang tải lên, chờ form hiện ra (tối đa 3 phút)...");
-    await page.waitForTimeout(15_000);
+    // Zalo chỉ dựng form nhập tiêu đề/mô tả SAU KHI tải lên xong. File to
+    // (vài trăm MB) mất vài phút, nên DÒ cho tới khi có ô nhập hiện ra thay vì
+    // chờ một khoảng cố định rồi chụp phải màn hình đang tải dở.
+    log("→ Đang tải lên, chờ form hiện ra (tối đa 10 phút)...");
+    const deadline = Date.now() + 10 * 60_000;
+    let formReady = false;
+    while (Date.now() < deadline) {
+      formReady = await page.evaluate(() =>
+        [...document.querySelectorAll("input[type=text], textarea, [contenteditable=true]")]
+          .some((e) => e.offsetParent !== null)
+      );
+      if (formReady) break;
+      await page.waitForTimeout(3000);
+      const pct = Math.round((Date.now() - (deadline - 10 * 60_000)) / 1000);
+      if (pct % 30 === 0) log(`   ...đã chờ ${pct}s`);
+    }
+    if (!formReady) {
+      log("⚠️  Hết 10 phút chưa thấy form — vẫn chụp lại màn hình hiện tại để xem kẹt ở đâu.");
+    } else {
+      log("→ Form đã hiện, chờ thêm 3s cho render xong.");
+      await page.waitForTimeout(3000);
+    }
 
     const dump = await page.evaluate(() => {
       const vis = (e) => e.offsetParent !== null;
@@ -199,18 +218,99 @@ export async function inspectUploadForm({
   }
 }
 
+// Form đăng (dựng SAU khi tải file xong) gồm:
+//   - "Nội dung video": textarea, tối đa 4000 ký tự. KHÔNG có ô tiêu đề riêng.
+//   - "Hẹn giờ đăng video": input "Chọn thời điểm" (tuỳ chọn, chưa dùng).
+//   - "Chọn ảnh bìa": dải khung hình, Zalo TỰ CHỌN SẴN khung đầu.
+//   - "Gắn nhãn video" / "Thêm vào danh sách phát": tuỳ chọn, chưa dùng.
+//   - "Nội dung do AI tạo": công tắc, mặc định tắt.
+//   - Nút "Đăng video" màu xanh ở cuối form.
+const DESC_SELECTOR = 'textarea[placeholder*="Nhập nội dung mô tả"]';
+
 /**
  * Đăng 1 video lên Zalo Video.
  *
- * ⚠️ CHƯA HOÀN THIỆN: Zalo chỉ dựng form nhập tiêu đề/mô tả SAU KHI file được
- * tải lên xong, nên không thể biết trước tên trường và nút bấm nếu chưa chạy
- * thật một lần. Chạy `npm run zalovideo:inspect -- <file.mp4>` để lấy cấu trúc
- * form thật, rồi điền nốt phần dưới đây. Cố đoán selector ở bước này chỉ dẫn
- * tới việc bấm nhầm nút và đăng bừa lên kênh thật.
+ * ⚠️ ĐĂNG THẬT LÊN KÊNH. Không có bước xác nhận nào nữa sau khi gọi hàm này.
+ *
+ * @param {object} o
+ * @param {string} o.videoPath    — đường dẫn file .mp4/.mov, ≤500MB
+ * @param {string} o.description  — nội dung video (≤4000 ký tự)
+ * @param {boolean} [o.headless]  — false để xem tận mắt lần chạy đầu
+ * @returns {Promise<{ok:boolean, url:string}>}
  */
-export async function postToZaloVideo() {
-  throw new Error(
-    "Chưa cài đặt xong bước điền form + bấm đăng. Chạy `npm run zalovideo:inspect -- <file.mp4>` " +
-    "để lấy cấu trúc form thật rồi hoàn thiện postToZaloVideo()."
-  );
+export async function postToZaloVideo({
+  videoPath,
+  description = "",
+  sessionFile = ZALOVIDEO_SESSION_FILE,
+  headless = true,
+  log = console.log,
+} = {}) {
+  validateVideo(videoPath);
+  if (!fs.existsSync(sessionFile)) {
+    throw new Error("Chưa có phiên Zalo Video — chạy: npm run zalovideo:login");
+  }
+
+  const chromium = await getChromium();
+  const browser = await chromium.launch({
+    headless,
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+  });
+  const ctx = await browser.newContext({ storageState: sessionFile });
+  const page = await ctx.newPage();
+
+  const shoot = async (tag) => {
+    const p = dataPath("output", `zalovideo-${tag}-${Date.now()}.png`);
+    try { await page.screenshot({ path: p, fullPage: true }); log("📸", p); } catch {}
+    return p;
+  };
+
+  try {
+    await page.goto(CREATOR_URL, { timeout: TIMEOUT, waitUntil: "domcontentloaded" });
+    if (/\/creator\/register/.test(page.url())) {
+      throw new Error("Phiên đã hết hạn — chạy lại: npm run zalovideo:login");
+    }
+
+    log("→ Mở hộp thoại Đăng video...");
+    await page.getByRole("button", { name: "Đăng video", exact: true }).first().click({ timeout: TIMEOUT });
+    await page.waitForSelector(FILE_INPUT, { state: "attached", timeout: TIMEOUT });
+
+    log("→ Gắn file:", videoPath);
+    await page.setInputFiles(FILE_INPUT, videoPath);
+
+    log("→ Đang tải lên, chờ form hiện ra (tối đa 15 phút)...");
+    await page.waitForSelector(DESC_SELECTOR, { state: "visible", timeout: 15 * 60_000 });
+    await page.waitForTimeout(3000);
+
+    const desc = String(description || "").slice(0, 4000);
+    if (desc) {
+      log("→ Điền nội dung:", desc.slice(0, 60) + (desc.length > 60 ? "..." : ""));
+      await page.fill(DESC_SELECTOR, desc);
+    }
+
+    // CÓ HAI nút tên "Đăng video": một ở thanh điều hướng trái (mở hộp thoại)
+    // và một màu xanh ở cuối form (đăng thật). Nút ở nav đứng TRƯỚC trong DOM,
+    // nên .last() là nút đăng. Bấm nhầm nút nav chỉ mở lại hộp thoại và mất bài.
+    const publish = page.getByRole("button", { name: "Đăng video", exact: true }).last();
+    await publish.scrollIntoViewIfNeeded();
+    log("→ Bấm ĐĂNG...");
+    await publish.click({ timeout: TIMEOUT });
+
+    // Đăng xong Zalo gỡ form đi (quay về danh sách nội dung).
+    try {
+      await page.waitForSelector(DESC_SELECTOR, { state: "detached", timeout: 120_000 });
+      log("✅ Đã đăng.");
+    } catch {
+      await shoot("sau-khi-bam-dang");
+      throw new Error(
+        "Đã bấm Đăng nhưng form không đóng sau 2 phút — xem ảnh chụp để biết Zalo báo gì (có thể vướng kiểm duyệt hoặc thiếu trường bắt buộc)."
+      );
+    }
+
+    return { ok: true, url: page.url() };
+  } catch (e) {
+    await shoot("loi");
+    throw e;
+  } finally {
+    await browser.close();
+  }
 }
