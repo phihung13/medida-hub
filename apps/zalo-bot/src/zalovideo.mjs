@@ -367,7 +367,9 @@ export async function postToZaloVideo({
     await ensureLoggedIn(page, ctx, { sessionFile, log });
 
     log("→ Mở hộp thoại Đăng video...");
-    await page.getByRole("button", { name: "Đăng video", exact: true }).first().click({ timeout: TIMEOUT });
+    // KHÔNG dùng exact: tên truy cập của nút không khớp tuyệt đối "Đăng video"
+    // (đã đo: exact -> 0 nút, không exact -> 1 nút) nên exact làm bấm trượt.
+    await page.getByRole("button", { name: "Đăng video" }).first().click({ timeout: TIMEOUT });
     await page.waitForSelector(FILE_INPUT, { state: "attached", timeout: TIMEOUT });
 
     log("→ Gắn file:", videoPath);
@@ -386,8 +388,19 @@ export async function postToZaloVideo({
     // CÓ HAI nút tên "Đăng video": một ở thanh điều hướng trái (mở hộp thoại)
     // và một màu xanh ở cuối form (đăng thật). Nút ở nav đứng TRƯỚC trong DOM,
     // nên .last() là nút đăng. Bấm nhầm nút nav chỉ mở lại hộp thoại và mất bài.
-    const publish = page.getByRole("button", { name: "Đăng video", exact: true }).last();
+    const publish = page.getByRole("button", { name: "Đăng video" }).last();
     await publish.scrollIntoViewIfNeeded();
+    // Chốt chặn: nút đăng thật PHẢI nằm DƯỚI ô nội dung. Nếu bộ chọn lỡ trỏ vào
+    // nút ở thanh menu trái (nằm TRÊN), dừng hẳn thay vì bấm nhầm.
+    const [descBox, pubBox] = await Promise.all([
+      page.locator(DESC_SELECTOR).boundingBox(),
+      publish.boundingBox(),
+    ]);
+    if (!descBox || !pubBox || pubBox.y <= descBox.y) {
+      throw new Error(
+        "Không xác định chắc được nút Đăng của form (vị trí bất thường) — dừng để không bấm nhầm."
+      );
+    }
     log("→ Bấm ĐĂNG...");
     await publish.click({ timeout: TIMEOUT });
 
