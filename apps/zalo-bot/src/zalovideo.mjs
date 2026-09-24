@@ -217,6 +217,36 @@ export async function checkZaloVideoSession({
   }
 }
 
+/**
+ * Chạy một thao tác CHỈ ĐỌC trên Creator Center với phiên đã lưu: tự đăng
+ * nhập lại nếu cần, và LƯU cookie mới SAU khi xong. Mọi đoạn soi trang phải đi
+ * qua đây — mở trang bằng storageState rồi đóng mà không lưu sẽ làm file phiên
+ * giữ cookie cũ đã bị Zalo huỷ (chính lỗi đã gặp khi soi thủ công).
+ */
+export async function withZaloVideoPage(
+  fn,
+  { sessionFile = ZALOVIDEO_SESSION_FILE, log = () => {} } = {}
+) {
+  if (!fs.existsSync(sessionFile)) {
+    throw new Error("Chưa có phiên Zalo Video — chạy: npm run zalovideo:login");
+  }
+  const chromium = await getChromium();
+  const browser = await chromium.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+  });
+  const ctx = await browser.newContext({ storageState: sessionFile });
+  const page = await ctx.newPage();
+  try {
+    await ensureLoggedIn(page, ctx, { sessionFile, log });
+    const out = await fn(page);
+    await ctx.storageState({ path: sessionFile });
+    return out;
+  } finally {
+    await browser.close();
+  }
+}
+
 /** Kiểm tra file trước khi mở trình duyệt — hỏng sớm, đỡ tốn thời gian. */
 export function validateVideo(videoPath) {
   if (!fs.existsSync(videoPath)) throw new Error(`Không thấy file: ${videoPath}`);
@@ -426,21 +456,90 @@ export async function postToZaloVideo({
       log("🧪 DRY RUN: mọi bước đều ổn — dừng tại đây, KHÔNG bấm Đăng.");
       return { ok: true, dryRun: true, url: page.url() };
     }
+    // Theo dõi request THẬT tới Zalo (bỏ analytics/giám sát lỗi). Việc tải
+    // video lên CHỈ bắt đầu khi bấm Đăng — đã đo: chọn file xong không có
+    // request tải lên nào, xem trước chỉ đọc blob: trên máy.
+    const NOISE = /google-analytics|googletagmanager|doubleclick|sentry|\/collect\b|^blob:|^data:/i;
+    const inflight = new Map();
+    const netLog = [];
+    let lastActivity = Date.now();
+    let started = 0;
+    const tag = (q) => `${q.method()} ${q.url().split("?")[0].slice(0, 90)}`;
+    page.on("request", (q) => {
+      if (NOISE.test(q.url()) || q.method() === "GET") return;
+      inflight.set(q, Date.now());
+      started++;
+      lastActivity = Date.now();
+      log("   ↑ bắt đầu:", tag(q));
+    });
+    const onEnd = (ok) => async (q) => {
+      if (!inflight.has(q)) return;
+      const secs = Math.round((Date.now() - inflight.get(q)) / 1000);
+      inflight.delete(q);
+      lastActivity = Date.now();
+      let st = "";
+      try { st = String((await q.response())?.status() ?? ""); } catch {}
+      const line = `${ok ? "xong" : "HỎNG"} ${st} (${secs}s) ${tag(q)}${ok ? "" : " — " + (q.failure()?.errorText || "")}`;
+      netLog.push(line);
+      log("   ↓", line);
+    };
+    page.on("requestfinished", onEnd(true));
+    page.on("requestfailed", onEnd(false));
+
     log("→ Bấm ĐĂNG...");
     await publish.click({ timeout: TIMEOUT });
 
-    // Đăng xong Zalo gỡ form đi (quay về danh sách nội dung).
-    try {
-      await page.waitForSelector(DESC_SELECTOR, { state: "detached", timeout: 120_000 });
-      log("✅ Đã đăng.");
-    } catch {
-      await shoot("sau-khi-bam-dang");
-      throw new Error(
-        "Đã bấm Đăng nhưng form không đóng sau 2 phút — xem ảnh chụp để biết Zalo báo gì (có thể vướng kiểm duyệt hoặc thiếu trường bắt buộc)."
-      );
+    // KHÔNG coi "form đóng" là xong: bản cũ làm vậy rồi đóng trình duyệt ngay
+    // trong khi video mới BẮT ĐẦU tải lên -> tải bị cắt ngang, kênh không có
+    // video nào dù script báo ✅. Giờ chờ tới khi mọi request thật đã xong và
+    // mạng đứng yên 20 giây (tối đa 20 phút cho file lớn).
+    log("→ Chờ Zalo tải video lên xong (đừng đóng cửa sổ)...");
+    const QUIET = 20_000;
+    const HARD = Date.now() + 20 * 60_000;
+    let lastReport = 0;
+    while (Date.now() < HARD) {
+      const idle = inflight.size === 0 && Date.now() - lastActivity >= QUIET;
+      if (idle && started > 0) break;
+      if (Date.now() - lastReport > 30_000) {
+        lastReport = Date.now();
+        log(`   ...đang chờ: ${inflight.size} request chưa xong, ${started} đã bắt đầu`);
+      }
+      await page.waitForTimeout(1000);
+    }
+    if (started === 0) {
+      await shoot("khong-co-request");
+      throw new Error("Đã bấm Đăng nhưng Zalo không gửi request nào — xem ảnh chụp.");
+    }
+    if (inflight.size > 0) {
+      await shoot("tai-len-qua-lau");
+      throw new Error(`Quá 20 phút vẫn còn ${inflight.size} request tải lên chưa xong.`);
+    }
+    const failed = netLog.filter((l) => l.startsWith("HỎNG") || / [45]\d\d /.test(l));
+    if (failed.length) {
+      await shoot("request-hong");
+      throw new Error("Có request tới Zalo bị lỗi khi đăng: " + failed.join(" | "));
     }
 
-    return { ok: true, url: page.url() };
+    // Kiểm chứng THẬT: video phải xuất hiện trong danh sách của kênh
+    // (Công khai hoặc Riêng tư). Chưa thấy thì báo rõ, không báo thành công giả.
+    log("→ Kiểm tra video đã có trên kênh chưa...");
+    let found = "";
+    for (const type of ["public", "private"]) {
+      await page.goto(`${CREATOR_URL}/video?tab=tong-quat&type=${type}`, { waitUntil: "domcontentloaded", timeout: TIMEOUT });
+      await page.waitForTimeout(6000);
+      const txt = await page.evaluate(() => document.body.innerText);
+      if (!/Không có video nào/.test(txt)) {
+        found = type;
+        break;
+      }
+    }
+    if (!found) {
+      await shoot("chua-thay-video");
+      log("⚠️  Tải lên đã xong nhưng CHƯA thấy video trong danh sách — có thể Zalo còn đang xử lý/kiểm duyệt. Kiểm tra lại sau vài phút.");
+      return { ok: false, pending: true, netLog };
+    }
+    log(`✅ Đã đăng — video có trong danh sách (${found === "public" ? "Công khai" : "Riêng tư"}).`);
+    return { ok: true, visibility: found, url: page.url(), netLog };
   } catch (e) {
     await shoot("loi");
     throw e;
