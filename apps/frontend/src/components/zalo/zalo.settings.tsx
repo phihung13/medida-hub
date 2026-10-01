@@ -16,6 +16,7 @@ import {
   Toggle,
 } from './zalo.shared';
 import { ZaloVideoCard } from '@gitroom/frontend/components/zalo/zalo.video.card';
+import { ZaloRecoverCard } from '@gitroom/frontend/components/zalo/zalo.recover.card';
 
 // ============================================================================
 //  Tab "Cài đặt" — thay tab Settings của dashboard bot: tạm dừng nhận ảnh,
@@ -187,6 +188,9 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
           </DangerLink>
         </div>
       </Card>
+
+      {/* Lấy lại ảnh gửi vào nhóm trong lúc bot mất phiên Zalo. */}
+      <ZaloRecoverCard />
 
       {/* Zalo Video: phiên trình duyệt để bot đăng video hộ (không có API). */}
       <ZaloVideoCard />

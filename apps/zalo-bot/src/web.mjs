@@ -801,6 +801,23 @@ export function startWeb(ctx = {}) {
     setTimeout(() => process.exit(0), 700);
   });
 
+  // ===== Lấy lại tin bị lỡ (lỡ đăng xuất / mất phiên Zalo) — xem recover.mjs =====
+  // Xem trước: các đợt ảnh trong khoảng thời gian, chia đúng như lúc nhận trực tiếp.
+  app.post("/api/zalo/recover/preview", requireAuth, async (req, res) => {
+    if (!ctx.recovery) return res.status(501).json({ ok: false, error: "Bản bot này chưa hỗ trợ lấy lại tin." });
+    try { res.json({ ok: true, groups: await ctx.recovery.preview(req.body || {}) }); }
+    catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+  });
+  // Tạo bản nháp cho các đợt đã chọn — chạy nền, tiến độ ghi vào nhật ký bot.
+  app.post("/api/zalo/recover/run", requireAuth, async (req, res) => {
+    if (!ctx.recovery) return res.status(501).json({ ok: false, error: "Bản bot này chưa hỗ trợ lấy lại tin." });
+    try {
+      const r = await ctx.recovery.run(req.body || {});
+      store.pushLog(`Lấy lại tin bị lỡ: bắt đầu xử lý ${r.started} đợt ảnh.`);
+      res.json({ ok: true, ...r });
+    } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+  });
+
   // ===== Lắng nghe (live) — trạng thái nhận tin & xử lý theo nhóm =====
   app.get("/api/live", requireAuth, (req, res) => {
     const liveArr = ctx.getLive ? ctx.getLive() : [];

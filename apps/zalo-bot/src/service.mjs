@@ -14,6 +14,7 @@ import { startWeb } from "./web.mjs";
 import { pushToPostiz } from "./postiz.mjs";
 import * as store from "./store.mjs";
 import * as live from "./live.mjs";
+import { createRecovery, createSeenStore } from "./recover.mjs";
 import { CRED_FILE, QR_FILE, dataPath, loadTokensIntoEnv } from "./paths.mjs";
 
 loadTokensIntoEnv(); // nạp token Trang FB đã lưu (data/tokens.json) vào process.env trước khi chạy
@@ -51,6 +52,9 @@ async function main() {
 
   const status = { zaloConnected: false, relogging: false, ownId: null };
   let currentApi = null;
+  // Id tin ảnh/video listener đã nhận trực tiếp — để "Lấy lại tin bị lỡ" biết
+  // đợt nào bot đã có, không lấy lại thành trùng.
+  const seenMsgs = createSeenStore();
   const threadTypeOf = new Map();
 
   const batcher = new Batcher({
@@ -198,6 +202,7 @@ async function main() {
         if (store.getSettings().paused) return; // tạm dừng
         if (["image", "video", "text", "command"].includes(ev.kind)) {
           const rt = getRoute(ev.threadId);
+          if (rt && (ev.kind === "image" || ev.kind === "video")) seenMsgs.add(ev.msgId);
           if (rt) {
             console.log(`📥 ${ev.kind} [${ev.msgType}] từ "${ev.senderName}" (nhóm ${ev.threadId})`);
             if (ev.kind !== "command") live.event(ev.threadId, rt.label, ev, rt);
@@ -268,7 +273,18 @@ async function main() {
     } finally { status.relogging = false; }
   }
 
-  startWeb({ status, reloadConfig, getZalo: () => currentApi, relogin: reloginZalo, reconnect: reconnectZalo, getLive: () => live.snapshot(),
+  // Lấy lại tin bị lỡ (lỡ đăng xuất / mất phiên Zalo): đọc lịch sử nhóm rồi
+  // phát lại qua ĐÚNG hàm chốt batch của luồng trực tiếp -> ra bản nháp như thường.
+  const recovery = createRecovery({
+    getApi: () => currentApi,
+    getRoutes: () => cfg.byThread,
+    getRoute,
+    wasSeen: (id) => seenMsgs.has(id),
+    handleBatch: (b, reason) => batcher.onClose(b, reason),
+    log: (m) => { store.pushLog(m); console.log("  [recover]", m); },
+  });
+
+  startWeb({ status, reloadConfig, getZalo: () => currentApi, relogin: reloginZalo, reconnect: reconnectZalo, getLive: () => live.snapshot(), recovery,
     closeNow: (tid) => batcher.close(String(tid), "manual") }); // web dashboard
 
   // ===== BỘ HẸN GIỜ: mỗi 30s, đăng các bài đã tới giờ hẹn =====
