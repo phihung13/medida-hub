@@ -22,9 +22,14 @@ type Session = {
   images: number;
   videos: number;
   senders: string[];
+  // Đoạn chữ đầu của bài (caption người gửi) — để nhận ra bài nào là bài nào.
+  text?: string;
   thumb: string;
   seenLive: boolean;
   recovered: boolean;
+  // Trùng khung thời gian một đợt bot đã xử lý (có thể đã có bản nháp).
+  maybeDup?: boolean;
+  dupAt?: number | null;
 };
 type Group = {
   threadId: string;
@@ -75,12 +80,13 @@ export const ZaloRecoverCard: FC = () => {
       if (!r?.ok) throw new Error(r?.error || 'Không đọc được lịch sử nhóm');
       const list: Group[] = r.groups || [];
       setGroups(list);
-      // Mặc định chọn các đợt bot CHƯA có (chưa nhận trực tiếp, chưa lấy lại).
+      // Mặc định chỉ chọn các đợt bot CHẮC CHẮN chưa có: chưa nhận trực
+      // tiếp, chưa lấy lại, không trùng khung giờ một đợt đã xử lý.
       setPicked(
         new Set(
           list
             .flatMap((g) => g.sessions)
-            .filter((s) => !s.seenLive && !s.recovered)
+            .filter((s) => !s.seenLive && !s.recovered && !s.maybeDup)
             .map((s) => s.id)
         )
       );
@@ -133,7 +139,7 @@ export const ZaloRecoverCard: FC = () => {
       <div className="text-[13px] text-textItemBlur leading-[1.55]">
         {t(
           'zalo_recover_hint',
-          'Ảnh gửi vào nhóm lúc bot mất phiên Zalo sẽ không tới bot. Chọn khoảng thời gian bị lỡ — bot đọc lại lịch sử nhóm và tạo bản nháp như bình thường. Zalo chỉ giữ các tin gần nhất, nên làm càng sớm càng đủ.'
+          'Ảnh gửi vào nhóm lúc bot mất phiên Zalo sẽ không tới bot. Chọn khoảng thời gian bị lỡ — bot đọc lại lịch sử nhóm, tách mỗi người gửi / mỗi đợt ảnh thành một bài riêng, bỏ tin chat không liên quan, rồi tạo bản nháp. Zalo chỉ giữ các tin gần nhất, nên làm càng sớm càng đủ.'
         )}
       </div>
 
@@ -221,6 +227,9 @@ export const ZaloRecoverCard: FC = () => {
                           {fmt(s.start)}
                           {s.end - s.start > 60000 ? `–${fmtTime(s.end)}` : ''}
                         </div>
+                        {!!s.text && (
+                          <div className="text-[12.5px] truncate">{s.text}</div>
+                        )}
                         <div className="text-[12px] text-textItemBlur truncate">
                           {[
                             s.images ? `${s.images} ảnh` : '',
@@ -231,11 +240,15 @@ export const ZaloRecoverCard: FC = () => {
                             .join(' · ')}
                         </div>
                       </div>
-                      {(s.recovered || s.seenLive) && (
-                        <span className="text-[11.5px] text-textItemBlur shrink-0">
+                      {(s.recovered || s.seenLive || s.maybeDup) && (
+                        <span className="text-[11.5px] text-textItemBlur shrink-0 text-end">
                           {s.recovered
                             ? t('zalo_recover_done', 'Đã lấy lại')
-                            : t('zalo_recover_seen', 'Bot đã nhận')}
+                            : s.seenLive
+                            ? t('zalo_recover_seen', 'Bot đã nhận')
+                            : `${t('zalo_recover_maybe_dup', 'Có thể đã có')}${
+                                s.dupAt ? ` · ${fmtTime(s.dupAt)}` : ''
+                              }`}
                         </span>
                       )}
                     </label>

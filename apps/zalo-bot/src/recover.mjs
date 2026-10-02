@@ -17,8 +17,6 @@ import path from "node:path";
 import { extractEvent } from "./extract.mjs";
 import { dataPath } from "./paths.mjs";
 
-const PRE_EXPIRY_MS = 3600000;
-
 /** Đọc lịch sử nhóm, thử số tin lớn trước (Zalo có thể giới hạn). */
 export async function fetchGroupHistory(api, threadId) {
   let lastErr = null;
@@ -33,46 +31,65 @@ export async function fetchGroupHistory(api, threadId) {
   throw lastErr || new Error("Không đọc được lịch sử nhóm");
 }
 
-/** Chia tin (đã sắp theo thời gian) thành các đợt như batcher. */
+// Đọc lại lịch sử thì CHẶT hơn luồng trực tiếp (người dùng yêu cầu): không
+// gộp 2 bài khác nhau làm một, và không lấy chữ chat không liên quan làm
+// tư liệu caption.
+const POST_GAP_MS = 5 * 60 * 1000;   // ảnh cách nhau quá 5 phút -> bài khác
+const PRE_TEXT_MS = 10 * 60 * 1000;  // chữ gửi trước ảnh tối đa 10 phút
+// Có ít nhất 4 chữ cái/chữ số -> không phải chỉ emoji, dấu câu, "ok", "dạ".
+const meaningful = (t) => ((String(t || "").match(/[\p{L}\p{N}]/gu) || []).length >= 4);
+
+/**
+ * Chia tin (đã sắp theo thời gian) thành các BÀI.
+ * - Mỗi bài là ảnh/video của MỘT người gửi (người khác chen vào giữa không
+ *   cắt bài của người đang gửi).
+ * - Ảnh cách nhau quá 5 phút (hoặc quá debounceMs nếu nhỏ hơn), hoặc quá
+ *   maxWaitMs kể từ ảnh đầu -> bài mới.
+ * - Lệnh "xong/đăng/ok" chỉ chốt bài khi do CHÍNH người đang gửi ảnh gõ.
+ * - Chữ đi kèm: chỉ chữ của chính người gửi bài, từ 10 phút trước ảnh đầu
+ *   tới 5 phút sau ảnh cuối, có nội dung (bỏ emoji/"ok"). Mỗi tin chữ chỉ
+ *   gắn vào MỘT bài — bài gần nó nhất.
+ */
 export function splitSessions(events, route) {
   const debounce = Number(route.debounceMs) || 600000;
   const maxWait = Number(route.maxWaitMs) || 1800000;
+  const gap = Math.min(debounce, POST_GAP_MS);
   const sessions = [];
-  let cur = null;
-  let preTexts = [];
-  const close = () => {
+  const texts = [];
+  // Bài đang mở của TỪNG người gửi: cô A đang gửi mà cô B chen vài tấm vào
+  // thì bài của cô A vẫn liền một bài, không bị cắt đôi.
+  const open = new Map();
+  const close = (sender) => {
+    const cur = open.get(sender);
     if (cur && cur.items.length) sessions.push(cur);
-    cur = null;
+    open.delete(sender);
   };
   for (const ev of events) {
     if (ev.kind === "command") {
-      close();
+      close(ev.senderId);
       continue;
     }
     if (ev.kind === "text") {
-      if (!ev.text) continue;
-      const t = { text: ev.text, senderId: ev.senderId, ts: ev.ts };
-      if (cur && ev.ts - cur.lastTs <= debounce) {
-        cur.texts.push(t);
-        cur.lastTs = ev.ts; // batcher: có ảnh rồi thì chữ gia hạn debounce
-      } else {
-        if (cur) close();
-        preTexts.push(t);
-      }
+      if (meaningful(ev.text)) texts.push(ev);
       continue;
     }
     if (ev.kind !== "image" && ev.kind !== "video") continue;
-    if (cur && (ev.ts - cur.lastTs > debounce || ev.ts - cur.firstTs > maxWait)) close();
+    let cur = open.get(ev.senderId);
+    if (cur && (ev.ts - cur.lastTs > gap || ev.ts - cur.firstTs > maxWait)) {
+      close(ev.senderId);
+      cur = null;
+    }
     if (!cur) {
       cur = {
+        senderId: ev.senderId,
         items: [],
-        texts: preTexts.filter((t) => ev.ts - t.ts <= PRE_EXPIRY_MS).slice(-80),
+        texts: [],
         firstTs: ev.ts,
         lastTs: ev.ts,
         msgIds: [],
         senders: new Set(),
       };
-      preTexts = [];
+      open.set(ev.senderId, cur);
     }
     cur.items.push({
       kind: ev.kind, url: ev.mediaUrl, posterUrl: ev.posterUrl,
@@ -82,7 +99,21 @@ export function splitSessions(events, route) {
     if (ev.senderName) cur.senders.add(ev.senderName);
     cur.lastTs = ev.ts;
   }
-  close();
+  for (const sender of [...open.keys()]) close(sender);
+  sessions.sort((a, b) => a.firstTs - b.firstTs);
+
+  for (const t of texts) {
+    let best = null;
+    let bestDist = Infinity;
+    for (const s of sessions) {
+      if (s.senderId !== t.senderId) continue;
+      if (t.ts < s.firstTs - PRE_TEXT_MS || t.ts > s.lastTs + gap) continue;
+      const dist = t.ts < s.firstTs ? s.firstTs - t.ts : t.ts > s.lastTs ? t.ts - s.lastTs : 0;
+      if (dist < bestDist) { best = s; bestDist = dist; }
+    }
+    if (best) best.texts.push({ text: t.text, senderId: t.senderId, ts: t.ts });
+  }
+  for (const s of sessions) s.texts.sort((a, b) => a.ts - b.ts);
   return sessions;
 }
 
@@ -113,6 +144,26 @@ export function createSeenStore(file = dataPath("data", "seen-msgs.json"), limit
     },
     has: (msgId) => set.has(String(msgId)),
   };
+}
+
+/**
+ * Mốc bắt đầu các đợt bot ĐÃ xử lý, theo nhóm. pipeline.mjs lưu mỗi đợt vào
+ * output/<threadId>_<startedAt> (startedAt = lúc tin đầu của đợt vào bộ gom),
+ * nên đây là dấu vết đáng tin cho cả những bài có TRƯỚC khi có seen-msgs.json.
+ * Thư mục chỉ mất khi bỏ bản nháp ngay trong bot.
+ */
+function listProcessed() {
+  const map = new Map();
+  let names = [];
+  try { names = fs.readdirSync(dataPath("output")); } catch {}
+  for (const n of names) {
+    const m = /^(.+)_(\d{12,14})$/.exec(n);
+    if (!m) continue;
+    const arr = map.get(m[1]) || [];
+    arr.push(Number(m[2]));
+    map.set(m[1], arr);
+  }
+  return map;
 }
 
 // Đợt đã lấy lại (khoá = nhóm + id tin ảnh đầu) — chặn bấm "tạo bản nháp" 2 lần.
@@ -146,6 +197,7 @@ export function createRecovery({ getApi, getRoutes, getRoute, wasSeen, handleBat
     const fromMs = Number(from), toMs = Number(to);
     if (!(fromMs > 0) || !(toMs > fromMs)) throw new Error("Khoảng thời gian không hợp lệ.");
     const done = loadDone();
+    const processed = listProcessed();
     const tids = [...getRoutes().keys()].filter((tid) => getRoute(tid));
     // Đọc song song 4 nhóm một lúc: proxy trước bot cắt kết nối sau ~60s.
     const groups = new Array(tids.length);
@@ -177,6 +229,16 @@ export function createRecovery({ getApi, getRoutes, getRoute, wasSeen, handleBat
         .map((s) => {
           const id = `${tid}:${s.msgIds[0]}`;
           const seen = s.msgIds.filter((m) => wasSeen(m)).length;
+          // Một đợt trực tiếp gom ảnh từ lúc bắt đầu tới tối đa maxWaitMs sau đó
+          // -> ảnh đầu của đợt này rơi vào khung đó thì nhiều khả năng đã có
+          // bản nháp. Bỏ qua thư mục của chính đợt này nếu nó là đợt đã lấy lại.
+          const maxWait = Number(route.maxWaitMs) || 1800000;
+          const dupAt = (processed.get(tid) || []).find(
+            (s0) =>
+              s.firstTs >= s0 - 120000 &&
+              s.firstTs <= s0 + maxWait + 120000 &&
+              !(s0 === s.firstTs && done.has(id))
+          );
           return {
             id,
             threadId: tid,
@@ -185,9 +247,15 @@ export function createRecovery({ getApi, getRoutes, getRoute, wasSeen, handleBat
             images: s.items.filter((i) => i.kind === "image").length,
             videos: s.items.filter((i) => i.kind === "video").length,
             senders: [...s.senders].slice(0, 3),
+            // Đoạn chữ đầu của bài — để nhận ra bài nào là bài nào.
+            text: (s.texts[0]?.text || s.items.find((i) => i.caption)?.caption || "").slice(0, 120),
             thumb: s.items.find((i) => i.kind === "image")?.url || s.items[0]?.posterUrl || "",
-            // Bot đã nhận trực tiếp toàn bộ ảnh đợt này -> không cần lấy lại.
-            seenLive: seen === s.msgIds.length,
+            // Bot đã nhận trực tiếp ảnh của đợt này (dù chỉ 1 tấm) -> đợt đó
+            // đã ra bản nháp, lấy lại sẽ thành trùng.
+            seenLive: seen > 0,
+            // Trùng khung thời gian một đợt bot đã xử lý -> có thể đã có bản nháp.
+            maybeDup: dupAt != null,
+            dupAt: dupAt ?? null,
             recovered: done.has(id),
             _batch: { threadId: tid, items: s.items, texts: s.texts, startedAt: s.firstTs },
           };
