@@ -44,6 +44,18 @@ import { useShortlinkPreference } from '@gitroom/frontend/components/settings/sh
 import dayjs from 'dayjs';
 import { Button } from '@gitroom/react/form/button';
 import { useIsMobile } from '@gitroom/frontend/components/new-layout/use.is.mobile';
+import {
+  trackFeature,
+  trackFeatureError,
+} from '@gitroom/frontend/components/usage/usage.tracker';
+
+// Khoá thu thập sử dụng (docs/THU_THAP_SU_DUNG.md) — cố định, đừng đổi tên.
+const USAGE_KEY = {
+  draft: 'bai-viet.luu-nhap',
+  now: 'bai-viet.dang-ngay',
+  schedule: 'bai-viet.len-lich',
+  update: 'bai-viet.cap-nhat',
+} as const;
 
 export const ManageModal: FC<AddEditModalProps> = (props) => {
   const t = useT();
@@ -61,6 +73,14 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
   const { data: shortlinkPreferenceData } = useShortlinkPreference();
 
   const { addEditSets, mutate, customClose, dummy } = props;
+  // Mốc mở khung soạn — đo "soạn một bài mất bao lâu".
+  const openedAt = useRef(Date.now());
+  useEffect(() => {
+    if (dummy || addEditSets) return;
+    trackFeature('bai-viet.mo-khung-soan', {
+      extra: { sua: !!existingData?.group },
+    });
+  }, []);
 
   const {
     selectedIntegrations,
@@ -190,6 +210,7 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
     await fetch(`/posts/${existingData.group}`, {
       method: 'DELETE',
     });
+    trackFeature('bai-viet.xoa', { extra: { tu: 'khung-soan' } });
     mutate();
     modal.closeAll();
     return;
@@ -291,6 +312,9 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
         const notEnoughChars = checkAllValid.filter((p: any) => p.emptyContent);
 
         for (const item of notEnoughChars) {
+          trackFeatureError(USAGE_KEY[type], 'THIEU_NOI_DUNG', {
+            kenh: item.identifier,
+          });
           toaster.show(
             `${capitalize(item.identifier.split('-')[0])} (${item.name}):` +
               ' ' +
@@ -312,6 +336,9 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
         if (type !== 'draft') {
           for (const item of checkAllValid) {
             if (item.valid === false) {
+              trackFeatureError(USAGE_KEY[type], 'CAI_DAT_SAI', {
+                kenh: item.identifier,
+              });
               toaster.show(
                 `${capitalize(item.identifier.split('-')[0])} (${item.name}): ${
                   item.settingsError ||
@@ -330,6 +357,9 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
             }
 
             if (item.errors !== true) {
+              trackFeatureError(USAGE_KEY[type], 'NOI_DUNG_KHONG_HOP_LE', {
+                kenh: item.identifier,
+              });
               toaster.show(
                 `${capitalize(item.identifier.split('-')[0])} (${item.name}): ${
                   item.errors
@@ -346,6 +376,9 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
             }
 
             if (item.tooLong) {
+              trackFeatureError(USAGE_KEY[type], 'QUA_DAI', {
+                kenh: item.identifier,
+              });
               toaster.show(
                 `${item.name} (${item.identifier}) ${t(
                   'post_is_too_long',
@@ -426,12 +459,41 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
       }
 
       if (!dummy) {
-        addEditSets
-          ? addEditSets(data)
-          : await fetch('/posts', {
-              method: 'POST',
-              body: JSON.stringify(data),
+        if (addEditSets) {
+          addEditSets(data);
+        } else {
+          const res = await fetch('/posts', {
+            method: 'POST',
+            body: JSON.stringify(data),
+          });
+          // Chỉ số đếm — không bao giờ gửi nội dung bài / tên kênh.
+          const extra = {
+            so_kenh: posts.length,
+            so_phan: posts.reduce(
+              (n: number, p: any) => n + (p.value?.length || 0),
+              0
+            ),
+            so_media: posts.reduce(
+              (n: number, p: any) =>
+                n +
+                (p.value || []).reduce(
+                  (m: number, v: any) => m + (v.image?.length || 0),
+                  0
+                ),
+              0
+            ),
+            sua: !!existingData?.group,
+            lap_lai: !!repeater,
+          };
+          if (res.ok) {
+            trackFeature(USAGE_KEY[type], {
+              durationMs: Math.min(Date.now() - openedAt.current, 86_400_000),
+              extra,
             });
+          } else {
+            trackFeatureError(USAGE_KEY[type], `HTTP_${res.status}`, extra);
+          }
+        }
 
         if (!addEditSets) {
           mutate();

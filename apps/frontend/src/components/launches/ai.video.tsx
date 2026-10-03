@@ -13,6 +13,11 @@ import { VideoContextWrapper } from '@gitroom/frontend/components/videos/video.c
 import { useToaster } from '@gitroom/react/toaster/toaster';
 import { useModals } from '@gitroom/frontend/components/layout/new-modal';
 import { createPortal } from 'react-dom';
+import {
+  startTimer,
+  trackFeature,
+  trackFeatureError,
+} from '@gitroom/frontend/components/usage/usage.tracker';
 
 export const Modal: FC<{
   close: () => void;
@@ -48,6 +53,7 @@ export const Modal: FC<{
       toaster.show('Please fill all required fields', 'warning');
       return;
     }
+    const elapsed = startTimer();
     try {
       const image = await fetch(`/media/generate-video`, {
         method: 'POST',
@@ -59,9 +65,19 @@ export const Modal: FC<{
       });
 
       if (image.status == 200 || image.status == 201) {
+        trackFeature('ai.tao-video', {
+          durationMs: elapsed(),
+          extra: { loai: type.identifier, khung: position },
+        });
         onChange(await image.json());
+      } else {
+        trackFeatureError('ai.tao-video', `HTTP_${image.status}`, {
+          loai: type.identifier,
+        });
       }
-    } catch (e) {}
+    } catch (e) {
+      trackFeatureError('ai.tao-video', 'LOI_MANG');
+    }
 
     setLocked(false);
     setLoading(false);

@@ -66,6 +66,10 @@ import { LoadingComponent } from '@gitroom/frontend/components/layout/loading';
 import { useDebounce } from 'use-debounce';
 import { MediaFromUrl } from '@gitroom/frontend/components/new-launch/media.from.url';
 import { isVideoPath } from '@gitroom/frontend/components/new-launch/providers/video.only';
+import {
+  trackFeature,
+  trackFeatureError,
+} from '@gitroom/frontend/components/usage/usage.tracker';
 // Editor ảnh: dùng Filerobot (MIT, miễn phí, không cần license key) thay Polotno.
 const FilerobotEditor = dynamic(
   () => import('@gitroom/frontend/components/launches/filerobot.editor')
@@ -255,6 +259,13 @@ export const MediaBox: FC<{
         ? 'video/mp4'
         : 'image/*,video/mp4',
     onUploadSuccess: async (arr) => {
+      trackFeature('media.tai-len', {
+        extra: {
+          so_tep: arr.length,
+          so_video: arr.filter((m: any) => isVideoPath(m?.path)).length,
+          tu: standalone ? 'thu-vien' : 'chon-media',
+        },
+      });
       await mutate();
       if (standalone) {
         return;
@@ -469,6 +480,7 @@ export const MediaBox: FC<{
           throw new Error(message);
         }
       } catch (err) {
+        trackFeatureError('media.xoa');
         toaster.show(
           (err as any)?.message ||
             t('delete_image_failed', 'Không xoá được ảnh — thử lại sau.'),
@@ -476,6 +488,7 @@ export const MediaBox: FC<{
         );
         return;
       }
+      trackFeature('media.xoa');
       mutate();
     },
     [mutate, fetch, toaster, t]

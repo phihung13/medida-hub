@@ -10,6 +10,10 @@ import { useUser } from '@gitroom/frontend/components/layout/user.context';
 import { useVariables } from '@gitroom/react/helpers/variable.context';
 import { LanguageComponent } from '@gitroom/frontend/components/layout/language.component';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
+import {
+  FeedbackIcon,
+  useOpenFeedback,
+} from '@gitroom/frontend/components/usage/usage.component';
 
 const ModeComponent = dynamic(
   () => import('@gitroom/frontend/components/layout/mode.component'),
@@ -75,6 +79,7 @@ export const MobileNav: FC = () => {
   const { billingEnabled } = useVariables();
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
+  const openFeedback = useOpenFeedback();
 
   // Điều kiện ẩn/hiện giữ NGUYÊN như bản cũ (đồng bộ với TopMenu desktop).
   const items: Item[] = useMemo(
@@ -97,8 +102,16 @@ export const MobileNav: FC = () => {
     [items]
   );
   const rest = useMemo(
-    () => items.filter((i) => !PRIMARY_PATHS.includes(i.path)),
-    [items]
+    () => [
+      ...items.filter((i) => !PRIMARY_PATHS.includes(i.path)),
+      {
+        name: t('feedback_menu', 'Góp ý'),
+        path: '#gop-y',
+        icon: <FeedbackIcon />,
+        onClick: openFeedback,
+      },
+    ],
+    [items, openFeedback, t]
   );
 
   // Đổi trang thì tự đóng sheet.

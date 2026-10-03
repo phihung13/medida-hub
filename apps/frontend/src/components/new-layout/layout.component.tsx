@@ -44,6 +44,10 @@ import { AttachToFeedbackIcon } from '@gitroom/frontend/components/new-layout/se
 import { FirstBillingComponent } from '@gitroom/frontend/components/billing/first.billing.component';
 import { TrialTracker } from '@gitroom/frontend/components/layout/gtm.component';
 import { MobileNav } from '@gitroom/frontend/components/new-layout/mobile.nav';
+import {
+  FeedbackButton,
+  UsageTracker,
+} from '@gitroom/frontend/components/usage/usage.component';
 
 const jakartaSans = Plus_Jakarta_Sans({
   weight: ['600', '500', '700'],
@@ -90,6 +94,8 @@ export const LayoutComponent = ({ children }: { children: ReactNode }) => {
             <PreConditionComponent />
             <NewSubscription />
             <ContinueProvider />
+            {/* Thu thập sử dụng & góp ý -> Major OS (docs/THU_THAP_SU_DUNG.md) */}
+            <UsageTracker />
             {/* Mobile: edge-to-edge (p-0) — nội dung là trung tâm, không còn
                 khung card bo tròn; chừa đáy đúng chiều cao tab bar mới qua
                 --bottom-nav-h (global.scss). Desktop giữ nguyên p-[12px]. */}
@@ -148,6 +154,9 @@ export const LayoutComponent = ({ children }: { children: ReactNode }) => {
                           <div className="w-[1px] h-[20px] bg-blockSeparator mobile:hidden" />
                           <div className="mobile:hidden empty:hidden">
                             <AttachToFeedbackIcon />
+                          </div>
+                          <div className="mobile:hidden flex">
+                            <FeedbackButton />
                           </div>
                           <NotificationComponent />
                         </div>

@@ -59,6 +59,10 @@ import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validatio
 import { newDayjs } from '@gitroom/frontend/components/layout/set.timezone';
 import { Button } from '@gitroom/react/form/button';
 import { useMediaDirectory } from '@gitroom/react/helpers/use.media.directory';
+import {
+  trackFeature,
+  trackFeatureError,
+} from '@gitroom/frontend/components/usage/usage.tracker';
 
 // Extend dayjs with necessary plugins
 extend(isSameOrAfter);
@@ -116,6 +120,7 @@ export const usePostActions = (onMutate?: () => void) => {
         publishDate: loadPost.actualDate || loadPost.publishDate,
       };
 
+      if (isDuplicate) trackFeature('bai-viet.nhan-ban');
       const data = await (await fetch(`/posts/group/${post.group}`)).json();
       const date = !isDuplicate
         ? null
@@ -208,6 +213,7 @@ export const usePostActions = (onMutate?: () => void) => {
       await fetch(`/posts/${post.group}`, {
         method: 'DELETE',
       });
+      trackFeature('bai-viet.xoa', { extra: { tu: 'lich' } });
 
       toaster.show(
         t('post_deleted_successfully', 'Post deleted successfully'),
@@ -221,6 +227,7 @@ export const usePostActions = (onMutate?: () => void) => {
 
   const openStatistics = useCallback(
     (id: string) => () => {
+      trackFeature('bai-viet.xem-thong-ke');
       modal.openModal({
         title: t('statistics', 'Statistics'),
         closeOnClickOutside: true,
@@ -750,6 +757,11 @@ export const CalendarColumn: FC<{
           action,
         }),
       });
+      if (status >= 400) {
+        trackFeatureError('lich.keo-tha', `HTTP_${status}`);
+      } else {
+        trackFeature('lich.keo-tha', { extra: { kieu: action } });
+      }
       if (status !== 500) {
         if (item.interval || action === 'schedule') {
           reloadCalendarView();
@@ -1108,6 +1120,7 @@ const CalendarItem: FC<{
     post.creationMethod &&
     post.creationMethod !== 'UNKNOWN';
   const preview = useCallback(() => {
+    trackFeature('bai-viet.xem-truoc');
     window.open(`/p/` + post.id + '?share=true', '_blank');
   }, [post]);
   // Bài do bot Zalo đẩy vào (draft + tag "Zalo") = đang CHỜ DUYỆT — làm nổi bật

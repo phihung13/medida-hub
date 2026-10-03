@@ -30,6 +30,7 @@ import { ZaloPostsTab } from './zalo.posts';
 import { ZaloRoutesTab } from './zalo.routes';
 import { ZaloLogsTab, ZaloSettingsTab } from './zalo.settings';
 import { ZaloRecoverCard } from './zalo.recover.card';
+import { trackFeature } from '@gitroom/frontend/components/usage/usage.tracker';
 
 // ============================================================================
 //  Trang Zalo — TRUNG TÂM ĐIỀU KHIỂN thay thế hoàn toàn dashboard bot :8088.
@@ -227,6 +228,7 @@ export const ZaloComponent: FC = () => {
         method: 'POST',
         body: JSON.stringify({ threadId }),
       });
+      if (r.ok) trackFeature('zalo.chot-ngay');
       if (r.ok)
         toast.show(
           t('zalo_closing_session', 'Closing the collection session for "{{name}}" — processing now').replace('{{name}}', name),
@@ -241,6 +243,7 @@ export const ZaloComponent: FC = () => {
   const reconnectZalo = useCallback(async () => {
     try {
       await bot('/api/postiz/zalo/reconnect', { method: 'POST', body: '{}' });
+      trackFeature('zalo.ket-noi-lai');
       toast.show(t('zalo_generating_qr', 'Generating a new QR code — please wait a few seconds…'), 'success');
       setQrBroken(false);
     } catch {

@@ -7,6 +7,11 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
 import { useModals } from '@gitroom/frontend/components/layout/new-modal';
 import { useToaster } from '@gitroom/react/toaster/toaster';
+import {
+  startTimer,
+  trackFeature,
+  trackFeatureError,
+} from '@gitroom/frontend/components/usage/usage.tracker';
 const list = [
   'Realistic',
   'Cartoon',
@@ -49,6 +54,7 @@ const AiImageModal: FC<{
     setLoading(true);
     close();
     setLocked(true);
+    const elapsed = startTimer();
     try {
       const res = await fetch('/media/generate-image-with-prompt', {
         method: 'POST',
@@ -69,8 +75,10 @@ ${style}
       // Chỉ nhận ảnh hợp lệ (có id + path). Lỗi (vd chưa cấu hình key) → báo nhẹ,
       // KHÔNG thêm ảnh hỏng vào bài.
       if (res.ok && image && image.id && image.path) {
+        trackFeature('ai.tao-anh', { durationMs: elapsed() });
         onChange(image);
       } else {
+        trackFeatureError('ai.tao-anh', `HTTP_${res.status}`);
         toaster.show(
           image?.message ||
             t(
@@ -81,6 +89,7 @@ ${style}
         );
       }
     } catch (e) {
+      trackFeatureError('ai.tao-anh', 'LOI_MANG');
       toaster.show(
         t('image_gen_failed', 'Could not generate the image, please try again later.'),
         'warning'

@@ -69,6 +69,7 @@ import {
 } from '@gitroom/frontend/components/ui/icons';
 import { DelayComponent } from '@gitroom/frontend/components/new-launch/delay.component';
 import { MagicCaption } from '@gitroom/frontend/components/new-launch/magic.caption';
+import { trackFeature } from '@gitroom/frontend/components/usage/usage.tracker';
 
 // 1 GB — khớp với trần THẬT mà Uppy áp ở new.uploader.tsx (video 1GB, ảnh
 // 30MB) và khớp với chính câu thông báo bên dưới. Trước đây để 2GB nên video
@@ -617,6 +618,9 @@ export const Editor: FC<{
 
   const uppy = useUppyUploader({
     onUploadSuccess: (result: any) => {
+      trackFeature('media.tai-len', {
+        extra: { so_tep: result?.length || 0, tu: 'khung-soan' },
+      });
       appendImages(result);
       uppy.clear();
     },

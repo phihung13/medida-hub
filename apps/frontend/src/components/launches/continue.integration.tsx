@@ -15,6 +15,10 @@ import {
   forgetOauthState,
   recallOauthState,
 } from '@gitroom/frontend/components/launches/oauth.state.storage';
+import {
+  trackFeature,
+  trackFeatureError,
+} from '@gitroom/frontend/components/usage/usage.tracker';
 
 interface TwoStepState {
   integrationId: string;
@@ -178,6 +182,9 @@ export const ContinueIntegration: FC<{
           : finalError.message;
         setErrorMessage(message || finalError.msg || 'Could not add provider');
         setError(true);
+        trackFeatureError('kenh.ket-noi', `HTTP_${data.status}`, {
+          kenh: provider,
+        });
         return;
       }
 
@@ -229,6 +236,9 @@ export const ContinueIntegration: FC<{
       // Kết nối xong thì bỏ state đã cất — để lại chỉ khiến lần sau tra nhầm
       // một state đã bị backend xoá khỏi Redis.
       forgetOauthState(provider);
+      trackFeature('kenh.ket-noi', {
+        extra: { kenh: provider, lam_moi: !!searchParams.refresh },
+      });
 
       navigateOrShow(
         `/launches?added=${provider}&msg=Channel Updated${
@@ -266,9 +276,13 @@ export const ContinueIntegration: FC<{
             errorData.message || 'Failed to save channel configuration'
           );
           setError(true);
+          trackFeatureError('kenh.ket-noi', `HTTP_${response.status}`, {
+            kenh: provider,
+          });
           return;
         }
 
+        trackFeature('kenh.ket-noi', { extra: { kenh: provider, hai_buoc: true } });
         navigateOrShow(
           `/launches?added=${provider}&msg=Channel Added${
             twoStepState.onboarding ? '&onboarding=true' : ''

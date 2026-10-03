@@ -32,6 +32,7 @@ import { AddEditModal } from '@gitroom/frontend/components/new-launch/add.edit.m
 import dayjs from 'dayjs';
 import { ModalWrapperComponent } from '@gitroom/frontend/components/new-launch/modal.wrapper.component';
 import copy from 'copy-to-clipboard';
+import { trackFeature } from '@gitroom/frontend/components/usage/usage.tracker';
 
 export const Menu: FC<{
   canEnable: boolean;
@@ -123,6 +124,7 @@ export const Menu: FC<{
         id,
       }),
     });
+    trackFeature('kenh.tam-tat');
     toast.show(t('channel_disabled', 'Channel Disabled'), 'success');
     setShow(false);
     onChange(false);
@@ -165,10 +167,15 @@ export const Menu: FC<{
         // Silently ignore
       }
     }
+    trackFeature('kenh.xoa', {
+      extra: {
+        kenh: integrations.find((i) => i.id === id)?.identifier || 'khac',
+      },
+    });
     toast.show(t('channel_deleted', 'Channel Deleted'), 'success');
     setShow(false);
     onChange(true);
-  }, [t, extensionId, id]);
+  }, [t, extensionId, id, integrations]);
 
   const enableChannel = useCallback(async () => {
     await fetch('/integrations/enable', {
@@ -177,6 +184,7 @@ export const Menu: FC<{
         id,
       }),
     });
+    trackFeature('kenh.bat-lai');
     toast.show(t('channel_enabled', 'Channel Enabled'), 'success');
     setShow(false);
     onChange(false);

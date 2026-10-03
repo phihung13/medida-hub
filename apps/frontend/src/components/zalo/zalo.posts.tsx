@@ -25,6 +25,7 @@ import {
   StatusChip,
   WarningIcon,
 } from './zalo.shared';
+import { trackFeature } from '@gitroom/frontend/components/usage/usage.tracker';
 
 // ============================================================================
 //  Tab "Bài viết" — THẺ LỊCH SỬ, CHỈ HIỂN THỊ (quyết định của user 2026-07-06):
@@ -137,6 +138,7 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
   // Calendar chung. Chưa đẩy (cầu nối tắt lúc gom) → đẩy sang Hub rồi mở.
   const openInCalendar = useCallback(
     async (d: BotPost) => {
+      trackFeature('zalo.mo-bai', { extra: { da_day: !!d.pushedToHub } });
       if (d.hubPostId) {
         router.push(`/launches?openpost=${d.hubPostId}`);
         return;
@@ -188,6 +190,7 @@ export const ZaloPostsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
       setBusy(d.id);
       try {
         await bot(`/api/posts/${d.id}/delete`, { method: 'POST', body: '{}' }, 20000);
+        trackFeature('zalo.xoa-bai');
         setPosts((cur) => (cur || []).filter((p) => p.id !== d.id));
         onChanged?.();
       } catch {

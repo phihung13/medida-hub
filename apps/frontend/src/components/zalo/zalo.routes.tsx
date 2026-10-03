@@ -25,6 +25,7 @@ import {
   WarningIcon,
   ZaloGroup,
 } from './zalo.shared';
+import { trackFeature } from '@gitroom/frontend/components/usage/usage.tracker';
 
 // ============================================================================
 //  Tab "Nhóm Zalo" — NƠI DUY NHẤT cấu hình nhóm (trước bị chia đôi: ô chọn
@@ -189,6 +190,9 @@ export const ZaloRoutesTab: FC<{
           return;
         }
         setSaveState('saved');
+        trackFeature('zalo.luu-nhom', {
+          extra: { so_nhom: f.routes?.length ?? 0 },
+        });
         setLegacyGbp(0);
         onChanged?.();
       } catch {

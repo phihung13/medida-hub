@@ -8,6 +8,7 @@ import {
   Card,
   SimpleButton,
 } from '@gitroom/frontend/components/zalo/zalo.shared';
+import { trackFeature } from '@gitroom/frontend/components/usage/usage.tracker';
 
 // Thẻ quản lý phiên Zalo Video. Zalo không có API cho Zalo Video nên bot đăng
 // hộ bằng phiên trình duyệt; quét QR đăng nhập bắt buộc phải có màn hình nên
@@ -60,6 +61,7 @@ export const ZaloVideoCard: FC = () => {
           body: JSON.stringify({ session: text }),
         });
         if (!r?.ok) throw new Error(r?.error || 'Tải phiên lên thất bại');
+        trackFeature('zalo-video.tai-phien');
         setSession(r.session);
         setChannels([]);
         toaster.show(t('zalo_video_session_uploaded', 'Đã tải phiên Zalo Video lên bot'), 'success');

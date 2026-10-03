@@ -47,6 +47,9 @@ import { GoogleProvider } from '@gitroom/backend/services/auth/providers/google.
 import { FarcasterProvider } from '@gitroom/backend/services/auth/providers/farcaster.provider';
 import { WalletProvider } from '@gitroom/backend/services/auth/providers/wallet.provider';
 import { OauthProvider } from '@gitroom/backend/services/auth/providers/oauth.provider';
+import { UsageController } from '@gitroom/backend/api/routes/usage.controller';
+import { UsageService } from '@gitroom/nestjs-libraries/usage/usage.service';
+import { MajorOsClient } from '@gitroom/nestjs-libraries/usage/major-os.client';
 
 const authenticatedController = [
   UsersController,
@@ -72,6 +75,7 @@ const authenticatedController = [
   AdminController,
   ContentController,
   BulkController,
+  UsageController,
 ];
 @Module({
   imports: [UploadModule],
@@ -104,6 +108,8 @@ const authenticatedController = [
     FarcasterProvider,
     WalletProvider,
     OauthProvider,
+    UsageService,
+    MajorOsClient,
   ],
   get exports() {
     return [...this.imports, ...this.providers];

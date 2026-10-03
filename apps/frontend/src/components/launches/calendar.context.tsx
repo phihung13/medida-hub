@@ -9,6 +9,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import dayjs from 'dayjs';
@@ -23,6 +24,7 @@ import useCookie from 'react-use-cookie';
 import { newDayjs } from '@gitroom/frontend/components/layout/set.timezone';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { expandPostsList, expandPosts } from '@gitroom/helpers/utils/posts.list.minify';
+import { trackFeature } from '@gitroom/frontend/components/usage/usage.tracker';
 extend(isoWeek);
 extend(weekOfYear);
 
@@ -330,6 +332,8 @@ export const CalendarWeekProvider: FC<{
     refreshWhenOffline: false,
   });
 
+  // Chỉ ghi "đổi chế độ xem" khi người dùng chủ động đổi (không tính lùi/tới tuần).
+  const lastDisplay = useRef<string>(filters.display);
   const setFiltersWrapper = useCallback(
     (
       newFilters: {
@@ -343,6 +347,12 @@ export const CalendarWeekProvider: FC<{
       persist = true
     ) => {
       if (persist) setDisplaySaved(newFilters.display);
+      if (persist && lastDisplay.current !== newFilters.display) {
+        lastDisplay.current = newFilters.display;
+        trackFeature('lich.doi-che-do', {
+          extra: { che_do: newFilters.display },
+        });
+      }
       setFilters(newFilters);
       setInternalData([]);
 

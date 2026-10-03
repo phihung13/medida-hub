@@ -16,6 +16,7 @@ import {
 } from './zalo.shared';
 import { ZaloVideoCard } from '@gitroom/frontend/components/zalo/zalo.video.card';
 import { ZaloRecoverCard } from '@gitroom/frontend/components/zalo/zalo.recover.card';
+import { trackFeature } from '@gitroom/frontend/components/usage/usage.tracker';
 
 // ============================================================================
 //  Tab "Cài đặt" — thay tab Settings của dashboard bot: tạm dừng nhận ảnh,
@@ -87,6 +88,7 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void; onOpenToday?: () => v
       if (!(await deleteDialog(msg, t('zalo_logout', 'Log out')))) return;
       try {
         const r = await bot('/api/zalo/logout', { method: 'POST', body: JSON.stringify({ wipe }) });
+        if (r?.ok) trackFeature('zalo.dang-xuat', { extra: { xoa_du_lieu: !!wipe } });
         if (r?.ok)
           toast.show(t('zalo_logged_out', 'Logged out — scan the new QR code above to log in again'), 'success');
         else toast.show(r?.error || t('zalo_error', 'Error'), 'warning');

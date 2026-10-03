@@ -8,6 +8,11 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
 import { MagicWandIcon } from '@gitroom/frontend/components/ui/icons';
 import { deleteDialog } from '@gitroom/react/helpers/delete.dialog';
+import {
+  startTimer,
+  trackFeature,
+  trackFeatureError,
+} from '@gitroom/frontend/components/usage/usage.tracker';
 
 // ============================================================================
 //  Nút "bút phép thuật" — AI đọc các ảnh đã đính kèm rồi:
@@ -78,6 +83,7 @@ export const MagicCaption: FC<{
     }
     setLoading(true);
     setLocked(true);
+    const elapsed = startTimer();
     try {
       const sent = images.slice(0, AI_CAPTION_MAX_IMAGES);
       if (images.length > sent.length) {
@@ -106,6 +112,7 @@ export const MagicCaption: FC<{
       ]);
 
       if (!res.ok) {
+        trackFeatureError('ai.viet-caption', `HTTP_${res.status}`);
         let message = '';
         try {
           message = (await res.json())?.message || '';
@@ -165,6 +172,13 @@ export const MagicCaption: FC<{
           )
       );
 
+      trackFeature('ai.viet-caption', {
+        durationMs: elapsed(),
+        extra: {
+          so_anh: sent.length,
+          co_ngu_canh: !!(context || '').trim(),
+        },
+      });
       toaster.show(
         t(
           'magic_caption_done',
@@ -175,6 +189,10 @@ export const MagicCaption: FC<{
         'success'
       );
     } catch (err) {
+      trackFeatureError(
+        'ai.viet-caption',
+        (err as any)?.message === 'AI_CAPTION_TIMEOUT' ? 'HET_THOI_GIAN' : 'LOI_MANG'
+      );
       toaster.show(
         (err as any)?.message === 'AI_CAPTION_TIMEOUT'
           ? t(

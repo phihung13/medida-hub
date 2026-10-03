@@ -9,6 +9,10 @@ import {
   PrimaryButton,
   SimpleButton,
 } from '@gitroom/frontend/components/zalo/zalo.shared';
+import {
+  trackFeature,
+  trackFeatureError,
+} from '@gitroom/frontend/components/usage/usage.tracker';
 
 // Lấy lại ảnh gửi vào nhóm trong lúc bot mất phiên Zalo (lỡ đăng xuất, mất
 // kết nối). Bot đọc lại lịch sử nhóm, chia đợt ảnh y như lúc nhận trực tiếp,
@@ -86,6 +90,12 @@ export const ZaloRecoverCard: FC<{
       );
       if (!r?.ok) throw new Error(r?.error || 'Không đọc được lịch sử nhóm');
       const list: Group[] = r.groups || [];
+      trackFeature('zalo.xem-tin-bi-lo', {
+        extra: {
+          tu_dong: !!autoPreview,
+          so_dot: list.reduce((n, g) => n + g.sessions.length, 0),
+        },
+      });
       setGroups(list);
       // Mặc định chỉ chọn các đợt bot CHẮC CHẮN chưa có: chưa nhận trực
       // tiếp, chưa lấy lại, không trùng khung giờ một đợt đã xử lý.
@@ -98,11 +108,12 @@ export const ZaloRecoverCard: FC<{
         )
       );
     } catch (e: any) {
+      trackFeatureError('zalo.xem-tin-bi-lo');
       toaster.show(e?.message || 'Không đọc được lịch sử nhóm', 'warning');
     } finally {
       setBusy('');
     }
-  }, [range, toaster]);
+  }, [range, toaster, autoPreview]);
 
   const autoRan = useRef(false);
   useEffect(() => {
@@ -121,6 +132,9 @@ export const ZaloRecoverCard: FC<{
         180000
       );
       if (!r?.ok) throw new Error(r?.error || 'Không tạo được bản nháp');
+      trackFeature('zalo.lay-lai-tin', {
+        extra: { so_dot: Number(r.started) || 0 },
+      });
       toaster.show(
         t(
           'zalo_recover_started',
@@ -132,6 +146,7 @@ export const ZaloRecoverCard: FC<{
       setPicked(new Set());
       onDone?.();
     } catch (e: any) {
+      trackFeatureError('zalo.lay-lai-tin');
       toaster.show(e?.message || 'Không tạo được bản nháp', 'warning');
     } finally {
       setBusy('');
