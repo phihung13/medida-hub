@@ -308,3 +308,38 @@ export function createRecovery({ getApi, getRoutes, getRoute, wasSeen, handleBat
 
   return { preview, run, isRunning: () => !!running };
 }
+
+/**
+ * Theo dõi các KHOẢNG BOT MẤT PHIÊN ZALO (đăng xuất, mất mạng, bot khởi động
+ * lại khi deploy...): mỗi phút còn kết nối thì ghi "còn sống"; lúc kết nối lại
+ * mà lần sống cuối đã quá minGapMs -> lưu khoảng [lần sống cuối, bây giờ].
+ * Trang Zalo dùng để hiện "Bot mất phiên 14:05–15:20 · Lấy lại ảnh bị lỡ".
+ */
+export function createGapTracker({
+  file = dataPath("data", "zalo-alive.json"),
+  minGapMs = 3 * 60 * 1000,
+  keep = 10,
+} = {}) {
+  let state = { lastAliveAt: 0, gaps: [] };
+  try { state = { ...state, ...JSON.parse(fs.readFileSync(file, "utf8")) }; } catch {}
+  const save = () => {
+    try {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(state));
+    } catch {}
+  };
+  return {
+    /** Gọi định kỳ khi đang kết nối. */
+    alive() { state.lastAliveAt = Date.now(); save(); },
+    /** Gọi khi listener vừa kết nối (cả lần đầu sau khởi động). */
+    connected() {
+      const now = Date.now();
+      if (state.lastAliveAt && now - state.lastAliveAt > minGapMs) {
+        state.gaps = [...(state.gaps || []), { from: state.lastAliveAt, to: now }].slice(-keep);
+      }
+      state.lastAliveAt = now;
+      save();
+    },
+    list: () => [...(state.gaps || [])],
+  };
+}

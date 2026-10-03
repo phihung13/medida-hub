@@ -14,7 +14,7 @@ import { startWeb } from "./web.mjs";
 import { pushToPostiz } from "./postiz.mjs";
 import * as store from "./store.mjs";
 import * as live from "./live.mjs";
-import { createRecovery, createSeenStore } from "./recover.mjs";
+import { createRecovery, createSeenStore, createGapTracker } from "./recover.mjs";
 import { CRED_FILE, QR_FILE, dataPath, loadTokensIntoEnv } from "./paths.mjs";
 
 loadTokensIntoEnv(); // nạp token Trang FB đã lưu (data/tokens.json) vào process.env trước khi chạy
@@ -55,6 +55,9 @@ async function main() {
   // Id tin ảnh/video listener đã nhận trực tiếp — để "Lấy lại tin bị lỡ" biết
   // đợt nào bot đã có, không lấy lại thành trùng.
   const seenMsgs = createSeenStore();
+  // Khoảng bot mất phiên Zalo -> trang Zalo gợi ý "Lấy lại ảnh bị lỡ".
+  const gaps = createGapTracker();
+  setInterval(() => { if (status.zaloConnected) gaps.alive(); }, 60000).unref?.();
   const threadTypeOf = new Map();
 
   const batcher = new Batcher({
@@ -213,7 +216,7 @@ async function main() {
         }
       } catch (e) { console.error("xử lý message lỗi:", e.message); }
     });
-    api.listener.on("connected", () => { status.zaloConnected = true; try { fs.rmSync(QR_FILE, { force: true }); } catch {} console.log("🔌 Listener ĐÃ KẾT NỐI."); });
+    api.listener.on("connected", () => { status.zaloConnected = true; gaps.connected(); try { fs.rmSync(QR_FILE, { force: true }); } catch {} console.log("🔌 Listener ĐÃ KẾT NỐI."); });
     api.listener.on("disconnected", (code, reason) => { status.zaloConnected = false; console.log(`🔌 Mất kết nối (code ${code}) — tự thử lại... ${reason || ""}`); });
     api.listener.on("error", (e) => console.error("⚠️ listener error:", e?.message || e));
     api.listener.on("closed", (code, reason) => {
@@ -284,7 +287,7 @@ async function main() {
     log: (m) => { store.pushLog(m); console.log("  [recover]", m); },
   });
 
-  startWeb({ status, reloadConfig, getZalo: () => currentApi, relogin: reloginZalo, reconnect: reconnectZalo, getLive: () => live.snapshot(), recovery,
+  startWeb({ status, reloadConfig, getZalo: () => currentApi, relogin: reloginZalo, reconnect: reconnectZalo, getLive: () => live.snapshot(), recovery, getGaps: () => gaps.list(),
     closeNow: (tid) => batcher.close(String(tid), "manual") }); // web dashboard
 
   // ===== BỘ HẸN GIỜ: mỗi 30s, đăng các bài đã tới giờ hẹn =====

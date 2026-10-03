@@ -991,6 +991,8 @@ export function startWeb(ctx = {}) {
       hasQr: fs.existsSync(QR_FILE),
       paused: !!settings.paused,
       pendingCount: store.listPending().length,
+      // Khoảng bot mất phiên Zalo gần đây (xem createGapTracker trong recover.mjs).
+      gaps: ctx.getGaps ? ctx.getGaps() : [],
       routes,
     });
   });

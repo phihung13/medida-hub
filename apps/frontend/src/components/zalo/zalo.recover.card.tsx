@@ -1,6 +1,6 @@
 'use client';
 
-import { FC, useCallback, useMemo, useState } from 'react';
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useToaster } from '@gitroom/react/toaster/toaster';
 import {
@@ -55,11 +55,18 @@ const fmt = (ms: number) =>
 const fmtTime = (ms: number) =>
   new Date(ms).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 
-export const ZaloRecoverCard: FC = () => {
+export const ZaloRecoverCard: FC<{
+  // Mở từ banner "Bot mất phiên …" ở Tổng quan: điền sẵn khoảng mất phiên và
+  // tự xem trước luôn.
+  initialFrom?: number;
+  initialTo?: number;
+  autoPreview?: boolean;
+  onDone?: () => void;
+}> = ({ initialFrom, initialTo, autoPreview, onDone }) => {
   const t = useT();
   const toaster = useToaster();
-  const [from, setFrom] = useState(() => toInput(Date.now() - 24 * 3600 * 1000));
-  const [to, setTo] = useState(() => toInput(Date.now()));
+  const [from, setFrom] = useState(() => toInput(initialFrom ?? Date.now() - 24 * 3600 * 1000));
+  const [to, setTo] = useState(() => toInput(initialTo ?? Date.now()));
   const [groups, setGroups] = useState<Group[] | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<'' | 'preview' | 'run'>('');
@@ -97,6 +104,14 @@ export const ZaloRecoverCard: FC = () => {
     }
   }, [range, toaster]);
 
+  const autoRan = useRef(false);
+  useEffect(() => {
+    if (autoPreview && !autoRan.current) {
+      autoRan.current = true;
+      preview();
+    }
+  }, [autoPreview, preview]);
+
   const run = useCallback(async () => {
     setBusy('run');
     try {
@@ -115,12 +130,13 @@ export const ZaloRecoverCard: FC = () => {
       );
       setGroups(null);
       setPicked(new Set());
+      onDone?.();
     } catch (e: any) {
       toaster.show(e?.message || 'Không tạo được bản nháp', 'warning');
     } finally {
       setBusy('');
     }
-  }, [range, picked, toaster, t]);
+  }, [range, picked, toaster, t, onDone]);
 
   const toggle = (id: string) =>
     setPicked((prev) => {

@@ -94,12 +94,17 @@ export const channelLabel = (ch: { name: string; id: string; identifier: string 
 
 // ---- Kiểu dữ liệu từ bot ---------------------------------------------------
 
+// Khoảng bot mất phiên Zalo (đăng xuất, mất mạng, khởi động lại) — ảnh gửi vào
+// nhóm lúc đó không tới bot; trang Zalo gợi ý "Lấy lại ảnh bị lỡ".
+export type ZaloGap = { from: number; to: number };
+
 export type Overview = {
   zaloConnected: boolean;
   zaloRelogging: boolean;
   hasQr: boolean;
   paused: boolean;
   pendingCount: number;
+  gaps?: ZaloGap[];
   routes: {
     threadId: string;
     label: string;
@@ -127,6 +132,27 @@ export type LiveThread = {
 };
 
 export type HubChannel = { id: string; name: string; identifier: string };
+
+// Nhóm đang gom ảnh (đã có ảnh/video trong phiên) -> hiện "Chốt ngay".
+export const isGathering = (lt?: LiveThread) =>
+  !!lt &&
+  (lt.phase === 'listening' || lt.phase === 'prelisten') &&
+  (lt.counts?.image || 0) + (lt.counts?.video || 0) > 0;
+
+// Một dòng trạng thái gom bài của nhóm, dùng chung Tổng quan + Nhóm Zalo.
+export const liveText = (t: (key: string, fallback: string) => string, lt?: LiveThread) => {
+  if (!lt || lt.phase === 'idle') return t('zalo_live_waiting', 'Chờ ảnh mới');
+  if (lt.phase === 'prelisten' || lt.phase === 'listening') {
+    const img = lt.counts?.image || 0;
+    const vid = lt.counts?.video || 0;
+    if (!img && !vid) return t('zalo_live_waiting', 'Chờ ảnh mới');
+    return t('zalo_live_gathering', 'Đang gom {{n}}')
+      .replace('{{n}}', [img ? `${img} ảnh` : '', vid ? `${vid} video` : ''].filter(Boolean).join(', '));
+  }
+  if (lt.phase === 'processing') return lt.proc?.stage || t('zalo_live_processing', 'Đang tạo bản nháp…');
+  if (lt.phase === 'done') return t('zalo_live_done', 'Vừa tạo bản nháp');
+  return t('zalo_live_waiting', 'Chờ ảnh mới');
+};
 
 // Bài trong /api/posts (gộp chờ duyệt + đã đăng, shape từ store của bot).
 export type BotPost = {
@@ -408,7 +434,15 @@ export const StepBadge: FC<{ step: string; done?: boolean; warn?: boolean }> = (
       warn ? 'bg-red-500 text-white' : done ? 'bg-green-500 text-white' : 'bg-btnSimple text-btnText'
     )}
   >
-    {warn ? '!' : done ? '✓' : step}
+    {warn ? (
+      '!'
+    ) : done ? (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M20 6 9 17l-5-5" />
+      </svg>
+    ) : (
+      step
+    )}
   </div>
 );
 
@@ -453,36 +487,70 @@ export const SimpleButton: FC<{
   </button>
 );
 
+// Nút chữ đỏ (hành động xoá/đăng xuất). Là <button> thật để dùng được bằng
+// bàn phím và trình đọc màn hình (trước là <span onClick>).
 export const DangerLink: FC<{
   onClick?: () => void;
   className?: string;
   children: ReactNode;
 }> = ({ onClick, className, children }) => (
-  <span
+  <button
+    type="button"
     onClick={onClick}
     className={clsx(
       // Mobile: link chữ nhỏ vẫn phải đạt vùng chạm 44px
-      'cursor-pointer text-[13px] font-[600] text-red-500 whitespace-nowrap mobile:min-h-[44px] mobile:inline-flex mobile:items-center',
+      'cursor-pointer text-[13px] font-[600] text-red-500 whitespace-nowrap rounded-[6px] outline-none focus-visible:ring-2 focus-visible:ring-red-500 mobile:min-h-[44px] mobile:inline-flex mobile:items-center',
       className
     )}
   >
     {children}
-  </span>
+  </button>
 );
 
+// Nút chữ màu nhấn (hành động phụ trong dòng: "Chốt ngay", "Chọn kênh"…).
+export const LinkButton: FC<{
+  onClick?: () => void;
+  className?: string;
+  ariaLabel?: string;
+  children: ReactNode;
+}> = ({ onClick, className, ariaLabel, children }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    aria-label={ariaLabel}
+    className={clsx(
+      'cursor-pointer text-[13px] font-[600] text-btnPrimary whitespace-nowrap rounded-[6px] px-[2px] outline-none hover:underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-btnPrimary mobile:min-h-[44px] mobile:inline-flex mobile:items-center',
+      className
+    )}
+  >
+    {children}
+  </button>
+);
+
+// Công tắc bật/tắt — <button role="switch"> (trước là <div onClick>, không
+// dùng được bằng bàn phím). Có nhãn chữ bên cạnh thì truyền ariaLabel trùng.
 export const Toggle: FC<{
   on: boolean;
   onChange: () => void;
   small?: boolean;
   disabled?: boolean;
   title?: string;
-}> = ({ on, onChange, small, disabled, title }) => (
-  <div
-    onClick={disabled ? undefined : onChange}
+  ariaLabel?: string;
+}> = ({ on, onChange, small, disabled, title, ariaLabel }) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={on}
+    aria-label={ariaLabel}
+    disabled={disabled}
+    onClick={(e) => {
+      // Nằm trong <label>/hàng bấm được: chặn nổi bọt để không gạt 2 lần.
+      e.stopPropagation();
+      if (!disabled) onChange();
+    }}
     title={title}
-    aria-disabled={disabled || undefined}
     className={clsx(
-      'rounded-full relative transition-all border shrink-0',
+      'rounded-full relative transition-all border shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-btnPrimary focus-visible:ring-offset-1',
       // Mobile: bản small phóng to bằng bản thường cho dễ gạt bằng ngón cái
       small ? 'w-[38px] h-[22px] mobile:w-[46px] mobile:h-[26px]' : 'w-[46px] h-[26px]',
       disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
@@ -504,7 +572,7 @@ export const Toggle: FC<{
           : 'start-[3px]'
       )}
     />
-  </div>
+  </button>
 );
 
 // Ô nhập/textarea/select cùng token — dùng lại khắp các tab.

@@ -9,11 +9,10 @@ import {
   Card,
   DangerLink,
   fmtFull,
-  getBotUrl,
+  LinkButton,
   PrimaryButton,
   SimpleButton,
   StatusChip,
-  Toggle,
 } from './zalo.shared';
 import { ZaloVideoCard } from '@gitroom/frontend/components/zalo/zalo.video.card';
 import { ZaloRecoverCard } from '@gitroom/frontend/components/zalo/zalo.recover.card';
@@ -27,12 +26,13 @@ import { ZaloRecoverCard } from '@gitroom/frontend/components/zalo/zalo.recover.
 //  user — dropdown chọn nhóm ở tab Nhóm→Trang giờ luôn hiện ĐỦ mọi nhóm.)
 // ============================================================================
 
-export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) => {
+export const ZaloSettingsTab: FC<{ onChanged?: () => void; onOpenToday?: () => void }> = ({
+  onChanged,
+  onOpenToday,
+}) => {
   const t = useT();
   const toast = useToaster();
 
-  const [botUrl, setBotUrl] = useState('/botapi');
-  useEffect(() => setBotUrl(getBotUrl()), []);
 
   const [settings, setSettings] = useState<{ paused?: boolean; groupAllowlist?: string[] } | null>(null);
   const [zalo, setZalo] = useState<{
@@ -42,7 +42,6 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
     hasCreds?: boolean;
     qr?: boolean;
   } | null>(null);
-  const [qrTick, setQrTick] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -63,7 +62,6 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
       /* bot chưa phản hồi */
     }
     bot('/api/zalo/status').then((z) => z && setZalo(z)).catch(() => {});
-    setQrTick((v) => v + 1);
   }, []);
 
   useEffect(() => {
@@ -74,20 +72,6 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
     }, 8000);
     return () => clearInterval(i);
   }, [load]);
-
-  const setS = useCallback(
-    async (patch: any, okMsg?: string) => {
-      try {
-        const r = await bot('/api/settings', { method: 'POST', body: JSON.stringify(patch) });
-        if (r) setSettings(r);
-        toast.show(okMsg || t('zalo_settings_updated', 'Settings updated'), 'success');
-        onChanged?.();
-      } catch {
-        toast.show(t('zalo_bot_unreachable', 'Cannot reach the Zalo bot'), 'warning');
-      }
-    },
-    [onChanged, t]
-  );
 
   const logout = useCallback(
     async (wipe: boolean) => {
@@ -125,14 +109,7 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
 
   return (
     <div className="flex flex-col gap-[14px]">
-      {/* Vận hành */}
-      <Card title={t('zalo_settings_ops', 'Vận hành')}>
-        <label className="flex items-center gap-[10px] cursor-pointer w-fit mobile:min-h-[44px]">
-          <Toggle on={!!settings.paused} onChange={() => setS({ paused: !settings.paused })} />
-          <b className="text-[13.5px]">{t('zalo_settings_pause', 'Tạm dừng nhận ảnh (mọi nhóm)')}</b>
-        </label>
-      </Card>
-
+      {/* "Tạm dừng" nay chỉ ở dải trạng thái đầu trang (trước lặp ở đây). */}
       {/* Tài khoản Zalo */}
       <Card
         title={
@@ -155,15 +132,12 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
             ? t('zalo_settings_has_creds', 'Đã có session lưu.')
             : t('zalo_settings_no_creds', 'Chưa đăng nhập tài khoản nào.')}
         </div>
-        {!zalo?.connected && zalo?.qr && (
-          <div className="w-[190px] h-[190px] rounded-[10px] bg-white flex items-center justify-center overflow-hidden">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              key={qrTick}
-              src={`${botUrl}/api/zalo/qr?t=${qrTick}`}
-              alt={t('zalo_qr_alt', 'Zalo login QR code')}
-              className="w-full h-full object-contain"
-            />
+        {!zalo?.connected && (
+          <div className="text-[13px] leading-[1.6]">
+            {t('zalo_settings_qr_on_today', 'Mã QR đăng nhập hiện ở tab Hôm nay.')}{' '}
+            {onOpenToday && (
+              <LinkButton onClick={onOpenToday}>{t('zalo_settings_open_today', 'Mở tab Hôm nay')}</LinkButton>
+            )}
           </div>
         )}
         <div className="flex items-center gap-[10px] flex-wrap">
@@ -198,7 +172,6 @@ export const ZaloSettingsTab: FC<{ onChanged?: () => void }> = ({ onChanged }) =
       {/* Key & model Claude đặt ở Settings CHUNG của Hub — tự đồng bộ sang bot,
           không quản lý key riêng ở đây nữa. */}
       <div className="text-[12.5px] text-textItemBlur leading-[1.6]">
-        🤖{' '}
         {t(
           'zalo_settings_claude_moved',
           'The Claude API key & model are managed in the main Settings and sync to the bot automatically.'
