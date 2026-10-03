@@ -52,8 +52,8 @@ async function main() {
 
   const status = { zaloConnected: false, relogging: false, ownId: null };
   let currentApi = null;
-  // Id tin ảnh/video listener đã nhận trực tiếp — để "Lấy lại tin bị lỡ" biết
-  // đợt nào bot đã có, không lấy lại thành trùng.
+  // Id tin ảnh/video ĐÃ XỬ LÝ (đánh dấu lúc chốt đợt, xem onClose) — để "Lấy
+  // lại tin bị lỡ" biết đợt nào bot đã có, không lấy lại thành trùng.
   const seenMsgs = createSeenStore();
   // Khoảng bot mất phiên Zalo -> trang Zalo gợi ý "Lấy lại ảnh bị lỡ".
   const gaps = createGapTracker();
@@ -70,6 +70,7 @@ async function main() {
     onClose: async (batch, reason) => {
       const route = getRoute(batch.threadId);
       if (!route) return;
+      for (const it of batch.items || []) if (it.msgId) seenMsgs.add(it.msgId);
       live.processing(batch.threadId, "Bắt đầu xử lý");
       try {
         // CHUẨN BỊ bài (gom -> lọc -> AI chọn -> format -> caption). KHÔNG đăng ở đây.
@@ -205,7 +206,6 @@ async function main() {
         if (store.getSettings().paused) return; // tạm dừng
         if (["image", "video", "text", "command"].includes(ev.kind)) {
           const rt = getRoute(ev.threadId);
-          if (rt && (ev.kind === "image" || ev.kind === "video")) seenMsgs.add(ev.msgId);
           if (rt) {
             console.log(`📥 ${ev.kind} [${ev.msgType}] từ "${ev.senderName}" (nhóm ${ev.threadId})`);
             if (ev.kind !== "command") live.event(ev.threadId, rt.label, ev, rt);
@@ -216,7 +216,7 @@ async function main() {
         }
       } catch (e) { console.error("xử lý message lỗi:", e.message); }
     });
-    api.listener.on("connected", () => { status.zaloConnected = true; gaps.connected(); try { fs.rmSync(QR_FILE, { force: true }); } catch {} console.log("🔌 Listener ĐÃ KẾT NỐI."); });
+    api.listener.on("connected", () => { status.zaloConnected = true; const gap = gaps.connected(); if (gap) scheduleAutoRecover(gap); try { fs.rmSync(QR_FILE, { force: true }); } catch {} console.log("🔌 Listener ĐÃ KẾT NỐI."); });
     api.listener.on("disconnected", (code, reason) => { status.zaloConnected = false; console.log(`🔌 Mất kết nối (code ${code}) — tự thử lại... ${reason || ""}`); });
     api.listener.on("error", (e) => console.error("⚠️ listener error:", e?.message || e));
     api.listener.on("closed", (code, reason) => {
@@ -286,6 +286,31 @@ async function main() {
     handleBatch: (b, reason) => batcher.onClose(b, reason),
     log: (m) => { store.pushLog(m); console.log("  [recover]", m); },
   });
+
+  // Vào lại Zalo sau một khoảng mất phiên -> TỰ đọc lịch sử khoảng đó và tạo
+  // bản nháp cho các đợt ảnh chắc chắn chưa có. Đợi 90s cho phiên ổn định.
+  function scheduleAutoRecover(gap) {
+    gaps.update(gap.from, { auto: { state: "pending" } });
+    setTimeout(async () => {
+      if (store.getSettings().paused) {
+        gaps.update(gap.from, { auto: { state: "skipped", reason: "paused" } });
+        return;
+      }
+      gaps.update(gap.from, { auto: { state: "running", at: Date.now() } });
+      try {
+        const r = await recovery.autoRecover(gap);
+        gaps.update(gap.from, { auto: { state: "done", at: Date.now(), ...r } });
+        store.pushLog(
+          `Tự lấy lại ảnh bị lỡ lúc mất phiên Zalo: ${r.recovered} bài` +
+          (r.uncertain ? `, ${r.uncertain} đợt có thể đã có (chờ người xem)` : "") +
+          (r.incomplete.length ? ` — Zalo không còn giữ đủ tin cũ ở: ${r.incomplete.join(", ")}` : "")
+        );
+      } catch (e) {
+        gaps.update(gap.from, { auto: { state: "error", error: String(e?.message || e) } });
+        store.pushLog("Tự lấy lại ảnh bị lỡ lỗi: " + (e?.message || e));
+      }
+    }, 90000).unref?.();
+  }
 
   startWeb({ status, reloadConfig, getZalo: () => currentApi, relogin: reloginZalo, reconnect: reconnectZalo, getLive: () => live.snapshot(), recovery, getGaps: () => gaps.list(),
     closeNow: (tid) => batcher.close(String(tid), "manual") }); // web dashboard

@@ -50,6 +50,7 @@ export class Batcher {
       b.items.push({
         kind: event.kind, url: event.mediaUrl, posterUrl: event.posterUrl,
         caption: event.caption || "", senderId: event.senderId, ts: event.ts, meta: event.mediaMeta,
+        msgId: event.msgId, // để biết ảnh nào ĐÃ được xử lý (lấy lại tin bị lỡ)
       });
       await this.store.set(tid, b);
       this._clearPreExpiry(tid);     // đã có ảnh -> huỷ hạn "chờ ảnh"

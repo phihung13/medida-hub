@@ -94,6 +94,7 @@ export function splitSessions(events, route) {
     cur.items.push({
       kind: ev.kind, url: ev.mediaUrl, posterUrl: ev.posterUrl,
       caption: ev.caption || "", senderId: ev.senderId, ts: ev.ts, meta: ev.mediaMeta,
+      msgId: ev.msgId,
     });
     cur.msgIds.push(String(ev.msgId));
     if (ev.senderName) cur.senders.add(ev.senderName);
@@ -118,8 +119,10 @@ export function splitSessions(events, route) {
 }
 
 /**
- * Nhớ id các tin ảnh/video listener đã nhận trực tiếp (5000 tin gần nhất, lưu
- * đĩa) — để màn xem trước biết đợt nào bot ĐÃ có, khỏi lấy lại thành trùng.
+ * Nhớ id các tin ảnh/video ĐÃ ĐƯỢC XỬ LÝ (5000 tin gần nhất, lưu đĩa) — để màn
+ * xem trước biết đợt nào bot đã có, khỏi lấy lại thành trùng. Đánh dấu lúc CHỐT
+ * đợt ảnh chứ không phải lúc ảnh tới: bot khởi động lại giữa lúc đang gom thì
+ * đợt dở đó mất, phải còn lấy lại được.
  */
 export function createSeenStore(file = dataPath("data", "seen-msgs.json"), limit = 5000) {
   let list = [];
@@ -280,6 +283,28 @@ export function createRecovery({ getApi, getRoutes, getRoute, wasSeen, handleBat
     return strip(await collect(range));
   }
 
+  // Xử lý lần lượt các đợt đã chọn qua đúng hàm chốt batch -> ra bản nháp.
+  function processSessions(picked, reason) {
+    const done = loadDone();
+    const job = (async () => {
+      let ok = 0;
+      for (const s of picked) {
+        try {
+          // Đánh dấu TRƯỚC khi xử lý: lỡ bấm lần hai giữa chừng cũng không tạo trùng.
+          done.add(s.id);
+          saveDone(done);
+          await handleBatch(s._batch, reason);
+          ok++;
+        } catch (e) {
+          log(`Lấy lại tin lỗi (${s.id}): ${e?.message || e}`);
+        }
+      }
+      return ok;
+    })();
+    running = job.finally(() => { running = null; });
+    return job;
+  }
+
   async function run({ from, to, ids }) {
     if (running) throw new Error("Đang lấy lại một đợt khác — đợi xong rồi thử lại.");
     const want = new Set((ids || []).map(String));
@@ -287,26 +312,34 @@ export function createRecovery({ getApi, getRoutes, getRoute, wasSeen, handleBat
     const groups = await collect({ from, to });
     const picked = groups.flatMap((g) => g.sessions).filter((s) => want.has(s.id) && !s.recovered);
     if (!picked.length) throw new Error("Các đợt đã chọn không còn trong lịch sử, hoặc đã lấy lại rồi.");
-    const done = loadDone();
-    running = (async () => {
-      let ok = 0;
-      for (const s of picked) {
-        try {
-          // Đánh dấu TRƯỚC khi xử lý: lỡ bấm lần hai giữa chừng cũng không tạo trùng.
-          done.add(s.id);
-          saveDone(done);
-          await handleBatch(s._batch, "recover");
-          ok++;
-        } catch (e) {
-          log(`Lấy lại tin lỗi (${s.id}): ${e?.message || e}`);
-        }
-      }
-      log(`Lấy lại tin bị lỡ: xong ${ok}/${picked.length} đợt ảnh.`);
-    })().finally(() => { running = null; });
+    processSessions(picked, "recover").then((ok) => log(`Lấy lại tin bị lỡ: xong ${ok}/${picked.length} đợt ảnh.`));
     return { started: picked.length };
   }
 
-  return { preview, run, isRunning: () => !!running };
+  /**
+   * TỰ lấy lại sau khi bot vào lại Zalo (người dùng yêu cầu: bot biết lúc mất
+   * và lúc có lại phiên thì tự quét, người dùng chỉ việc vào duyệt bài).
+   * Chỉ tự lấy các đợt CHẮC CHẮN chưa có; đợt "có thể đã có" để người dùng xem.
+   * Quét lùi thêm 30 phút trước lúc mất phiên: đợt đang gom dở khi bot tắt
+   * (chưa kịp xử lý) cũng được lấy lại; đợt đã xử lý thì bị loại nhờ dấu "đã có".
+   */
+  async function autoRecover(gap) {
+    if (running) await running.catch(() => {});
+    const groups = await collect({ from: gap.from - 30 * 60 * 1000, to: gap.to });
+    const all = groups.flatMap((g) => g.sessions).filter((s) => !s.seenLive && !s.recovered);
+    const picked = all.filter((s) => !s.maybeDup);
+    const result = {
+      found: picked.length,
+      uncertain: all.length - picked.length,
+      incomplete: groups.filter((g) => g.complete === false).map((g) => g.label),
+      errors: groups.filter((g) => g.error).map((g) => g.label),
+      recovered: 0,
+    };
+    if (picked.length) result.recovered = await processSessions(picked, "recover-auto");
+    return result;
+  }
+
+  return { preview, run, autoRecover, isRunning: () => !!running };
 }
 
 /**
@@ -331,13 +364,22 @@ export function createGapTracker({
   return {
     /** Gọi định kỳ khi đang kết nối. */
     alive() { state.lastAliveAt = Date.now(); save(); },
-    /** Gọi khi listener vừa kết nối (cả lần đầu sau khởi động). */
+    /** Gọi khi listener vừa kết nối (cả lần đầu sau khởi động). Trả về khoảng
+     *  mất phiên MỚI (nếu có) để tự lấy lại ảnh bị lỡ. */
     connected() {
       const now = Date.now();
+      let gap = null;
       if (state.lastAliveAt && now - state.lastAliveAt > minGapMs) {
-        state.gaps = [...(state.gaps || []), { from: state.lastAliveAt, to: now }].slice(-keep);
+        gap = { from: state.lastAliveAt, to: now };
+        state.gaps = [...(state.gaps || []), gap].slice(-keep);
       }
       state.lastAliveAt = now;
+      save();
+      return gap;
+    },
+    /** Ghi kết quả tự lấy lại vào khoảng (khoá = mốc bắt đầu). */
+    update(from, patch) {
+      state.gaps = (state.gaps || []).map((g) => (g.from === from ? { ...g, ...patch } : g));
       save();
     },
     list: () => [...(state.gaps || [])],

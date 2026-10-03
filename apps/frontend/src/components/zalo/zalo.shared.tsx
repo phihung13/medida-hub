@@ -96,7 +96,19 @@ export const channelLabel = (ch: { name: string; id: string; identifier: string 
 
 // Khoảng bot mất phiên Zalo (đăng xuất, mất mạng, khởi động lại) — ảnh gửi vào
 // nhóm lúc đó không tới bot; trang Zalo gợi ý "Lấy lại ảnh bị lỡ".
-export type ZaloGap = { from: number; to: number };
+export type ZaloGap = {
+  from: number;
+  to: number;
+  // Bot TỰ lấy lại sau khi vào lại Zalo (xem scheduleAutoRecover ở bot).
+  auto?: {
+    state: 'pending' | 'running' | 'done' | 'error' | 'skipped';
+    recovered?: number; // số bài đã tự tạo bản nháp
+    uncertain?: number; // số đợt "có thể đã có" — chờ người xem
+    incomplete?: string[]; // nhóm mà Zalo không còn giữ đủ tin cũ
+    error?: string;
+    reason?: string;
+  };
+};
 
 export type Overview = {
   zaloConnected: boolean;

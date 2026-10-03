@@ -498,23 +498,59 @@ export const ZaloComponent: FC = () => {
       {/* ============================ HÔM NAY ============================ */}
       {tab === 'overview' && (
         <>
-          {/* Bot vừa mất phiên Zalo -> ảnh lúc đó chưa vào: lấy lại 1 chạm */}
-          {latestGap && (
+          {/* Bot vừa mất phiên Zalo. Bot TỰ quét khoảng đó sau khi vào lại và
+              tạo bản nháp cho đợt chắc chắn chưa có; banner chỉ báo kết quả.
+              Chỉ khi tự quét lỗi/bị bỏ qua mới cần bấm lấy lại thủ công. */}
+          {latestGap && (() => {
+            const a = latestGap.auto;
+            const auto = a?.state === 'pending' || a?.state === 'running' || a?.state === 'done';
+            const working = a?.state === 'pending' || a?.state === 'running';
+            const range = gapText(latestGap);
+            const message = working
+              ? t('zalo_gap_auto_running', 'Bot vừa mất phiên Zalo {{range}} — đang tự lấy lại ảnh bị lỡ…').replace('{{range}}', range)
+              : a?.state === 'done'
+              ? [
+                  (a.recovered || 0) > 0
+                    ? t('zalo_gap_auto_done', 'Bot mất phiên Zalo {{range}} — đã tự lấy lại {{n}} bài, bản nháp đã vào Lịch.')
+                        .replace('{{range}}', range)
+                        .replace('{{n}}', String(a.recovered))
+                    : t('zalo_gap_auto_none', 'Bot mất phiên Zalo {{range}} — không có ảnh nào bị lỡ.').replace('{{range}}', range),
+                  (a.uncertain || 0) > 0
+                    ? t('zalo_gap_auto_uncertain', '{{n}} đợt có thể đã có nên chưa tự lấy.').replace('{{n}}', String(a.uncertain))
+                    : '',
+                  a.incomplete?.length
+                    ? t('zalo_gap_auto_incomplete', 'Zalo không còn giữ đủ tin cũ ở: {{groups}}.').replace('{{groups}}', a.incomplete.join(', '))
+                    : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')
+              : t('zalo_gap_text', 'Bot mất phiên Zalo {{range}} — ảnh gửi vào nhóm lúc đó chưa vào bot.').replace('{{range}}', range);
+            const success = a?.state === 'done' && !(a.uncertain || 0) && !a.incomplete?.length;
+            return (
             <div className="flex flex-col gap-[12px]">
-              <div className="flex items-center gap-[10px] flex-wrap rounded-[12px] border border-amber-400/40 bg-amber-400/10 px-[14px] py-[10px]">
-                <WarningIcon size={15} className="text-amber-600 dark:text-amber-400" />
-                <span className="flex-1 min-w-[200px] text-[13px] leading-[1.5]">
-                  {t('zalo_gap_text', 'Bot mất phiên Zalo {{range}} — ảnh gửi vào nhóm lúc đó chưa vào bot.').replace(
-                    '{{range}}',
-                    gapText(latestGap)
-                  )}
-                </span>
-                {recoverGap?.from !== latestGap.from && (
+              <div
+                aria-live="polite"
+                className={clsx(
+                  'flex items-center gap-[10px] flex-wrap rounded-[12px] border px-[14px] py-[10px]',
+                  success || working ? 'border-btnPrimary/30 bg-btnPrimary/10' : 'border-amber-400/40 bg-amber-400/10'
+                )}
+              >
+                {success ? (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="text-btnPrimary shrink-0">
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
+                ) : working ? (
+                  <span aria-hidden="true" className="w-[8px] h-[8px] rounded-full bg-btnPrimary motion-safe:animate-pulse shrink-0" />
+                ) : (
+                  <WarningIcon size={15} className="text-amber-600 dark:text-amber-400" />
+                )}
+                <span className="flex-1 min-w-[200px] text-[13px] leading-[1.5]">{message}</span>
+                {!working && recoverGap?.from !== latestGap.from && (!auto || (a?.uncertain || 0) > 0) && (
                   <PrimaryButton
                     className="!h-[34px] mobile:!h-[44px] text-[13px]"
                     onClick={() => setRecoverGap(latestGap)}
                   >
-                    {t('zalo_gap_recover', 'Lấy lại ảnh bị lỡ')}
+                    {auto ? t('zalo_gap_review', 'Xem lại') : t('zalo_gap_recover', 'Lấy lại ảnh bị lỡ')}
                   </PrimaryButton>
                 )}
                 <button
@@ -531,14 +567,15 @@ export const ZaloComponent: FC = () => {
               </div>
               {recoverGap?.from === latestGap.from && (
                 <ZaloRecoverCard
-                  initialFrom={latestGap.from - 2 * 60 * 1000}
+                  initialFrom={latestGap.from - (auto ? 30 : 2) * 60 * 1000}
                   initialTo={latestGap.to}
                   autoPreview
                   onDone={() => dismissGap(latestGap)}
                 />
               )}
             </div>
-          )}
+            );
+          })()}
 
           {/* Thiết lập lần đầu: 3 bước, xong thì ẩn. Đã thiết lập mà chỉ bị
               đăng xuất Zalo -> chỉ hiện ô QR. */}
