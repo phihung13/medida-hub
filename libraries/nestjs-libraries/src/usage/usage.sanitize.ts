@@ -1,11 +1,10 @@
 import { randomUUID } from 'crypto';
 
 // ============================================================================
-//  Làm sạch sự kiện / góp ý từ TRÌNH DUYỆT trước khi chuyển tiếp về Major OS
-//  (chuẩn "Thu thập sử dụng & góp ý cho app nội bộ v1", mục 5 + 10).
+//  Làm sạch sự kiện / góp ý từ TRÌNH DUYỆT trước khi lưu DB — Major OS đọc
+//  lại qua API /major-os/v1/* (chuẩn "Kết nối app với Major OS" v2).
 //
-//  - Chỉ giữ đúng các trường chuẩn cho phép (trường lạ -> Major OS từ chối cả
-//    sự kiện), sai kiểu thì bỏ sự kiện đó.
+//  - Chỉ giữ đúng các trường đã định, sai kiểu thì bỏ sự kiện đó.
 //  - KHÔNG nhận email/tên từ trình duyệt: máy chủ gắn từ phiên đăng nhập
 //    (trình duyệt tự khai thì giả được).
 //  - Hub là app truyền thông: bài viết có ảnh/tên học sinh, nên tuyệt đối không

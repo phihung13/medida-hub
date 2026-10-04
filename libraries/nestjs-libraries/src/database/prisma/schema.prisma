@@ -1245,3 +1245,50 @@ model Announcement {
   color       AnnouncementColor @default(INFO)
   createdAt   DateTime          @default(now())
 }
+
+// ---- Thu thập sử dụng & góp ý (chuẩn "Kết nối app với Major OS" v2) --------
+// Hub tự lưu; Major OS gọi API chỉ đọc /major-os/v1/* bằng key do Hub cấp.
+model UsageEvent {
+  id         String   @id // uuid trình duyệt sinh — gửi lại không sinh bản trùng
+  userId     String
+  email      String
+  name       String?
+  sessionId  String?
+  type       String // phien_bat_dau | nhip | phien_ket_thuc | xem_trang | dung_tinh_nang | loi
+  feature    String?
+  page       String?
+  durationMs Int?
+  result     String?
+  device     String?
+  extra      Json?
+  occurredAt DateTime // lúc thao tác (giờ máy người dùng)
+  createdAt  DateTime @default(now()) // lúc Hub nhận — Major OS lọc theo mốc này
+
+  @@index([createdAt])
+  @@index([userId, occurredAt])
+}
+
+model UsageFeedback {
+  id        String   @id
+  userId    String
+  email     String
+  name      String?
+  type      String // loi | de_xuat | khen | khac
+  content   String
+  rating    Int?
+  feature   String?
+  page      String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model MajorOsKey {
+  id         String    @id @default(uuid())
+  hash       String    @unique // sha256 — key gốc chỉ hiện đúng một lần
+  last4      String
+  createdBy  String?
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+}

@@ -48,8 +48,7 @@ import { FarcasterProvider } from '@gitroom/backend/services/auth/providers/farc
 import { WalletProvider } from '@gitroom/backend/services/auth/providers/wallet.provider';
 import { OauthProvider } from '@gitroom/backend/services/auth/providers/oauth.provider';
 import { UsageController } from '@gitroom/backend/api/routes/usage.controller';
-import { UsageService } from '@gitroom/nestjs-libraries/usage/usage.service';
-import { MajorOsClient } from '@gitroom/nestjs-libraries/usage/major-os.client';
+import { MajorOsReportController } from '@gitroom/backend/api/routes/major-os.controller';
 
 const authenticatedController = [
   UsersController,
@@ -88,6 +87,8 @@ const authenticatedController = [
     EnterpriseController,
     NoAuthIntegrationsController,
     OAuthController,
+    // Major OS gọi bằng key riêng (không qua đăng nhập Hub)
+    MajorOsReportController,
     ...authenticatedController,
   ],
   providers: [
@@ -108,8 +109,6 @@ const authenticatedController = [
     FarcasterProvider,
     WalletProvider,
     OauthProvider,
-    UsageService,
-    MajorOsClient,
   ],
   get exports() {
     return [...this.imports, ...this.providers];

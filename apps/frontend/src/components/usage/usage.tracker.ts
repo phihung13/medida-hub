@@ -1,13 +1,13 @@
 'use client';
 
 // ============================================================================
-//  Thu thập sử dụng (chuẩn Major OS v1) — phía trình duyệt.
+//  Thu thập sử dụng (chuẩn "Kết nối app với Major OS" v2) — phía trình duyệt.
 //
 //  Người dùng Hub là NHÂN VIÊN truyền thông, nên ta đo các việc của nghề:
 //  lên lịch / đăng bài, lịch, kênh, thư viện media, AI, Zalo… (bảng khoá ở
-//  docs/THU_THAP_SU_DUNG.md). Trình duyệt KHÔNG gửi thẳng Major OS: gom lô về
-//  máy chủ Hub (/usage/events), máy chủ gắn email/tên từ phiên đăng nhập rồi
-//  mới chuyển tiếp bằng khoá app.
+//  docs/THU_THAP_SU_DUNG.md). Trình duyệt gom lô về máy chủ Hub
+//  (/usage/events); máy chủ gắn email/tên từ phiên đăng nhập và LƯU vào DB.
+//  Major OS tự gọi API chỉ đọc /major-os/v1/* của Hub để lấy báo cáo.
 //
 //  LUẬT CỨNG: bài viết có ảnh/tên học sinh — `them` chỉ chứa SỐ ĐẾM và MÃ
 //  (facebook, week…), không bao giờ caption, tên file, tên kênh, tên nhóm.

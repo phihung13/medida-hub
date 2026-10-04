@@ -1,10 +1,13 @@
 # Thu thập sử dụng & góp ý — Media Hub
 
-Media Hub gắn **chuẩn "Thu thập sử dụng & góp ý cho app nội bộ v1" của Major OS**. Chuẩn gốc viết cho app học
-thuật; ở Hub đã chỉnh lại cho đúng thực tế:
+Media Hub gắn **chuẩn "Kết nối app với Major OS" v2**: Hub **tự lưu** số liệu sử dụng và góp ý, còn Major OS tự
+gọi **API chỉ đọc** của Hub (khoảng 15 phút/lần) để lấy báo cáo. Bản v1 (Hub đẩy sự kiện sang Major OS bằng
+`MAJOR_OS_APP_KEY`) đã bỏ.
 
-- **Người dùng là nhân viên truyền thông / marketing** (email `@truongvietanh.com`), không phải học sinh. Major OS
-  lưu email + tên của nhân viên và xếp hạng thời gian dùng.
+Chuẩn gốc viết cho app học thuật; ở Hub đã chỉnh lại cho đúng thực tế:
+
+- **Người dùng là nhân viên truyền thông / marketing** (email `@truongvietanh.com`), không phải học sinh. Báo cáo
+  ghi email + họ tên nhân viên. Email ngoài tên miền trường chỉ hiện mã nội bộ của Hub.
 - **Tính năng đo là việc của nghề truyền thông**: soạn và lên lịch bài, lịch, kênh mạng xã hội, thư viện media, AI,
   Zalo. Không có điểm danh, điểm số hay lớp học.
 - **Nội dung bài vẫn có thể chứa ảnh, tên học sinh** (bài khoe hoạt động của trường), nên luật riêng tư vẫn áp dụng
@@ -17,27 +20,34 @@ Trình duyệt (UsageTracker)
    │  gom lô: mỗi 60 giây / đủ 50 sự kiện / khi ẩn tab hoặc rời trang (fetch keepalive)
    ▼
 Backend Hub  POST /usage/events · POST /usage/feedback   (cần đăng nhập)
-   │  gắn email + tên từ phiên đăng nhập, làm sạch, gom lô 5 giây/lần (≤500)
-   ▼
-Major OS     POST /api/thu-thap/v1/su-kien · /gop-y      (Bearer MAJOR_OS_APP_KEY)
+   │  gắn email + tên từ phiên đăng nhập, làm sạch, lưu DB (UsageEvent, UsageFeedback)
+   ▲
+Major OS     GET /api/major-os/v1/{tinh-nang, thoi-gian-dung, gop-y}   (Bearer <key do Hub cấp>)
 ```
 
 | Phần | File |
 |---|---|
 | Bộ theo dõi trình duyệt | `apps/frontend/src/components/usage/usage.tracker.ts` |
 | Gắn vào layout, dải thông báo, khung Góp ý | `apps/frontend/src/components/usage/usage.component.tsx` |
-| Controller | `apps/backend/src/api/routes/usage.controller.ts` |
-| Làm sạch / gom lô / gửi lại | `libraries/nestjs-libraries/src/usage/` (`usage.sanitize.ts`, `usage.service.ts`, `major-os.client.ts`) |
+| Thẻ "Kết nối Major OS" (tạo / thu hồi key) | `apps/frontend/src/components/settings/major-os.component.tsx` |
+| **File mô tả API gửi Major OS** | `apps/frontend/public/major-os-mo-ta.md` |
+| Controller | `apps/backend/src/api/routes/usage.controller.ts`, `major-os.controller.ts` |
+| Service / repository | `libraries/nestjs-libraries/src/database/prisma/usage/` |
+| Làm sạch dữ liệu | `libraries/nestjs-libraries/src/usage/usage.sanitize.ts` |
 
-## Cấu hình (backend)
+## Nối với Major OS
 
-| Biến | Bắt buộc | Ý nghĩa |
-|---|---|---|
-| `MAJOR_OS_APP_KEY` | có | Khoá app dạng `mos_…`, xin ở Major OS → Quản trị → Thu thập sử dụng. **Chỉ đặt ở backend**, không bao giờ đưa vào biến `NEXT_PUBLIC_*`. |
-| `MAJOR_OS_URL` | không | Mặc định `https://os.truongvietanh.com`. |
+1. Quản trị hệ thống (cờ `isSuperAdmin`) vào **Cài đặt → Cài đặt chung → Kết nối Major OS**:
+   - bấm **Tạo key** (key `mhk_…` chỉ hiện đúng một lần, DB chỉ giữ sha256);
+   - bấm **Tải file mô tả** (file đã điền sẵn địa chỉ API thật và người liên hệ).
+2. Vào Major OS → **Kết nối app → Thêm app**: dán địa chỉ API, key, tải file mô tả lên, bấm **Thử kết nối**.
+3. Team AI đọc file mô tả, viết bộ lấy số và báo lại khi số đã lên bảng.
 
-Không có khoá thì backend nhận rồi bỏ sự kiện (không tích hàng đợi), còn khung Góp ý báo "Hub chưa được cấu hình".
-Nếu khoá sai hoặc bị thu hồi (401), log backend báo mỗi 10 phút một lần.
+Đổi key: tạo key mới (tối đa 3 key cùng lúc), dán vào Major OS, rồi **Thu hồi** key cũ. Thẻ cài đặt hiện lần cuối
+Major OS gọi bằng từng key. Không gửi key qua chat, Zalo, email.
+
+Không cần biến môi trường nào. Bảng mới (`UsageEvent`, `UsageFeedback`, `MajorOsKey`) được `prisma db push` tạo khi
+khởi động container. Dữ liệu thô giữ 180 ngày rồi tự xoá.
 
 ## Phiên và thời gian dùng
 
@@ -133,7 +143,7 @@ Nút **Góp ý** nằm ở thanh trên (máy tính) và trong sheet **Thêm** (�
 - mức hài lòng 1–5 (không bắt buộc);
 - trang hiện tại, gửi kèm tự động.
 
-Email và tên do backend gắn. Nội dung góp ý gửi ngay về Major OS, không ghi log.
+Email và tên do backend gắn. Góp ý lưu trong DB của Hub (không ghi log), Major OS lấy qua `GET /gop-y`.
 
 ## Riêng tư — luật cứng
 
@@ -152,4 +162,5 @@ Email và tên do backend gắn. Nội dung góp ý gửi ngay về Major OS, kh
 1. Đặt tên theo dạng `nhom.hanh-dong`: chữ thường không dấu, số, `.`, `_`, `-`, tối đa 80 ký tự.
 2. Gọi `trackFeature('nhom.hanh-dong', { durationMs?, extra? })` khi thao tác **thành công**. Khi thất bại thì gọi
    `trackFeatureError('nhom.hanh-dong', 'MA_LOI')`.
-3. Thêm một dòng vào bảng trên. Tính năng chưa từng gửi thì Major OS không biết nó tồn tại.
+3. Thêm một dòng vào bảng trên **và** vào bảng mục 4 của `apps/frontend/public/major-os-mo-ta.md`, rồi tải file mô
+   tả mới lên Major OS. Tính năng chưa từng xuất hiện thì Major OS không biết nó tồn tại.
