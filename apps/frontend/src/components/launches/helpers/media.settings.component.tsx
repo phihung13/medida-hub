@@ -97,6 +97,80 @@ export const useMediaSettings = () => {
 
 const IMAGE_TYPES = /^image\/(jpeg|png|webp)$/;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // khớp giới hạn ảnh của /media/upload-simple
+// Tải trọn video vào trình duyệt để tua được (xem useSeekableVideo). Quá cỡ này
+// thì thôi, phát thẳng từ máy chủ.
+const MAX_VIDEO_BLOB_BYTES = 300 * 1024 * 1024;
+
+const formatMb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
+/**
+ * Trả về URL phát video TUA ĐƯỢC.
+ *
+ * Proxy phía trước Hub (Coolify) nén gzip cả file mp4 và Cloudflare lưu bản
+ * nén đó → máy chủ không trả từng đoạn (Range), thẻ <video> không tua được:
+ * kéo thanh trượt mà khung hình đứng yên. Tải trọn file về rồi phát từ blob:
+ * — tua thoải mái, và canvas cắt khung không bị chặn CORS. Tải lỗi / quá to
+ * thì quay về phát thẳng `src`.
+ */
+const useSeekableVideo = (src: string) => {
+  const [url, setUrl] = useState('');
+  const [loaded, setLoaded] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [fallback, setFallback] = useState(false);
+
+  useEffect(() => {
+    if (!src) return;
+    const ac = new AbortController();
+    let objectUrl = '';
+    setUrl('');
+    setLoaded(0);
+    setTotal(0);
+    setFallback(false);
+    (async () => {
+      try {
+        const res = await fetch(src, { signal: ac.signal });
+        if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+        setTotal(Number(res.headers.get('content-length')) || 0);
+        const reader = res.body.getReader();
+        const chunks: Uint8Array[] = [];
+        let got = 0;
+        let lastPaint = 0;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          got += value.length;
+          if (got > MAX_VIDEO_BLOB_BYTES) {
+            await reader.cancel();
+            throw new Error('too-big');
+          }
+          // Cập nhật tiến độ thưa thôi (mỗi ~200ms), đỡ render lại liên tục.
+          if (Date.now() - lastPaint > 200) {
+            lastPaint = Date.now();
+            setLoaded(got);
+          }
+        }
+        objectUrl = URL.createObjectURL(
+          new Blob(chunks as BlobPart[], {
+            type: res.headers.get('content-type') || 'video/mp4',
+          })
+        );
+        setLoaded(got);
+        setUrl(objectUrl);
+      } catch {
+        if (ac.signal.aborted) return;
+        setFallback(true);
+        setUrl(src);
+      }
+    })();
+    return () => {
+      ac.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [src]);
+
+  return { url, loaded, total, fallback };
+};
 
 const formatTime = (seconds: number) => {
   const mins = Math.floor(seconds / 60);
@@ -153,6 +227,7 @@ export const CreateThumbnail: FC<{
       encodeURIComponent(media.path)
     );
   }, [media?.path, backendUrl]);
+  const video = useSeekableVideo(src);
 
   const handleLoadedMetadata = useCallback(() => {
     setDuration(videoRef.current?.duration || 0);
@@ -220,24 +295,63 @@ export const CreateThumbnail: FC<{
   return (
     <div className="flex flex-col space-y-4">
       <div className="relative bg-black rounded-lg overflow-hidden">
-        <video
-          ref={videoRef}
-          src={src}
-          className="w-full h-[200px] object-contain"
-          onLoadedMetadata={handleLoadedMetadata}
-          onTimeUpdate={handleTimeUpdate}
-          onSeeked={handleTimeUpdate}
-          muted
-          playsInline
-          preload="metadata"
-          crossOrigin="anonymous"
-        />
+        {!!video.url && (
+          <video
+            ref={videoRef}
+            src={video.url}
+            className="w-full h-[200px] object-contain"
+            onLoadedMetadata={handleLoadedMetadata}
+            onTimeUpdate={handleTimeUpdate}
+            onSeeked={handleTimeUpdate}
+            muted
+            playsInline
+            preload="metadata"
+            crossOrigin="anonymous"
+          />
+        )}
+        {!video.url && (
+          <div
+            role="status"
+            className="h-[200px] flex flex-col items-center justify-center gap-[10px] text-white/80 text-sm"
+          >
+            <span>
+              {t('thumbnail_loading_video', 'Đang tải video để chọn khung…')}{' '}
+              <span className="tabular-nums">
+                {video.total
+                  ? `${Math.round((video.loaded / video.total) * 100)}%`
+                  : formatMb(video.loaded)}
+              </span>
+            </span>
+            {!!video.total && (
+              <div className="w-[60%] h-[4px] rounded-full bg-white/20 overflow-hidden">
+                <div
+                  className="h-full bg-white/80 transition-[width]"
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      (video.loaded / video.total) * 100
+                    )}%`,
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        )}
         <canvas ref={canvasRef} className="hidden" />
       </div>
 
-      {!isLoaded && (
+      {video.fallback && (
+        <div className="text-[12px] leading-[1.6] text-textColor/60">
+          {t(
+            'thumbnail_stream_fallback',
+            'Video quá lớn hoặc không tải trọn được — có thể không tua được. Nếu khung hình đứng yên khi kéo, hãy dùng "Tải ảnh lên".'
+          )}
+        </div>
+      )}
+
+      {!!video.url && !isLoaded && (
         <div className="text-sm text-textColor/70 text-center">
-          {t('thumbnail_loading_video', 'Đang tải video…')}
+          {t('thumbnail_reading_video', 'Đang đọc video…')}
         </div>
       )}
 
@@ -354,30 +468,27 @@ export const MediaComponentInner: FC<{
     };
   }, []);
 
-  const onPickImage = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      e.target.value = '';
-      if (!file) return;
-      if (!IMAGE_TYPES.test(file.type)) {
-        toaster.show(
-          t('thumbnail_upload_type', 'Chỉ nhận ảnh JPG, PNG hoặc WEBP.'),
-          'warning'
-        );
-        return;
-      }
-      if (file.size > MAX_IMAGE_BYTES) {
-        toaster.show(
-          t('thumbnail_upload_size', 'Ảnh bìa tối đa 10 MB.'),
-          'warning'
-        );
-        return;
-      }
-      setNewThumbnail(URL.createObjectURL(file));
-      setThumbnailTimestamp(null);
-    },
-    []
-  );
+  const onPickImage = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!IMAGE_TYPES.test(file.type)) {
+      toaster.show(
+        t('thumbnail_upload_type', 'Chỉ nhận ảnh JPG, PNG hoặc WEBP.'),
+        'warning'
+      );
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      toaster.show(
+        t('thumbnail_upload_size', 'Ảnh bìa tối đa 10 MB.'),
+        'warning'
+      );
+      return;
+    }
+    setNewThumbnail(URL.createObjectURL(file));
+    setThumbnailTimestamp(null);
+  }, []);
 
   const save = useCallback(async () => {
     setLoading(true);
@@ -443,10 +554,7 @@ export const MediaComponentInner: FC<{
           type="text"
           value={altText}
           onChange={(e) => setAltText(e.target.value)}
-          placeholder={t(
-            'media_alt_placeholder',
-            'Mô tả nội dung ảnh/video…'
-          )}
+          placeholder={t('media_alt_placeholder', 'Mô tả nội dung ảnh/video…')}
           className="w-full px-3 py-2 bg-fifth border border-tableBorder rounded-lg text-textColor placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-forth focus:border-transparent"
         />
       </div>
