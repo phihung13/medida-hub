@@ -15,6 +15,8 @@ dist
 .devcontainer
 **/.git
 **/*.md
+# File mô tả API gửi Major OS — trang Cài đặt tải về, phải có trong image
+!apps/frontend/public/major-os-mo-ta.md
 **/LICENSE
 **/npm-debug.log
 **/*.vscode

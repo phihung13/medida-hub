@@ -121,11 +121,15 @@ export const MajorOsComponent: FC = () => {
       const url = URL.createObjectURL(
         new Blob([text], { type: 'text/markdown;charset=utf-8' })
       );
+      // Firefox chỉ tải khi <a> nằm trong trang; giải phóng URL ngay sau
+      // click thì Safari/Firefox có thể huỷ tải -> chờ một nhịp.
       const a = document.createElement('a');
       a.href = url;
       a.download = 'media-hub-major-os.md';
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
     } catch {
       toast.show(
         t('major_os_spec_failed', 'Không tải được file mô tả.'),
