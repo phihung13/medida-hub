@@ -18,6 +18,13 @@ import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorato
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 import { hasExtension } from '@gitroom/helpers/utils/has.extension';
 
+// Ảnh bìa Reels: ảnh TẢI LÊN (có thumbnail, không có mốc thời gian) -> cover_url;
+// khung cắt từ video -> thumb_offset (ms) như cũ.
+const reelCover = (m: { thumbnail?: string; thumbnailTimestamp?: number | null }) =>
+  m?.thumbnail && m?.thumbnailTimestamp == null
+    ? `&cover_url=${encodeURIComponent(m.thumbnail)}`
+    : `&thumb_offset=${m?.thumbnailTimestamp || 0}`;
+
 @Rules(
   "Instagram should have at least one attachment, if it's a story, it can have only one picture"
 )
@@ -620,9 +627,7 @@ export class InstagramProvider
           ? firstPost?.media?.length === 1
             ? isStory
               ? `video_url=${m.path}&media_type=STORIES`
-              : `video_url=${m.path}&media_type=REELS&thumb_offset=${
-                  m?.thumbnailTimestamp || 0
-                }`
+              : `video_url=${m.path}&media_type=REELS${reelCover(m)}`
             : isStory
             ? `video_url=${m.path}&media_type=STORIES`
             : `video_url=${m.path}&media_type=VIDEO&thumb_offset=${

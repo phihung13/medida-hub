@@ -250,10 +250,14 @@ export class ZaloVideoProvider extends SocialAbstract implements SocialProvider 
     // Ảnh bìa: ưu tiên giây chọn trong phần cài đặt Zalo Video; không có thì
     // dùng khung đã chọn ở "Media settings" của Postiz (thumbnailTimestamp, ms)
     // — cái đó chỉ có nghĩa khi ảnh thumbnail còn (xoá thumbnail không xoá mốc).
+    // Ảnh bìa TẢI LÊN (không cắt từ video) có mốc = null: Zalo chỉ nhận khung
+    // cắt từ video nên bỏ qua (Number(null) = 0 sẽ chọn nhầm khung đầu).
     const coverTime =
       typeof settings.coverTime === 'number'
         ? settings.coverTime
-        : video?.thumbnail && Number.isFinite(Number(video?.thumbnailTimestamp))
+        : video?.thumbnail &&
+          video?.thumbnailTimestamp != null &&
+          Number.isFinite(Number(video?.thumbnailTimestamp))
         ? Number(video.thumbnailTimestamp) / 1000
         : null;
 

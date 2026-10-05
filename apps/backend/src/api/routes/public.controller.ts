@@ -205,6 +205,10 @@ export class PublicController {
     // the SSRF blocklist (see GHSA-34w8-5j2v-h6ww). `fetch` defaults to
     // `redirect: 'follow'`, which bypasses the DTO-level URL check.
     const MAX_REDIRECTS = 5;
+    // Chuyển tiếp Range của trình duyệt: thiếu nó thì nguồn luôn trả cả file từ
+    // byte 0 -> thẻ <video> không tua được (kéo thanh "Create Thumbnail" tới
+    // đâu cũng bật về 0:00).
+    const range = typeof req.headers.range === 'string' ? req.headers.range : '';
     let currentUrl = url;
     let r: globalThis.Response | undefined;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
@@ -215,6 +219,7 @@ export class PublicController {
       r = await fetch(currentUrl, {
         signal: ac.signal,
         redirect: 'manual',
+        ...(range ? { headers: { Range: range } } : {}),
         // @ts-ignore — undici option, not in lib.dom fetch types
         dispatcher: ssrfSafeDispatcher,
       });
