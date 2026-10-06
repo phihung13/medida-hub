@@ -741,7 +741,8 @@ export class ViralService implements OnModuleInit {
           },
         ],
       } as any,
-      'MCP' as any
+      'MCP' as any,
+      'viral-clone'
     );
 
     await this._repo.update(id, { clonedCount: (data.post.clonedCount || 0) + 1 });
@@ -907,7 +908,8 @@ export class ViralService implements OnModuleInit {
           },
         ],
       } as any,
-      'MCP' as any
+      'MCP' as any,
+      'viral-ban-cua-minh'
     );
     await this._repo.updateClone(cloneId, { status: 'posted' });
     return { ok: true };
@@ -971,7 +973,8 @@ export class ViralService implements OnModuleInit {
           },
         ],
       } as any,
-      'MCP' as any
+      'MCP' as any,
+      'viral-infographic'
     );
     return { ok: true, images: images.length };
   }

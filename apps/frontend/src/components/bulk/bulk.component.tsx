@@ -24,6 +24,7 @@ interface BulkRow {
   mediaUrl: string;
   scheduledAt: string | null;
   errors: string[];
+  aiPolished?: boolean;
 }
 
 const useChannels = () => {
@@ -163,6 +164,8 @@ export const BulkComponent: FC<{
                 ...r,
                 title: suggestions[r.row].title || r.title,
                 content: suggestions[r.row].content || r.content,
+                // Thống kê agent: bài này do AI chuốt lại.
+                aiPolished: true,
               }
             : r
         )

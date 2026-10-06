@@ -151,6 +151,8 @@ export async function pushToPostiz({
   for (let i = 0; i < ids.length; i++) {
     const body = {
       type: 'draft', // vào hàng chờ duyệt trong Media Hub
+      // Thống kê "làm ra / dùng" theo agent (Hub > Major OS /noi-dung).
+      agent: 'zalo-bot',
       date: new Date(Date.now() + 2 * 3600 * 1000 + i * 60 * 1000).toISOString(),
       // Tag "Zalo" để Media Hub nhận diện bài chờ duyệt từ nhóm Zalo.
       tags: [{ value: 'Zalo', label: 'Zalo' }],

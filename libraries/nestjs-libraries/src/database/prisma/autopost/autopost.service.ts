@@ -303,7 +303,7 @@ export class AutopostService {
           },
         ],
       })),
-    }, 'AUTOPOST');
+    }, 'AUTOPOST', 'autopost-rss');
   }
 
   async updateUrl(state: WorkflowChannelsState) {

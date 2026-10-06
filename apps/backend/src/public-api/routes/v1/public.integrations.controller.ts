@@ -60,6 +60,9 @@ import { PostValidationException } from '@gitroom/backend/api/routes/posts.valid
 import { timer } from '@gitroom/helpers/utils/timer';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
 
+// Agent được phép tự khai qua public API (bot Zalo).
+const PUBLIC_API_AGENTS = ['zalo-bot'];
+
 @ApiTags('Public API')
 @Controller('/public/v1')
 export class PublicIntegrationsController {
@@ -234,7 +237,13 @@ export class PublicIntegrationsController {
       ? (rawBody.creationMethod as 'CLI' | 'API')
       : 'API';
 
-    return this._postsService.createPost(org.id, body, creationMethod);
+    // Agent AI làm ra bài (thống kê "làm ra / dùng"): chỉ nhận mã trong danh
+    // sách — chuỗi lạ bỏ qua, không lỗi (giữ tương thích client cũ).
+    const agent = PUBLIC_API_AGENTS.includes(rawBody?.agent)
+      ? (rawBody.agent as string)
+      : undefined;
+
+    return this._postsService.createPost(org.id, body, creationMethod, agent);
   }
 
   @Delete('/posts/:id')

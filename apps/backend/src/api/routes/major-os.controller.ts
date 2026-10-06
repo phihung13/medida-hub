@@ -4,6 +4,7 @@ import {
   ReportQuery,
   UsageService,
 } from '@gitroom/nestjs-libraries/database/prisma/usage/usage.service';
+import { HUB_AGENTS } from '@gitroom/nestjs-libraries/usage/hub.agents';
 
 // ============================================================================
 //  API báo cáo CHỈ ĐỌC cho Major OS (chuẩn "Kết nối app với Major OS" v2).
@@ -43,5 +44,22 @@ export class MajorOsReportController {
   ) {
     await this._usageService.verifyKey(auth);
     return this._usageService.feedbackReport(query);
+  }
+
+  // Nội dung làm ra / dùng theo agent, kênh, loại (mail anh Dương 06/10).
+  @Get('/noi-dung')
+  async content(
+    @Headers('authorization') auth: string,
+    @Query() query: ReportQuery
+  ) {
+    await this._usageService.verifyKey(auth);
+    return this._usageService.contentReport(query);
+  }
+
+  // Danh mục agent AI của Hub: làm gì, model, prompt ở đâu — để refine.
+  @Get('/agent')
+  async agents(@Headers('authorization') auth: string) {
+    await this._usageService.verifyKey(auth);
+    return { du_lieu: HUB_AGENTS };
   }
 }

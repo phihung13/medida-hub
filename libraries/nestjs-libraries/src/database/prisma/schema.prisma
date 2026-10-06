@@ -687,6 +687,11 @@ model Post {
   submittedForOrganizationId String?
   approvedSubmitForOrder     APPROVED_SUBMIT_FOR_ORDER @default(NO)
   creationMethod             CreationMethod            @default(UNKNOWN)
+  // Agent AI đã làm ra bài (thống kê "làm ra / dùng" cho Major OS). null = người
+  // soạn tay hoặc bài cũ (trước khi có cột) — báo cáo suy ra từ creationMethod/tag.
+  // Giá trị: zalo-bot | viral-clone | viral-ban-cua-minh | viral-infographic |
+  // agent-chat | excel-ai | autopost-rss | generator
+  agent                      String?
   lastMessageId              String?
   intervalInDays             Int?
   error                      String?
@@ -715,6 +720,7 @@ model Post {
   @@index([intervalInDays])
   @@index([approvedSubmitForOrder])
   @@index([creationMethod])
+  @@index([agent])
   @@index([lastMessageId])
   @@index([createdAt])
   @@index([updatedAt])

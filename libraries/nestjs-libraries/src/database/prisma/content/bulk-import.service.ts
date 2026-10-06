@@ -37,6 +37,7 @@ export interface BulkRow {
   mediaUrl: string;
   scheduledAt: string | null; // ISO UTC
   errors: string[];
+  aiPolished?: boolean; // đã qua "AI chuốt" -> bài tính là agent excel-ai
 }
 
 const HEADER_ALIASES: Record<string, string[]> = {
@@ -506,7 +507,12 @@ export class BulkImportService {
           if (item.errors !== true) throw new Error(String(item.errors));
           if (item.tooLong) throw new Error('Nội dung quá dài cho kênh này');
         }
-        await this._postsService.createPost(orgId, body as any, 'API');
+        await this._postsService.createPost(
+          orgId,
+          body as any,
+          'API',
+          row.aiPolished ? 'excel-ai' : undefined
+        );
         results.push({ row: row.row, ok: true });
       } catch (e: any) {
         results.push({

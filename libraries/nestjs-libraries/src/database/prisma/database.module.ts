@@ -49,6 +49,7 @@ import { AnnouncementsRepository } from '@gitroom/nestjs-libraries/database/pris
 import { AnnouncementsService } from '@gitroom/nestjs-libraries/database/prisma/announcements/announcements.service';
 import { UsageRepository } from '@gitroom/nestjs-libraries/database/prisma/usage/usage.repository';
 import { UsageService } from '@gitroom/nestjs-libraries/database/prisma/usage/usage.service';
+import { ContentStatsRepository } from '@gitroom/nestjs-libraries/database/prisma/usage/content-stats.repository';
 import { ErrorsRepository } from '@gitroom/nestjs-libraries/database/prisma/errors/errors.repository';
 import { ErrorsService } from '@gitroom/nestjs-libraries/database/prisma/errors/errors.service';
 import { AdminStatsRepository } from '@gitroom/nestjs-libraries/database/prisma/admin-stats/admin-stats.repository';
@@ -116,6 +117,7 @@ import { BulkImportService } from '@gitroom/nestjs-libraries/database/prisma/con
     AnnouncementsRepository,
     AnnouncementsService,
     UsageRepository,
+    ContentStatsRepository,
     UsageService,
     ErrorsRepository,
     ErrorsService,

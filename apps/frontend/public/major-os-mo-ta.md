@@ -45,6 +45,8 @@ thời gian và tính năng sử dụng để cải thiện sản phẩm."
 
 ## 3. Endpoint
 
+Gồm `/tinh-nang`, `/thoi-gian-dung`, `/gop-y`, `/noi-dung`, `/agent`.
+
 ### 3.1 `GET /tinh-nang` — mỗi dòng là một lần dùng tính năng (hoặc một lần lỗi)
 
 ```
@@ -160,6 +162,73 @@ người đó trong khoảng `tu`/`den`.
 | `muc_hai_long` | 1–5, có thể không có |
 | `trang` | trang đang mở lúc gửi góp ý |
 
+### 3.4 `GET /noi-dung` — nội dung LÀM RA và được DÙNG, theo agent / kênh / loại
+
+Trả lời: mỗi agent AI (và người soạn tay) làm ra bao nhiêu bài, bao nhiêu được dùng, phân theo kênh và loại nội dung.
+
+```json
+{
+  "du_lieu": [
+    {
+      "id": "nd_2026-10-05_zalo-bot_facebook_album",
+      "nguon": "bai-dang",
+      "ngay": "2026-10-05",
+      "luc": "2026-10-05T00:00:00+07:00",
+      "cap_nhat_luc": "2026-10-06T09:12:00.000+07:00",
+      "agent": "zalo-bot",
+      "kenh": "facebook",
+      "loai": "album",
+      "tinh_nang": "noi-dung.zalo-bot",
+      "so_lam_ra": 5,
+      "so_dung": 3,
+      "so_da_dang": 2,
+      "so_cho_dang": 1,
+      "so_loi": 0,
+      "so_nhap": 1,
+      "so_bo": 1,
+      "ty_le_dung": 60
+    }
+  ],
+  "trang_sau": null
+}
+```
+
+| Trường | Ý nghĩa |
+|---|---|
+| `id` | `nd_<ngày>_<agent>_<kênh>_<loại>`: **một id cho mỗi nhóm mỗi ngày** |
+| `nguon` | `bai-dang` (bài trên Lịch) · `phat-hien-san-xuat` (sản phẩm blog / podcast / infographic / "Bài của mình" chưa nằm trên Lịch) |
+| `ngay` | ngày **làm ra** (giờ Việt Nam) |
+| `agent` | ai làm ra: `zalo-bot`, `viral-clone`, `viral-ban-cua-minh`, `viral-infographic`, `viral-blog`, `viral-podcast`, `agent-chat`, `excel-ai`, `autopost-rss`, `generator`, `thu-cong` (người tự soạn), `api`, `cli`, `ai-khac` (AI trước 06/10/2026, chưa tách được) — mô tả ở `/agent` |
+| `kenh` | mã nền tảng (`facebook`, `instagram`, `zalo-video`, `tiktok`, `youtube`…); `hub` = sản phẩm chưa lên kênh |
+| `loai` | `chu` · `anh` (1 ảnh) · `album` (≥ 2 ảnh) · `video` · `blog` · `podcast` · `infographic` · `bai-viet` |
+| `tinh_nang` | `noi-dung.<agent>`, để xếp chung bảng tính năng |
+| `so_lam_ra` | tổng số làm ra trong ngày (kể cả đã xoá sau đó) |
+| `so_dung` | = `so_da_dang` + `so_cho_dang` + `so_loi`: người duyệt đã cho đi đăng |
+| `so_da_dang` / `so_cho_dang` / `so_loi` | đã đăng / đã lên lịch chưa tới giờ / đăng lỗi (lỗi kênh) |
+| `so_nhap` | còn nháp, chưa ai đụng tới |
+| `so_bo` | bị xoá (không dùng) |
+| `ty_le_dung` | `so_dung / so_lam_ra × 100`, làm tròn 1 chữ số |
+
+**Quan trọng:** số là **trạng thái hiện tại**. Bài làm ra hôm qua mà hôm nay mới đăng thì lượt lấy hôm nay trả lại
+dòng của **hôm qua** (cùng `id`) với số mới, nên **ghi đè theo `id`, đừng cộng dồn**. `tu`/`den` chọn những ngày có
+bài làm ra, đổi trạng thái hoặc bị xoá trong khoảng đó. Muốn tỷ lệ theo kênh hay loại trên nhiều ngày thì cộng
+`so_lam_ra` và `so_dung` rồi mới chia, đừng lấy trung bình `ty_le_dung`.
+
+### 3.5 `GET /agent` — danh mục agent AI của Hub
+
+Không cần `tu`/`den`, không phân trang. Mỗi phần tử có các trường:
+
+| Trường | Ý nghĩa |
+|---|---|
+| `ma` | mã agent, khớp `agent` ở `/noi-dung` |
+| `ten`, `nhom` | tên agent; nhóm: `tao-bai` · `ho-tro-soan` · `phat-hien-san-xuat` · `phan-tich` |
+| `lam_gi`, `kich_hoat`, `dau_ra` | agent làm gì, ai/cái gì kích hoạt, kết quả nằm ở đâu |
+| `model` | model AI đang dùng |
+| `prompt` | đường dẫn file prompt trong repo |
+| `skill` | khoá skill sửa được ngay trên giao diện (Phát hiện → Công thức AI) |
+| `tinh_nang` | khoá ở `/tinh-nang` để đếm số lần dùng |
+| `do_duoc` | đo được tới đâu |
+
 ## 4. Danh sách tính năng
 
 | Khoá | Tên hiển thị | `them` |
@@ -195,6 +264,7 @@ người đó trong khoảng `tu`/`den`.
 | `zalo.dang-xuat` | Đăng xuất Zalo của bot | `xoa_du_lieu` |
 | `zalo-video.tai-phien` | Tải phiên đăng nhập Zalo Video lên bot | |
 | `gop-y.gui` | Gửi góp ý | `loai` |
+| `noi-dung.<agent>` | Nội dung do agent làm ra (mục 3.4) | |
 
 Mã lỗi (`them.ma_loi`) khi lên lịch / đăng bị chặn: `THIEU_NOI_DUNG`, `CAI_DAT_SAI`, `NOI_DUNG_KHONG_HOP_LE`,
 `QUA_DAI` (kèm `them.kenh` là nền tảng gây lỗi); máy chủ từ chối: `HTTP_<mã>`; AI: `HET_THOI_GIAN`, `LOI_MANG`,
@@ -205,6 +275,8 @@ Mã lỗi (`them.ma_loi`) khi lên lịch / đăng bị chặn: `THIEU_NOI_DUNG`
 - Bảng xếp hạng chung: thời gian dùng (`/thoi-gian-dung`) và số lần dùng tính năng (`/tinh-nang`).
 - Tính năng ít dùng nhất, tỷ lệ lỗi theo tính năng, và kênh nào hay làm bài bị chặn (`ma_loi` + `kenh`).
 - Hộp góp ý (`/gop-y`).
+- **Tỷ lệ dùng / làm ra** theo agent, kênh, loại nội dung (`/noi-dung`); agent nào tỷ lệ thấp thì xem mô tả ở `/agent`
+  để refine prompt.
 - Cảnh báo nghiệp vụ riêng: **chưa có** (dự kiến: kênh mất kết nối, bài đăng lỗi).
 
 ## 6. Liên hệ kỹ thuật

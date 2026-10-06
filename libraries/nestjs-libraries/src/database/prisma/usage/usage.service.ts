@@ -11,6 +11,7 @@ import {
   UsageCursor,
   UsageRepository,
 } from '@gitroom/nestjs-libraries/database/prisma/usage/usage.repository';
+import { ContentStatsRepository } from '@gitroom/nestjs-libraries/database/prisma/usage/content-stats.repository';
 import {
   OutEvent,
   sanitizeEvent,
@@ -78,7 +79,10 @@ export class UsageService implements OnModuleDestroy {
   private readonly perKey = new Map<string, { start: number; count: number }>();
   private readonly pruneTimer: ReturnType<typeof setInterval>;
 
-  constructor(private _usageRepository: UsageRepository) {
+  constructor(
+    private _usageRepository: UsageRepository,
+    private _contentStats: ContentStatsRepository
+  ) {
     // Dọn dữ liệu thô quá 180 ngày, 6 giờ/lần.
     this.pruneTimer = setInterval(() => this.prune(), 6 * 3600_000);
     this.pruneTimer.unref?.();
@@ -311,5 +315,110 @@ export class UsageService implements OnModuleDestroy {
       })),
       trang_sau,
     };
+  }
+
+  /**
+   * Nội dung LÀM RA và được DÙNG, theo ngày / agent / kênh / loại.
+   * Mỗi dòng = SỐ HIỆN TẠI của một nhóm bài làm ra trong một ngày VN — Major
+   * OS ghi đè theo `id` (bài đổi trạng thái sau đó thì lượt lấy sau trả lại
+   * cùng `id` với số mới). `tu`/`den` chọn các ngày có thay đổi trong khoảng.
+   */
+  async contentReport(q: ReportQuery) {
+    const { from, to, size } = this.range(q);
+    const [postDays, viralDays] = await Promise.all([
+      this._contentStats.postDaysTouched(from, to),
+      this._contentStats.viralDaysTouched(from, to),
+    ]);
+    const [posts, viral] = await Promise.all([
+      this._contentStats.postsByDay(postDays.map((d) => d.ngay)),
+      this._contentStats.viralByDay(viralDays.map((d) => d.ngay)),
+    ]);
+
+    const rows = [
+      ...posts.map((r) => {
+        const dung = r.cho_dang + r.da_dang + r.loi;
+        return {
+          id: `nd_${r.ngay}_${r.agent}_${r.kenh}_${r.loai}`,
+          nguon: 'bai-dang',
+          ngay: r.ngay,
+          luc: `${r.ngay}T00:00:00+07:00`,
+          cap_nhat_luc: toVn(r.cap_nhat),
+          agent: r.agent,
+          kenh: r.kenh,
+          loai: r.loai,
+          tinh_nang: `noi-dung.${r.agent}`,
+          so_lam_ra: r.lam_ra,
+          so_dung: dung,
+          so_da_dang: r.da_dang,
+          so_cho_dang: r.cho_dang,
+          so_loi: r.loi,
+          so_nhap: r.nhap,
+          so_bo: r.da_xoa,
+          ty_le_dung: r.lam_ra ? Math.round((dung / r.lam_ra) * 1000) / 10 : 0,
+        };
+      }),
+      ...this.viralRows(viral),
+    ];
+
+    const offset = Math.max(0, Number(decodeCursor(q.trang_sau)?.o) || 0);
+    return {
+      du_lieu: rows.slice(offset, offset + size),
+      trang_sau:
+        offset + size < rows.length ? encodeCursor({ o: offset + size }) : null,
+    };
+  }
+
+  // Phát hiện / Sản xuất: gộp trạng thái của từng (ngày, loại sản phẩm) thành
+  // một dòng cùng khuôn với bài đăng. "Dùng" = blog/infographic xong (tải về
+  // hoặc đẩy lên Lịch), podcast đã phát hành RSS, "Bài của mình" đã đăng.
+  private viralRows(rows: Awaited<ReturnType<ContentStatsRepository['viralByDay']>>) {
+    const groups = new Map<string, any>();
+    for (const r of rows) {
+      const agent = r.kind === 'bai-cua-minh' ? 'viral-ban-cua-minh' : `viral-${r.format}`;
+      const key = `${r.ngay}_${agent}`;
+      const g =
+        groups.get(key) ||
+        groups
+          .set(key, {
+            id: `nd_${r.ngay}_${agent}_hub_${r.format}`,
+            nguon: 'phat-hien-san-xuat',
+            ngay: r.ngay,
+            luc: `${r.ngay}T00:00:00+07:00`,
+            cap_nhat_luc: '',
+            agent,
+            kenh: 'hub',
+            loai: r.format,
+            tinh_nang: `noi-dung.${agent}`,
+            so_lam_ra: 0,
+            so_dung: 0,
+            so_da_dang: 0,
+            so_cho_dang: 0,
+            so_loi: 0,
+            so_nhap: 0,
+            so_bo: 0,
+            ty_le_dung: 0,
+            _updated: 0,
+          })
+          .get(key);
+      g.so_lam_ra += r.so;
+      const used =
+        r.kind === 'bai-cua-minh'
+          ? r.status === 'posted'
+          : r.format === 'podcast'
+          ? r.status === 'da_phat_hanh'
+          : r.status === 'xong';
+      if (r.status === 'da_xoa') g.so_bo += r.so;
+      else if (r.status === 'error') g.so_loi += r.so;
+      else if (used) {
+        g.so_dung += r.so;
+        g.so_da_dang += r.so;
+      } else g.so_nhap += r.so;
+      g._updated = Math.max(g._updated, new Date(r.cap_nhat).getTime());
+    }
+    return [...groups.values()].map(({ _updated, ...g }) => ({
+      ...g,
+      cap_nhat_luc: toVn(new Date(_updated)),
+      ty_le_dung: g.so_lam_ra ? Math.round((g.so_dung / g.so_lam_ra) * 1000) / 10 : 0,
+    }));
   }
 }

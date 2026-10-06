@@ -878,7 +878,9 @@ export class PostsService {
   async createPost(
     orgId: string,
     body: CreatePostDto,
-    creationMethod: CreationMethod
+    creationMethod: CreationMethod,
+    // Agent AI làm ra bài (xem Post.agent) — chỉ để thống kê.
+    agent?: string
   ): Promise<any[]> {
     const postList = [];
     for (const post of body.posts) {
@@ -915,7 +917,8 @@ export class PostsService {
         post,
         body.tags,
         creationMethod,
-        body.inter
+        body.inter,
+        agent
       );
 
       if (!posts?.length) {
@@ -1087,7 +1090,8 @@ export class PostsService {
               },
             ],
           },
-          'WEB'
+          'WEB',
+          'generator'
         );
       }
     }

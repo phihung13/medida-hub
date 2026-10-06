@@ -236,7 +236,7 @@ If the tools return errors, you would need to rerun it with the right parameters
                 })),
               },
             ],
-          }, 'MCP');
+          }, 'MCP', 'agent-chat');
           finalOutput.push(...output);
         }
 

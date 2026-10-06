@@ -524,7 +524,8 @@ export class PostsRepository {
     body: PostBody,
     tags: { value: string; label: string }[],
     creationMethod: CreationMethod,
-    inter?: number
+    inter?: number,
+    agent?: string
   ) {
     const posts: Post[] = [];
     const uuid = uuidv4();
@@ -559,6 +560,8 @@ export class PostsRepository {
         intervalInDays: inter ? +inter : null,
         approvedSubmitForOrder: APPROVED_SUBMIT_FOR_ORDER.NO,
         ...(type === 'create' ? { creationMethod } : {}),
+        // Như creationMethod: chỉ ghi lúc tạo — sửa bài không đổi "ai làm ra".
+        ...(type === 'create' && agent ? { agent } : {}),
         ...(state === 'update'
           ? {}
           : {
