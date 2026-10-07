@@ -244,7 +244,9 @@ Mỗi model đều chọn được trong Cài đặt → Claude API key:
 
 - **Trước 06/10/2026**, bài từ Phát hiện và trang Agent gộp chung là `ai-khac`, Excel gộp vào `api`. Bot Zalo vẫn
   nhận ra được nhờ tag.
-- Nhóm Zalo bật **"tự đăng Facebook / GBP"** thì bot đăng thẳng, bài **không vào Lịch** nên không có trong báo cáo.
+- Nhóm Zalo bật **"tự đăng Facebook / GBP"** thì bot đăng thẳng lên Facebook **và vẫn đẩy một bản nháp vào Lịch**.
+  Bản nháp đó nằm im nên bị tính là "chưa dùng" dù bài đã đăng thật, nên tỷ lệ dùng của `zalo-bot` có thể **thấp hơn
+  thực tế**. Đối chiếu với danh sách nhóm đang bật tự đăng (trang Zalo → Nhóm Zalo).
 - "Bài của mình" xoá thì bị xoá cứng (không lưu lại), nên số làm ra của ngày đó giảm theo.
 - Báo cáo chỉ biết bài đã đăng hay chưa, **không biết hiệu quả** (like, share, reach). Muốn so hiệu quả theo agent
   phải nối thêm số liệu Facebook / Meta (bước sau).

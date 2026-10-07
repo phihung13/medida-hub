@@ -46,7 +46,7 @@ export const HUB_AGENTS: HubAgent[] = [
     ],
     tinh_nang: ['zalo.mo-bai', 'zalo.chot-ngay', 'zalo.lay-lai-tin'],
     do_duoc:
-      'Đủ: bài nháp → lên lịch / đăng / xoá. Lưu ý: nhóm Zalo bật "tự đăng Facebook/GBP" thì bot đăng thẳng, bài đó KHÔNG vào Lịch nên không đếm.',
+      'Đủ: bài nháp → lên lịch / đăng / xoá. Lưu ý: nhóm Zalo bật "tự đăng Facebook/GBP" thì bot đăng thẳng lên Facebook VÀ vẫn đẩy bản nháp vào Lịch — bản nháp đó nằm im nên bị tính là chưa dùng (tỷ lệ dùng thấp hơn thực tế).',
   },
   {
     ma: 'viral-clone',
