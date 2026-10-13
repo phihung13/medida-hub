@@ -8,6 +8,7 @@ import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { AllProvidersSettings } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/all.providers.settings';
 import { Integration } from '@prisma/client';
 import { checkAuth } from '@gitroom/nestjs-libraries/chat/auth.context';
+import { MCP_AGENT } from '@gitroom/nestjs-libraries/chat/hub/hub.tool.helpers';
 import {
   ValidUrlExtension,
   ValidUrlPath,
@@ -131,10 +132,20 @@ If the tools return errors, you would need to rerun it with the right parameters
           .or(z.object({ errors: z.string() })),
       }),
       execute: async (inputData, context) => {
-        checkAuth(inputData, context);
-        const organizationId = JSON.parse(
+        // Khoá MCP "tạo nháp" chỉ được tạo nháp; lên lịch / đăng ngay cần "được đăng".
+        checkAuth(
+          inputData,
+          context,
+          inputData.socialPost.some((p: any) => p.type !== 'draft')
+            ? 'dang'
+            : 'nhap'
+        );
+        const org = JSON.parse(
           (context?.requestContext as any)?.get('organization') as string
-        ).id;
+        );
+        const organizationId = org.id;
+        // Bài do agent ngoài (khoá MCP riêng) tách khỏi trang Agent trong app.
+        const agentCode = org.mcpKeyId ? MCP_AGENT : 'agent-chat';
         const finalOutput = [];
 
         const integrations = {} as Record<string, Integration>;
@@ -236,7 +247,7 @@ If the tools return errors, you would need to rerun it with the right parameters
                 })),
               },
             ],
-          }, 'MCP', 'agent-chat');
+          }, 'MCP', agentCode);
           finalOutput.push(...output);
         }
 

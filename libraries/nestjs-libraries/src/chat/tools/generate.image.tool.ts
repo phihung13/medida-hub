@@ -37,7 +37,7 @@ export class GenerateImageTool implements AgentToolInterface {
         path: z.string(),
       }),
       execute: async (inputData, context) => {
-        checkAuth(inputData, context);
+        checkAuth(inputData, context, 'nhap');
         const org = JSON.parse((context?.requestContext as any)?.get('organization') as string);
         const image = await this._mediaService.generateImage(
           inputData.prompt,

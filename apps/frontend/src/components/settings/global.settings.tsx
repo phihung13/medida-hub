@@ -11,6 +11,7 @@ import { ImageGenComponent } from '@gitroom/frontend/components/settings/image.g
 import { SocialKeysComponent } from '@gitroom/frontend/components/settings/social-keys.component';
 import { EmailSmtpComponent } from '@gitroom/frontend/components/settings/email-smtp.component';
 import { MajorOsComponent } from '@gitroom/frontend/components/settings/major-os.component';
+import { McpKeysComponent } from '@gitroom/frontend/components/settings/mcp-keys.component';
 import { useUser } from '@gitroom/frontend/components/layout/user.context';
 
 const MetricComponent = dynamic(
@@ -36,6 +37,10 @@ export const GlobalSettings = () => {
       <ShortlinkPreferenceComponent />
       {/* Key đọc được dữ liệu của mọi người dùng → chỉ quản trị hệ thống */}
       {!!user?.isSuperAdmin && <MajorOsComponent />}
+      {/* Khoá MCP điều khiển cả tổ chức → chỉ quản trị viên tổ chức */}
+      {(user?.role === 'ADMIN' || user?.role === 'SUPERADMIN') && (
+        <McpKeysComponent />
+      )}
     </div>
   );
 };

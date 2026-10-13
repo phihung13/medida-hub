@@ -1298,3 +1298,21 @@ model MajorOsKey {
   lastUsedAt DateTime?
   revokedAt  DateTime?
 }
+
+// Khoá MCP riêng cho agent ngoài (Hermes…) — mỗi khoá một mức quyền:
+// doc (chỉ đọc) < nhap (tạo/sửa nháp, chạy AI) < dang (lên lịch, đăng thật, xoá).
+// Key gốc chỉ hiện đúng một lần; DB chỉ giữ sha256.
+model McpKey {
+  id             String    @id @default(uuid())
+  organizationId String
+  name           String
+  level          String // doc | nhap | dang
+  hash           String    @unique
+  last4          String
+  createdBy      String?
+  createdAt      DateTime  @default(now())
+  lastUsedAt     DateTime?
+  revokedAt      DateTime?
+
+  @@index([organizationId])
+}

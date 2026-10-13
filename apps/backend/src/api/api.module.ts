@@ -48,6 +48,7 @@ import { FarcasterProvider } from '@gitroom/backend/services/auth/providers/farc
 import { WalletProvider } from '@gitroom/backend/services/auth/providers/wallet.provider';
 import { OauthProvider } from '@gitroom/backend/services/auth/providers/oauth.provider';
 import { UsageController } from '@gitroom/backend/api/routes/usage.controller';
+import { McpKeysController } from '@gitroom/backend/api/routes/mcp-keys.controller';
 import { MajorOsReportController } from '@gitroom/backend/api/routes/major-os.controller';
 
 const authenticatedController = [
@@ -75,6 +76,7 @@ const authenticatedController = [
   ContentController,
   BulkController,
   UsageController,
+  McpKeysController,
 ];
 @Module({
   imports: [UploadModule],

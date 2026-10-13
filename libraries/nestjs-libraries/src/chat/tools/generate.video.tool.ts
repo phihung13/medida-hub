@@ -58,7 +58,7 @@ export class GenerateVideoTool implements AgentToolInterface {
         url: z.string(),
       }),
       execute: async (inputData, context) => {
-        checkAuth(inputData, context);
+        checkAuth(inputData, context, 'nhap');
         const org = JSON.parse((context?.requestContext as any)?.get('organization') as string);
         const value = await this._mediaService.generateVideo(org, {
           type: inputData.identifier,

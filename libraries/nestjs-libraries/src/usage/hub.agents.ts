@@ -129,6 +129,21 @@ export const HUB_AGENTS: HubAgent[] = [
     do_duoc: 'Đủ (từ 06/10/2026).',
   },
   {
+    ma: 'mcp-ngoai',
+    ten: 'Agent ngoài qua khoá MCP (Hermes…)',
+    nhom: 'tao-bai',
+    lam_gi:
+      'Agent bên ngoài (Hermes agentic OS…) tự gọi bộ công cụ MCP của Hub để soạn, lên lịch, duyệt Zalo, sản xuất viral.',
+    kich_hoat: 'Agent ngoài gọi /mcp bằng khoá MCP riêng (Cài đặt → Kết nối agent MCP).',
+    dau_ra: 'Bài trên Lịch (nháp / lên lịch / đăng ngay tuỳ mức quyền của khoá).',
+    model: 'Model của agent ngoài — Hub không viết prompt',
+    prompt: [
+      'libraries/nestjs-libraries/src/chat/hub/*.tools.ts — mô tả từng công cụ (agent ngoài đọc)',
+      'docs/MCP_HUB.md — danh sách công cụ + mức quyền',
+    ],
+    do_duoc: 'Đủ (từ 13/10/2026).',
+  },
+  {
     ma: 'excel-ai',
     ten: 'Nhập Excel — "AI chuốt"',
     nhom: 'tao-bai',

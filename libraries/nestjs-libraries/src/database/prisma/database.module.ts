@@ -49,6 +49,8 @@ import { AnnouncementsRepository } from '@gitroom/nestjs-libraries/database/pris
 import { AnnouncementsService } from '@gitroom/nestjs-libraries/database/prisma/announcements/announcements.service';
 import { UsageRepository } from '@gitroom/nestjs-libraries/database/prisma/usage/usage.repository';
 import { UsageService } from '@gitroom/nestjs-libraries/database/prisma/usage/usage.service';
+import { McpKeyRepository } from '@gitroom/nestjs-libraries/database/prisma/mcp-keys/mcp-key.repository';
+import { McpKeyService } from '@gitroom/nestjs-libraries/database/prisma/mcp-keys/mcp-key.service';
 import { ContentStatsRepository } from '@gitroom/nestjs-libraries/database/prisma/usage/content-stats.repository';
 import { ErrorsRepository } from '@gitroom/nestjs-libraries/database/prisma/errors/errors.repository';
 import { ErrorsService } from '@gitroom/nestjs-libraries/database/prisma/errors/errors.service';
@@ -119,6 +121,8 @@ import { BulkImportService } from '@gitroom/nestjs-libraries/database/prisma/con
     UsageRepository,
     ContentStatsRepository,
     UsageService,
+    McpKeyRepository,
+    McpKeyService,
     ErrorsRepository,
     ErrorsService,
     AdminStatsRepository,

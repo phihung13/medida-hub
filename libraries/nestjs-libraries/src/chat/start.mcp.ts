@@ -7,6 +7,11 @@ import { OrganizationService } from '@gitroom/nestjs-libraries/database/prisma/o
 import { OAuthService } from '@gitroom/nestjs-libraries/database/prisma/oauth/oauth.service';
 import { runWithContext } from './async.storage';
 import { createOAuthMiddleware } from './oauth-middleware';
+import { HubToolsService } from '@gitroom/nestjs-libraries/chat/hub/hub.tools.service';
+import {
+  MCP_KEY_PREFIX,
+  McpKeyService,
+} from '@gitroom/nestjs-libraries/database/prisma/mcp-keys/mcp-key.service';
 const fixAcceptHeader = (req: Request) => {
   const value = 'application/json, text/event-stream';
   req.headers.accept = value;
@@ -22,8 +27,15 @@ export const startMcp = async (app: INestApplication) => {
   const mastraService = app.get(MastraService, { strict: false });
   const organizationService = app.get(OrganizationService, { strict: false });
   const oauthService = app.get(OAuthService, { strict: false });
+  const mcpKeyService = app.get(McpKeyService, { strict: false });
+  const hubToolsService = app.get(HubToolsService, { strict: false });
 
+  // Khoá MCP riêng (hub_mcp_…) → tổ chức kèm mcpLevel; API key tổ chức /
+  // OAuth → toàn quyền như trước.
   const resolveAuth = async (token: string) => {
+    if (token.startsWith(MCP_KEY_PREFIX)) {
+      return mcpKeyService.resolve(token);
+    }
     if (token.startsWith('pos_')) {
       const authorization = await oauthService.getOrgByOAuthToken(token);
       if (!authorization) return null;
@@ -34,11 +46,13 @@ export const startMcp = async (app: INestApplication) => {
 
   const mastra = await mastraService.mastra();
   const agent = mastra.getAgent('postiz');
-  const tools = await agent.listTools();
+  // Công cụ gốc (lên lịch, tạo ảnh/video…) + bộ công cụ Hub (lịch, Zalo,
+  // autopost, Excel, viral, số liệu…) — xem docs/MCP_HUB.md.
+  const tools = { ...(await agent.listTools()), ...hubToolsService.tools() };
 
   const serverConfig = {
-    name: 'Postiz MCP',
-    version: '1.0.0',
+    name: 'Việt Anh Media Hub MCP',
+    version: '2.0.0',
     tools,
     agents: { postiz: agent },
   };
@@ -195,7 +209,7 @@ export const startMcp = async (app: INestApplication) => {
     }
 
     // @ts-ignore
-    req.auth = await organizationService.getOrgByApiKey(req.params.id);
+    req.auth = await resolveAuth(req.params.id);
     // @ts-ignore
     if (!req.auth) {
       res.status(400).send('Invalid API Key');
