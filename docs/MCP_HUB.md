@@ -140,6 +140,10 @@ Luồng: cào nguồn → **chủ đề** (nhiều nguồn cùng nói một chuy
 | `hub_viral_nguon` / `hub_viral_nguon_them` / `hub_viral_nguon_sua` | doc / dang | Nguồn theo dõi, bật/tắt tự cào, xoá |
 | `hub_viral_chan_dung` | doc | 8 chân dung khách hàng mục tiêu |
 | `hub_viral_ban_tin` | doc | Bản tin viral tuần đã gửi |
+| `hub_group_fb_tong_quan` | doc | Khu Group FB: group đang theo dõi + các kỳ cào (chủ đề hot, chủ đề nhiều người hỏi) |
+| `hub_group_fb_bai` | doc | Bài cào từ group (link bài, group, chủ đề, loại hỏi/chia sẻ/review/phàn nàn, tương tác) |
+| `hub_group_fb_them_group` | nhap | Thêm / sửa / bật-tắt group theo dõi (xoá cần `dang`) |
+| `hub_group_fb_lam_content` | nhap | Đưa 1 bài group sang phễu content (thành content chờ duyệt) |
 
 ### 4.6 Zalo
 

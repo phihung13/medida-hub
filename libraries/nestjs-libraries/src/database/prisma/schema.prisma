@@ -612,6 +612,66 @@ model ViralReport {
 // 8 chân dung phụ huynh (persona) — seed từ sheet Profiles của n8n; phần ĐỘNG
 // (moiQuanTam/tamLy/hanhVi/insights) được AI làm giàu sau mỗi lần cào từ 3 tín
 // hiệu: VOICE (group phụ huynh), TREND (báo chí), WINNING (bài share cao).
+// ── Khu "Group Facebook" (tab riêng trên /viral) ──────────────────────────
+// Đối tác cào (Claude) đọc danh sách group ở đây, gửi từng bài thô kèm link +
+// nhãn chủ đề, cuối kỳ gửi tổng hợp chủ đề hot / câu hỏi nhiều người hỏi.
+// TÁCH RIÊNG khỏi phễu content — người xem muốn làm content thì bấm đưa sang.
+model ViralGroup {
+  id             String    @id @default(cuid())
+  organizationId String
+  name           String
+  url            String // link group đã chuẩn hoá (khoá chống trùng)
+  area           String? // khu vực / đối tượng (ghi chú cho người cào)
+  note           String?
+  active         Boolean   @default(true)
+  lastCrawledAt  DateTime?
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@unique([organizationId, url])
+  @@index([organizationId])
+}
+
+model ViralGroupPost {
+  id             String    @id @default(cuid())
+  organizationId String
+  groupId        String?
+  groupName      String
+  url            String? // permalink bài (nếu lấy được)
+  dedupKey       String // url chuẩn hoá, hoặc group + đầu nội dung
+  author         String?
+  content        String
+  topic          String? // nhãn chủ đề ngắn do người cào gắn
+  kind           String    @default("khac") // hoi | chia_se | review | phan_nan | khac
+  level          String    @default("all") // mn | th | cs | pt | all
+  likes          Int?
+  comments       Int?
+  shares         Int?
+  topComments    String? // JSON string[] — vài bình luận tiêu biểu
+  postedAt       DateTime?
+  batchId        String? // ViralGroupBatch (kỳ cào) — null = chưa kết kỳ
+  pushedTopicId  String? // đã đưa sang phễu content (ViralTopic)
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@unique([organizationId, dedupKey])
+  @@index([organizationId, createdAt])
+  @@index([batchId])
+}
+
+model ViralGroupBatch {
+  id             String   @id @default(cuid())
+  organizationId String
+  summary        String? // nhận xét chung của người cào
+  hotTopics      String? // JSON [{topic, posts, comments, groups[], urls[], note?}]
+  askedTopics    String? // JSON [{topic, posts, groups[], urls[], note?}]
+  postCount      Int      @default(0)
+  groupCount     Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+}
+
 model ViralPersona {
   id             String    @id @default(cuid())
   organizationId String

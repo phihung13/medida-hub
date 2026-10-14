@@ -2,6 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { ViralService } from '@gitroom/nestjs-libraries/database/prisma/viral/viral.service';
 import {
+  GROUP_POST_KINDS,
+  ViralGroupService,
+} from '@gitroom/nestjs-libraries/database/prisma/viral/viral-group.service';
+import {
   HubToolError,
   HubToolGroup,
   HubToolMap,
@@ -20,7 +24,10 @@ const LIST_LIMIT = 50;
 
 @Injectable()
 export class HubViralTools implements HubToolGroup {
-  constructor(private _viralService: ViralService) {}
+  constructor(
+    private _viralService: ViralService,
+    private _groupService: ViralGroupService
+  ) {}
 
   tools(): HubToolMap {
     return {
@@ -433,6 +440,95 @@ export class HubViralTools implements HubToolGroup {
           '8 chân dung phụ huynh / khách hàng mục tiêu (AI tự làm giàu sau mỗi lần cào) — dùng để viết đúng người đọc.',
         input: z.object({}),
         run: async (_i, org) => this._viralService.listPersonas(org.id),
+      }),
+
+      hub_group_fb_tong_quan: hubTool({
+        id: 'hub_group_fb_tong_quan',
+        title: 'Group Facebook — group & các kỳ cào',
+        level: 'doc',
+        description:
+          'Khu Group Facebook (tách riêng phễu content): danh sách group đang theo dõi + các kỳ cào gần nhất kèm chủ đề đang hot và chủ đề nhiều người hỏi.',
+        input: z.object({}),
+        run: async (_i, org) => {
+          const [groups, batches] = await Promise.all([
+            this._groupService.listGroups(org.id),
+            this._groupService.batches(org.id),
+          ]);
+          return { groups, ky_cao: batches.slice(0, 8) };
+        },
+      }),
+
+      hub_group_fb_bai: hubTool({
+        id: 'hub_group_fb_bai',
+        title: 'Bài trong group Facebook',
+        level: 'doc',
+        description:
+          'Bài đã cào từ các group Facebook (link bài, group, chủ đề, loại bài, lượt tương tác, bình luận tiêu biểu). Mặc định 30 ngày gần nhất, nhiều bình luận trước.',
+        input: z.object({
+          ky: z.string().optional().describe('id kỳ cào, hoặc "open" = bài chưa kết kỳ'),
+          group_id: z.string().optional(),
+          loai: z.enum(GROUP_POST_KINDS).optional().describe('hoi = câu hỏi của phụ huynh'),
+          chu_de: z.string().optional().describe('Đúng nhãn chủ đề'),
+          tim: z.string().optional().describe('Tìm trong nội dung / chủ đề'),
+        }),
+        run: async (input, org) => {
+          const rows = await this._groupService.posts(org.id, {
+            batch: input.ky,
+            group: input.group_id,
+            kind: input.loai,
+            topic: input.chu_de,
+            q: input.tim,
+          });
+          return { bai: rows.slice(0, LIST_LIMIT), con_nua: Math.max(0, rows.length - LIST_LIMIT) };
+        },
+      }),
+
+      hub_group_fb_them_group: hubTool({
+        id: 'hub_group_fb_them_group',
+        title: 'Thêm / sửa group Facebook theo dõi',
+        level: 'nhap',
+        description:
+          'Thêm group vào danh sách cào (trùng link thì cập nhật tên/khu vực). Muốn tạm dừng hoặc xoá group thì dùng tat_bat / xoa với id.',
+        input: z.object({
+          url: z.string().optional().describe('facebook.com/groups/...'),
+          ten: z.string().optional(),
+          khu_vuc: z.string().optional(),
+          id: z.string().optional().describe('Group có sẵn (để bật/tắt/xoá)'),
+          bat: z.boolean().optional(),
+          xoa: z.boolean().optional(),
+        }),
+        run: async (input, org) => {
+          if (input.id && input.xoa) {
+            requireLevel(org, 'dang', 'xoá group');
+            await this._groupService.deleteGroup(org.id, input.id);
+            return { ok: true, da_xoa: input.id };
+          }
+          if (input.id) {
+            await this._groupService.updateGroup(org.id, input.id, {
+              name: input.ten,
+              area: input.khu_vuc,
+              active: input.bat,
+            });
+            return { ok: true, id: input.id };
+          }
+          if (!input.url) throw new HubToolError('Cần url (thêm mới) hoặc id (sửa).');
+          const g = await this._groupService.addGroup(org.id, {
+            url: input.url,
+            name: input.ten,
+            area: input.khu_vuc,
+          });
+          return { ok: true, id: g.id, ten: g.name, url: g.url };
+        },
+      }),
+
+      hub_group_fb_lam_content: hubTool({
+        id: 'hub_group_fb_lam_content',
+        title: 'Đưa bài group sang phễu content',
+        level: 'nhap',
+        description:
+          'Biến 1 bài group Facebook thành 1 content trong tab Chờ duyệt (AI tổng hợp + chấm điểm như bài thêm tay). Gọi lại với cùng bài thì trả content đã tạo.',
+        input: z.object({ id: z.string() }),
+        run: async (input, org) => this._groupService.toContent(org.id, input.id),
       }),
 
       hub_viral_ban_tin: hubTool({

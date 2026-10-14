@@ -32,6 +32,8 @@ import { AiCreditRepository } from '@gitroom/nestjs-libraries/database/prisma/ai
 import { AiCreditService } from '@gitroom/nestjs-libraries/database/prisma/ai-credits/ai.credit.service';
 import { ViralRepository } from '@gitroom/nestjs-libraries/database/prisma/viral/viral.repository';
 import { ViralService } from '@gitroom/nestjs-libraries/database/prisma/viral/viral.service';
+import { ViralGroupRepository } from '@gitroom/nestjs-libraries/database/prisma/viral/viral-group.repository';
+import { ViralGroupService } from '@gitroom/nestjs-libraries/database/prisma/viral/viral-group.service';
 import { StreakRepository } from '@gitroom/nestjs-libraries/database/prisma/streak/streak.repository';
 import { StreakService } from '@gitroom/nestjs-libraries/database/prisma/streak/streak.service';
 import { AutopostRepository } from '@gitroom/nestjs-libraries/database/prisma/autopost/autopost.repository';
@@ -94,6 +96,8 @@ import { BulkImportService } from '@gitroom/nestjs-libraries/database/prisma/con
     AiCreditService,
     ViralRepository,
     ViralService,
+    ViralGroupRepository,
+    ViralGroupService,
     StreakRepository,
     StreakService,
     MediaService,

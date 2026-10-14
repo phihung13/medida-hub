@@ -10,11 +10,13 @@ import { ExtractContentService } from '@gitroom/nestjs-libraries/openai/extract.
 import { CodesService } from '@gitroom/nestjs-libraries/services/codes.service';
 import { PublicIntegrationsController } from '@gitroom/backend/public-api/routes/v1/public.integrations.controller';
 import { PublicViralController } from '@gitroom/backend/public-api/routes/v1/public.viral.controller';
+import { PublicViralGroupsController } from '@gitroom/backend/public-api/routes/v1/public.viral-groups.controller';
 import { PublicAuthMiddleware } from '@gitroom/backend/services/auth/public.auth.middleware';
 
 const authenticatedController = [
   PublicIntegrationsController,
   PublicViralController,
+  PublicViralGroupsController,
 ];
 @Module({
   imports: [UploadModule],

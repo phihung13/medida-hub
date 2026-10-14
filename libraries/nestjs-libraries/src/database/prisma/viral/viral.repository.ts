@@ -1139,6 +1139,15 @@ export class ViralRepository {
     });
   }
 
+  // Nguồn của nhiều chủ đề 1 lần (thẻ content hiện báo/group/trang nào).
+  topicSourceRows(orgId: string, topicIds: string[]) {
+    if (!topicIds.length) return Promise.resolve([] as any[]);
+    return this._posts.model.viralPost.findMany({
+      where: { organizationId: orgId, topicId: { in: topicIds }, deletedAt: null },
+      select: { topicId: true, platform: true, sourceType: true, sourceName: true, url: true },
+    });
+  }
+
   // Tính lại số liệu tổng hợp của cụm từ các bài thành viên.
   async topicMemberStats(orgId: string, topicId: string) {
     const rows = await this._posts.model.viralPost.findMany({

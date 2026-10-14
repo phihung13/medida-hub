@@ -441,6 +441,8 @@ export class ViralService implements OnModuleInit {
       images?: { base64: string; mediaType: string }[];
       platform?: string;
       level?: string;
+      sourceName?: string;
+      sourceType?: string;
     }
   ) {
     let pageTitle: string | undefined;
@@ -498,7 +500,12 @@ export class ViralService implements OnModuleInit {
       platform: body.platform || forcedPlatform || ai?.platform || 'facebook',
       level: body.level || ai?.level || 'all',
       title: ai?.title || pageTitle || body.text?.slice(0, 120) || body.url || 'Bài viral',
-      sourceName: ai?.sourceName || ytStats?.author || (body.url ? new URL(body.url).hostname : null),
+      sourceName:
+        body.sourceName ||
+        ai?.sourceName ||
+        ytStats?.author ||
+        (body.url ? new URL(body.url).hostname : null),
+      sourceType: body.sourceType || null,
       url: body.url || null,
       thumbnail: pageImage || null,
       content: ai?.content || pageText || body.text || null,
@@ -528,8 +535,19 @@ export class ViralService implements OnModuleInit {
       level?: string;
       purpose?: string;
       sourceType?: string;
+      sourceName?: string;
     }
   ): Promise<{ id?: string; duplicated?: boolean; spam?: boolean; profile?: boolean }> {
+    // Tên nguồn THẬT do đối tác ghi (field sourceName, hoặc dòng "Nguồn: <tên>
+    // (<mã>)" trong text) — tin hơn tên AI đoán, để thẻ content hiện đúng báo/
+    // group/trang nào.
+    const declaredSource =
+      String(body.sourceName || '').trim().slice(0, 120) ||
+      ((String(body.text || '').match(/Nguồn:\s*(.+)/i) || [])[1] || '')
+        .replace(/\s*\([A-Z]\d{1,3}\)\s*$/, '')
+        .trim()
+        .slice(0, 120) ||
+      null;
     if (body.url && (await this._repo.existsByUrl(orgId, body.url))) {
       return { duplicated: true };
     }
@@ -553,7 +571,7 @@ export class ViralService implements OnModuleInit {
         status: 'skipped',
         sourceType: body.sourceType || 'group',
         title: text.split('\n')[0].slice(0, 120) || 'Tín hiệu dân cư',
-        sourceName: (text.match(/Nguồn:\s*(.+)/i) || [])[1]?.slice(0, 120) || null,
+        sourceName: declaredSource,
         url: body.url || null,
         content: text,
         shares: num(/share:?\s*([\d.,]+)/i),
@@ -577,7 +595,7 @@ export class ViralService implements OnModuleInit {
       sourceType: body.sourceType || null,
       title:
         ai?.title || body.text?.slice(0, 120) || body.url || 'Bài đối tác cào',
-      sourceName: ai?.sourceName || null,
+      sourceName: declaredSource || ai?.sourceName || null,
       url: body.url || null,
       content: ai?.content || body.text || null,
       shares: ai?.shares ?? null,
@@ -1521,9 +1539,17 @@ export class ViralService implements OnModuleInit {
     for (const pr of prods as any[]) {
       byTopic.set(pr.topicId, [...(byTopic.get(pr.topicId) || []), pr]);
     }
+    const srcRows = await this._repo
+      .topicSourceRows(orgId, rows.map((r: any) => r.id))
+      .catch(() => [] as any[]);
+    const srcByTopic = new Map<string, any[]>();
+    for (const r of srcRows as any[]) {
+      srcByTopic.set(r.topicId, [...(srcByTopic.get(r.topicId) || []), r]);
+    }
     const shaped = rows.map((t: any) => ({
       ...this.shapeTopic(t),
       products: byTopic.get(t.id) || [],
+      sources: ViralService.summarizeSources(srcByTopic.get(t.id) || []),
     }));
     // Tab "Đã duyệt" chỉ giữ thẻ CHƯA SẢN XUẤT XONG (chưa có sản phẩm / đang
     // chạy / lỗi) — sản xuất đủ thì sản phẩm đã nằm bên "Chờ đăng", thẻ tự
@@ -1561,6 +1587,38 @@ export class ViralService implements OnModuleInit {
     return counts;
   }
 
+  // Loại nguồn để hiển thị: nhãn đối tác gắn (kol/school/group/news) ưu tiên,
+  // không có thì suy từ nền tảng (news/gnews = báo, youtube, facebook = trang).
+  static sourceKind(p: { platform?: string | null; sourceType?: string | null }) {
+    if (p.sourceType && p.sourceType !== 'other') return p.sourceType;
+    if (p.platform === 'news' || p.platform === 'gnews') return 'news';
+    if (p.platform === 'youtube') return 'youtube';
+    if (p.platform === 'tiktok' || p.platform === 'instagram') return p.platform;
+    return p.platform === 'facebook' ? 'facebook' : 'other';
+  }
+
+  // Gộp bài của 1 chủ đề thành danh sách nguồn {kind, name, posts} — nhiều bài
+  // nhất trước. Tên trống thì lấy tên miền của link.
+  static summarizeSources(rows: any[]) {
+    const by = new Map<string, { kind: string; name: string; posts: number }>();
+    for (const r of rows) {
+      const kind = ViralService.sourceKind(r);
+      let name = String(r.sourceName || '').trim();
+      if (!name && r.url) {
+        try {
+          name = new URL(r.url).hostname.replace(/^www\./, '');
+        } catch {
+          name = '';
+        }
+      }
+      const key = kind + '|' + name.toLowerCase();
+      const cur = by.get(key) || { kind, name, posts: 0 };
+      cur.posts++;
+      by.set(key, cur);
+    }
+    return Array.from(by.values()).sort((a, b) => b.posts - a.posts).slice(0, 8);
+  }
+
   // Chi tiết 1 chủ đề: content tổng hợp + các bài NGUỒN (bằng chứng).
   async topicDetail(orgId: string, id: string) {
     const t = await this._repo.getTopic(orgId, id);
@@ -1574,10 +1632,12 @@ export class ViralService implements OnModuleInit {
         platform: p.platform,
         title: decodeEntities(p.title),
         sourceName: p.sourceName,
+        sourceKind: ViralService.sourceKind(p),
         url: p.url,
         thumbnail: p.thumbnail,
         shares: p.shares,
         likes: p.likes,
+        comments: p.comments,
         views: p.views,
         createdAt: p.createdAt,
       })),

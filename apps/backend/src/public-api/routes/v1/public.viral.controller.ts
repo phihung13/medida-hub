@@ -27,6 +27,9 @@ export class PublicViralController {
       level?: string;
       purpose?: string;
       sourceType?: string;
+      // tên báo/trang/group thật — hiện trên thẻ content (thiếu thì đọc dòng
+      // "Nguồn: ..." trong text)
+      sourceName?: string;
     }
   ) {
     if (!body?.url && !body?.text && !body?.images?.length) {
@@ -58,6 +61,7 @@ export class PublicViralController {
       level,
       purpose,
       sourceType,
+      sourceName: body.sourceName ? String(body.sourceName).slice(0, 120) : undefined,
     });
   }
 

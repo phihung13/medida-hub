@@ -13,6 +13,7 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { MobileFab } from '@gitroom/frontend/components/new-layout/mobile.fab';
 import { useIsMobile } from '@gitroom/frontend/components/new-layout/use.is.mobile';
 import { useUser } from '@gitroom/frontend/components/layout/user.context';
+import { ViralGroupsPanel } from '@gitroom/frontend/components/viral/viral-groups.panel';
 
 // ── Lò Bài Thắng: tường bài viral giáo dục → mổ công thức → nhân bản ───────
 // Thước đo chính: LƯỢT SHARE.
@@ -69,6 +70,21 @@ const scoreStyle = (s?: number | null) =>
     : s >= 50
     ? 'bg-[#5CBEFF]/20 text-[#5CBEFF] border border-[#5CBEFF]/40'
     : 'bg-[#FF5A52]/20 text-[#FF5A52] border border-[#FF5A52]/40';
+
+// Loại nguồn của content (backend tính sẵn: nhãn đối tác gắn, không có thì
+// suy từ nền tảng) — hiện trên thẻ để biết content đến từ báo, group hay trang.
+const SOURCE_KIND: Record<string, { icon: string; key: string; label: string }> = {
+  news: { icon: '📰', key: 'viral_src_news', label: 'News' },
+  group: { icon: '👥', key: 'viral_src_group', label: 'FB group' },
+  kol: { icon: '🎤', key: 'viral_src_kol', label: 'KOL' },
+  school: { icon: '🏫', key: 'viral_src_school', label: 'Competitor' },
+  facebook: { icon: '📘', key: 'viral_src_facebook', label: 'Facebook' },
+  youtube: { icon: '▶️', key: 'viral_src_youtube', label: 'YouTube' },
+  tiktok: { icon: '🎵', key: 'viral_src_tiktok', label: 'TikTok' },
+  instagram: { icon: '📷', key: 'viral_src_instagram', label: 'Instagram' },
+  other: { icon: '🔗', key: 'viral_src_other', label: 'Other' },
+};
+const srcMeta = (k?: string) => SOURCE_KIND[k || 'other'] || SOURCE_KIND.other;
 
 const useViral = (platform: string, level: string, sort: string, status: string) => {
   const fetch = useFetch();
@@ -1656,8 +1672,8 @@ const TopicDetailModal: FC<{ topicId: string; onDone: () => void }> = ({ topicId
         <div className="flex flex-col gap-[4px] max-h-[180px] overflow-auto">
           {posts.map((p: any) => (
             <div key={p.id} className="flex items-center gap-[8px] text-[12px] bg-newColColor border border-newBgLineColor rounded-[8px] px-[10px] py-[6px]">
-              <i className="w-[7px] h-[7px] rounded-full shrink-0" style={{ background: platMeta(p.platform)?.dot || '#888' }} />
-              <span className="text-textItemBlur shrink-0 max-w-[120px] truncate">{p.sourceName || '—'}</span>
+              <span className="shrink-0" title={t(srcMeta(p.sourceKind).key, srcMeta(p.sourceKind).label)}>{srcMeta(p.sourceKind).icon}</span>
+              <span className="text-textItemBlur shrink-0 max-w-[140px] truncate" title={p.sourceName || ''}>{p.sourceName || t(srcMeta(p.sourceKind).key, srcMeta(p.sourceKind).label)}</span>
               <span className="truncate flex-1">{p.title}</span>
               {p.shares != null && <span className="text-[#FFC53D] tabular-nums shrink-0">↗ {nice(p.shares)}</span>}
               {p.url && (
@@ -3313,6 +3329,8 @@ export const ViralComponent: FC = () => {
   const [level, setLevel] = useState('all');
   const [sort, setSort] = useState('shares');
   const [tab, setTab] = useState('pending');
+  // lọc content theo loại nguồn (báo / group / KOL / đối thủ…) — lọc phía client
+  const [srcFilter, setSrcFilter] = useState('');
   const [crawling, setCrawling] = useState(false);
   // ── Mobile: touch không có hover/lasso chuột → chế độ "Chọn" bật tick + tap
   // thẻ = chọn; panel Nguồn theo dõi mặc định gập cho gọn trang.
@@ -3326,6 +3344,7 @@ export const ViralComponent: FC = () => {
   const isArchive = tab === 'archive';
   const isSkills = tab === 'skills';
   const isReports = tab === 'reports';
+  const isGroups = tab === 'groups';
   const { data: reportsData, mutate: mutateReports } = useReports(isReports);
   const [makingReport, setMakingReport] = useState(false);
   const { data, isLoading, mutate } = useViral(platform, level, sort, tab);
@@ -3706,7 +3725,14 @@ export const ViralComponent: FC = () => {
   };
 
   const items = data?.items || [];
-  const topics = topicsData?.topics || [];
+  const allTopics = topicsData?.topics || [];
+  const topics = srcFilter
+    ? allTopics.filter((p: any) => (p.sources || []).some((x: any) => x.kind === srcFilter))
+    : allTopics;
+  // loại nguồn đang có trong tab (để dropdown lọc chỉ hiện loại có thật)
+  const srcKindsInTab = Array.from(
+    new Set(allTopics.flatMap((p: any) => (p.sources || []).map((x: any) => x.kind)))
+  ) as string[];
   const sources = data?.sources || [];
 
   const QUICK = [
@@ -3840,6 +3866,18 @@ export const ViralComponent: FC = () => {
           sắp xếp (phải). Mobile: cuộn ngang. */}
       <div className="flex items-center gap-[8px] flex-wrap mobile:flex-nowrap mobile-hscroll">
         <button
+          onClick={() => setTab('groups')}
+          title={t('viral_tab_groups_hint', 'Posts Claude crawled from your Facebook groups: links, hot topics, most-asked questions — separate from the content funnel')}
+          className={clsx(
+            'h-[34px] px-[12px] rounded-[8px] text-[12.5px] font-[700] border flex items-center mobile:shrink-0 mobile:whitespace-nowrap tap-shrink',
+            tab === 'groups'
+              ? 'bg-newColColor border-newTableBorder text-textColor'
+              : 'border-newBgLineColor text-textItemBlur hover:text-textColor'
+          )}
+        >
+          👥 {t('viral_tab_groups', 'FB groups')}
+        </button>
+        <button
           onClick={() => setTab('reports')}
           title={t('viral_tab_reports_hint', 'Weekly briefs: hot news, market moves, to-do list — also sent to Zalo/email')}
           className={clsx(
@@ -3881,6 +3919,18 @@ export const ViralComponent: FC = () => {
             pill "Đang tạm dừng" cũ đã gỡ. */}
         <div className="flex-1 mobile:min-w-[8px]" />
         {(isTopicTab || isReady) && selectModeBtn}
+        {isTopicTab && srcKindsInTab.length > 0 && (
+          <select value={srcFilter} onChange={(e) => setSrcFilter(e.target.value)} className="h-[34px] bg-newColColor border border-newBgLineColor rounded-[8px] px-[10px] mobile:h-[44px] mobile:shrink-0 text-[12.5px] outline-none">
+            <option value="">{t('viral_src_all', 'All sources')}</option>
+            {Object.keys(SOURCE_KIND)
+              .filter((k) => srcKindsInTab.includes(k) || k === srcFilter)
+              .map((k) => (
+                <option key={k} value={k}>
+                  {SOURCE_KIND[k].icon} {t(SOURCE_KIND[k].key, SOURCE_KIND[k].label)}
+                </option>
+              ))}
+          </select>
+        )}
         {isTopicTab && (
           <select value={sort} onChange={(e) => setSort(e.target.value)} className="h-[34px] bg-newColColor border border-newBgLineColor rounded-[8px] px-[10px] mobile:h-[44px] mobile:shrink-0 text-[12.5px] outline-none">
             <option value="shares">{t('viral_sort_convergence', 'Hottest (most posts & sources)')}</option>
@@ -3941,7 +3991,9 @@ export const ViralComponent: FC = () => {
       {/* Sắp xếp + nút Chọn (mobile) đã gộp vào Toolbar phụ (Hàng 2) ở trên. */}
 
       {/* 📰 Bản tin tuần — đọc lại + tick todo + cấu hình gửi Zalo */}
-      {isReports ? (
+      {isGroups ? (
+        <ViralGroupsPanel canModerate={canModerate} />
+      ) : isReports ? (
         <div className="flex flex-col gap-[12px]">
           <ZaloSendPanel latestId={(reportsData?.items || [])[0]?.id} />
           <div className={clsx('flex', !canModerate && 'hidden')}>
@@ -4130,6 +4182,23 @@ export const ViralComponent: FC = () => {
                 </span>
               </div>
               <div className="text-[13.5px] font-[600] leading-[1.4] line-clamp-2 min-h-[38px]">{p.label}</div>
+              {/* NGUỒN của content: báo nào, group nào, KOL/đối thủ nào */}
+              {(p.sources || []).length > 0 && (
+                <div className="flex gap-[5px] flex-wrap items-center">
+                  {(p.sources || []).slice(0, 3).map((x: any, i: number) => (
+                    <span
+                      key={i}
+                      className="text-[10.5px] px-[7px] py-[2px] rounded-full bg-newBgColor border border-newBgLineColor text-textItemBlur max-w-[170px] truncate"
+                      title={`${t(srcMeta(x.kind).key, srcMeta(x.kind).label)}${x.name ? ': ' + x.name : ''} · ${x.posts}`}
+                    >
+                      {srcMeta(x.kind).icon} {x.name || t(srcMeta(x.kind).key, srcMeta(x.kind).label)}
+                    </span>
+                  ))}
+                  {(p.sources || []).length > 3 && (
+                    <span className="text-[10.5px] text-textItemBlur">+{(p.sources || []).length - 3}</span>
+                  )}
+                </div>
+              )}
               {(syn.hook || p.aiContent) && (
                 <div className="text-[12px] text-textItemBlur leading-[1.5] line-clamp-2">{syn.hook || p.aiContent}</div>
               )}

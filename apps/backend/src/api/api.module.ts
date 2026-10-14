@@ -28,6 +28,7 @@ import { WebhookController } from '@gitroom/backend/api/routes/webhooks.controll
 import { SignatureController } from '@gitroom/backend/api/routes/signature.controller';
 import { AiCreditsController } from '@gitroom/backend/api/routes/ai-credits.controller';
 import { ViralController } from '@gitroom/backend/api/routes/viral.controller';
+import { ViralGroupsController } from '@gitroom/backend/api/routes/viral-groups.controller';
 import { AutopostController } from '@gitroom/backend/api/routes/autopost.controller';
 import { SetsController } from '@gitroom/backend/api/routes/sets.controller';
 import { ThirdPartyController } from '@gitroom/backend/api/routes/third-party.controller';
@@ -65,6 +66,7 @@ const authenticatedController = [
   SignatureController,
   AiCreditsController,
   ViralController,
+  ViralGroupsController,
   AutopostController,
   SetsController,
   ThirdPartyController,
