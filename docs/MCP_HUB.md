@@ -84,6 +84,8 @@ Mức quyền của các loại khoá:
 | `hub_bai_sua` | nhap / dang | Sửa nội dung, comment đầu, media, tag, cài đặt:<br>• bài nháp hoặc bài lỗi: nhap<br>• bài đã lên lịch: dang<br>• bài đã đăng: không sửa được |
 | `hub_bai_doi_gio` | nhap / dang | Đổi giờ. Bài nháp vẫn là nháp; bài đã lên lịch được lên lịch lại. |
 | `hub_bai_trang_thai` | nhap / dang | `draft` (gỡ khỏi hàng đăng) hoặc `schedule` (**duyệt**: đưa vào hàng đăng, cần dang) |
+| `hub_bai_dang_ngay` | dang | **Đăng thật ngay** một bài nháp / đã lên lịch / bị lỗi (kiểm hợp lệ, đặt giờ = bây giờ) |
+| `hub_bai_duyet_hang_loat` | dang | Duyệt ≤ 50 bài nháp vào hàng đăng theo giờ trên bài. Bài đã qua giờ: `gio_qua` = `bo_qua` (mặc định) / `dang_ngay` / `gio_trong` (dời sang giờ trống). Trả kết quả từng bài. |
 | `hub_bai_xoa` | dang | Xoá bài khỏi Lịch, huỷ lịch. Bài đã đăng trên mạng không bị gỡ. |
 | `hub_gio_trong` | doc | Giờ trống kế tiếp của kênh |
 | `hub_bai_so_lieu` | doc | Số liệu bài đã đăng + lượt bấm link rút gọn |

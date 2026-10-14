@@ -117,6 +117,32 @@ export class HubPostsTools implements HubToolGroup {
     }
   }
 
+  // DUYỆT 1 bài: kiểm hợp lệ như lúc lên lịch → (đặt giờ mới nếu có) → vào
+  // hàng đăng. Giờ đăng ở quá khứ = workflow đăng NGAY (sleep 0).
+  private async approvePost(org: HubOrg, postId: string, when?: dayjs.Dayjs) {
+    const cur = await this.loadPost(org, postId);
+    const first: any = cur.posts[0];
+    if (first.state === 'PUBLISHED') throw new HubToolError('Bài đã đăng.');
+    await this.validate(org, 'schedule', [
+      {
+        integration: { id: cur.integration },
+        settings: cur.settings,
+        value: cur.posts.map((p: any) => ({
+          content: p.content,
+          image: p.image || [],
+        })),
+      },
+    ]);
+    if (when) {
+      await this._postsService.changeDate(org.id, first.id, when.toISOString(), 'update');
+    }
+    await this._postsService.changePostStatus(org.id, first.id, 'schedule');
+    return {
+      id: first.id,
+      gio_dang: (when || dayjs(first.publishDate)).toISOString(),
+    };
+  }
+
   tools(): HubToolMap {
     return {
       hub_lich_xem: hubTool({
@@ -455,6 +481,76 @@ Sửa bài NHÁP hoặc bài LỖI: khoá "tạo nháp" (bài lỗi sau khi sử
             first.id,
             input.trang_thai
           );
+        },
+      }),
+
+      hub_bai_dang_ngay: hubTool({
+        id: 'hub_bai_dang_ngay',
+        title: 'Đăng ngay bài nháp',
+        level: 'dang',
+        destructive: true,
+        openWorld: true,
+        description:
+          'ĐĂNG THẬT ngay bây giờ một bài đang là nháp (hoặc đã lên lịch / bị lỗi): kiểm hợp lệ theo luật kênh, đặt giờ = bây giờ, đưa vào hàng đăng — hệ thống đăng trong khoảng 1 phút. Chỉ gọi khi người dùng nói rõ "đăng ngay".',
+        input: z.object({
+          id: z.string().describe('id bài chính (hub_lich_xem / hub_bai_danh_sach)'),
+        }),
+        run: async (input, org) => {
+          const res = await this.approvePost(org, input.id, dayjs());
+          return {
+            ok: true,
+            ...res,
+            ghi_chu: 'Đã vào hàng đăng ngay — xem kết quả bằng hub_bai_chi_tiet sau 1-2 phút.',
+          };
+        },
+      }),
+
+      hub_bai_duyet_hang_loat: hubTool({
+        id: 'hub_bai_duyet_hang_loat',
+        title: 'Duyệt hàng loạt bài nháp',
+        level: 'dang',
+        openWorld: true,
+        description:
+          'Duyệt nhiều bài nháp cùng lúc (≤ 50): mỗi bài được kiểm hợp lệ rồi đưa vào hàng đăng theo giờ đã đặt trên bài. Bài có giờ đăng đã QUA: gio_qua="bo_qua" (mặc định) bỏ qua, "dang_ngay" đăng luôn, "gio_trong" dời sang giờ trống kế tiếp của kênh. Một bài lỗi không chặn các bài khác; kết quả trả từng bài.',
+        input: z.object({
+          ids: z.array(z.string()).min(1).max(50),
+          gio_qua: z.enum(['bo_qua', 'dang_ngay', 'gio_trong']).optional(),
+        }),
+        run: async (input, org) => {
+          const mode = input.gio_qua || 'bo_qua';
+          const ket_qua: any[] = [];
+          for (const id of input.ids) {
+            try {
+              const cur = await this.loadPost(org, id);
+              const first: any = cur.posts[0];
+              let when: dayjs.Dayjs | undefined;
+              if (dayjs(first.publishDate).isBefore(dayjs())) {
+                if (mode === 'bo_qua') {
+                  ket_qua.push({
+                    id,
+                    ok: false,
+                    loi: 'Giờ đăng đã qua — bỏ qua (truyền gio_qua để xử lý).',
+                  });
+                  continue;
+                }
+                if (mode === 'gio_trong') {
+                  // giờ trống trả dạng UTC không hậu tố (như viral.service)
+                  when = dayjs(
+                    (await this._postsService.findFreeDateTime(org.id, cur.integration)) + 'Z'
+                  );
+                }
+              }
+              const res = await this.approvePost(org, id, when);
+              ket_qua.push({ ok: true, ...res });
+            } catch (e: any) {
+              ket_qua.push({ id, ok: false, loi: e?.message || 'Lỗi' });
+            }
+          }
+          return {
+            da_duyet: ket_qua.filter((x) => x.ok).length,
+            loi: ket_qua.filter((x) => !x.ok).length,
+            ket_qua,
+          };
         },
       }),
 
