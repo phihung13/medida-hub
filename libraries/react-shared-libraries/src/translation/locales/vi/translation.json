@@ -1990,5 +1990,10 @@
   "viral_gr_asked": "Chủ đề nhiều người hỏi",
   "viral_gr_no_topics": "Kỳ này chưa có nhãn chủ đề.",
   "viral_gr_no_questions": "Kỳ này chưa có câu hỏi nào.",
-  "viral_gr_no_posts": "Không có bài nào khớp bộ lọc."
+  "viral_gr_no_posts": "Không có bài nào khớp bộ lọc.",
+  "viral_post_now": "Đăng ngay",
+  "viral_post_now_confirm": "Đăng NGAY lên kênh đã chọn? Không quay lại được.",
+  "viral_post_now_confirm_n": "Đăng NGAY các bài này lên kênh đã chọn? Không quay lại được.",
+  "viral_posted_now_toast": "Đang đăng ngay — xem Lịch sau khoảng 1 phút.",
+  "viral_bulk_posted_now": "bài đang được đăng ngay"
 }

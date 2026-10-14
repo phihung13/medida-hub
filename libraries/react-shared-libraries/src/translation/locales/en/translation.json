@@ -1624,5 +1624,10 @@
   "viral_src_youtube": "YouTube",
   "viral_src_tiktok": "TikTok",
   "viral_src_instagram": "Instagram",
-  "viral_src_other": "Other"
+  "viral_src_other": "Other",
+  "viral_post_now": "Publish now",
+  "viral_post_now_confirm": "Publish RIGHT NOW to the chosen channel? This cannot be undone.",
+  "viral_post_now_confirm_n": "Publish these posts RIGHT NOW to the chosen channel? This cannot be undone.",
+  "viral_posted_now_toast": "Publishing now — check the Calendar in a minute.",
+  "viral_bulk_posted_now": "post(s) publishing now"
 }

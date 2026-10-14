@@ -94,6 +94,15 @@ const useViral = (platform: string, level: string, sort: string, status: string)
   );
 };
 
+// Hỏi lại trước khi ĐĂNG THẬT (không quay lại được) — dùng chung các modal đăng.
+const confirmPostNow = (t: any, n = 1) =>
+  deleteDialog(
+    n > 1
+      ? `${t('viral_post_now_confirm_n', 'Publish these posts RIGHT NOW to the chosen channel? This cannot be undone.')} (${n})`
+      : t('viral_post_now_confirm', 'Publish RIGHT NOW to the chosen channel? This cannot be undone.'),
+    t('viral_post_now', 'Publish now')
+  );
+
 const Field: FC<{ label: string; children: any }> = ({ label, children }) => (
   <label className="flex flex-col gap-[5px]">
     <span className="text-[11.5px] text-textItemBlur">{label}</span>
@@ -1227,20 +1236,29 @@ const PostMineModal: FC<{ clone: any; onDone: () => void }> = ({ clone, onDone }
   const { data: integrations } = useIntegrationList();
   const [integrationId, setIntegrationId] = useState('');
   const [busy, setBusy] = useState(false);
-  const submit = useCallback(async () => {
+  const submit = useCallback(async (mode: 'draft' | 'now') => {
     if (!integrationId) {
       toast.show(t('viral_pick_channel_first', 'Pick a target channel first.'), 'warning');
       return;
     }
+    if (mode === 'now' && !(await confirmPostNow(t))) return;
     setBusy(true);
     try {
-      const res = await fetch(`/viral/mine/${clone.id}/post`, { method: 'POST', body: JSON.stringify({ integrationId }) });
-      if (!res.ok) throw new Error();
-      toast.show(t('viral_posted_toast', 'Added as a draft on the Calendar — review & schedule there.'), 'success');
+      const res = await fetch(`/viral/mine/${clone.id}/post`, { method: 'POST', body: JSON.stringify({ integrationId, mode }) });
+      if (!res.ok) {
+        const d = await res.json().catch(() => null);
+        throw new Error(d?.message || '');
+      }
+      toast.show(
+        mode === 'now'
+          ? t('viral_posted_now_toast', 'Publishing now — check the Calendar in a minute.')
+          : t('viral_posted_toast', 'Added as a draft on the Calendar — review & schedule there.'),
+        'success'
+      );
       onDone();
       modal.closeCurrent();
-    } catch {
-      toast.show(t('viral_post_failed', 'Could not post, try again.'), 'warning');
+    } catch (e: any) {
+      toast.show(e?.message || t('viral_post_failed', 'Could not post, try again.'), 'warning');
     } finally {
       setBusy(false);
     }
@@ -1257,7 +1275,17 @@ const PostMineModal: FC<{ clone: any; onDone: () => void }> = ({ clone, onDone }
           <option key={i.id} value={i.id}>{i.name} ({i.identifier})</option>
         ))}
       </select>
-      <Button onClick={submit} loading={busy}>{t('viral_post_to_calendar', 'Add to Calendar as draft')}</Button>
+      <div className="flex gap-[8px]">
+        <Button className="flex-1" onClick={() => submit('draft')} loading={busy}>📤 {t('viral_post_to_calendar', 'Add to Calendar as draft')}</Button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => submit('now')}
+          className="h-[44px] px-[14px] rounded-[8px] text-[13px] font-[700] text-[#FF8A3D] border border-[#FF8A3D]/50 hover:bg-[#FF8A3D]/10 disabled:opacity-50"
+        >
+          🚀 {t('viral_post_now', 'Publish now')}
+        </button>
+      </div>
     </div>
   );
 };
@@ -1999,16 +2027,17 @@ const PostProductModal: FC<{ product: any; onDone: () => void }> = ({ product, o
       setBusy(false);
     }
   }, [product.id, onDone]);
-  const submit = useCallback(async () => {
+  const submit = useCallback(async (mode: 'draft' | 'now') => {
     if (!integrationId) {
       toast.show(t('viral_pick_channel_first', 'Pick a target channel first.'), 'warning');
       return;
     }
+    if (mode === 'now' && !(await confirmPostNow(t))) return;
     setBusy(true);
     try {
       const res = await fetch(`/viral/products/${product.id}/post`, {
         method: 'POST',
-        body: JSON.stringify({ integrationId }),
+        body: JSON.stringify({ integrationId, mode }),
       });
       const d = await res.json().catch(() => null);
       if (!res.ok) {
@@ -2023,7 +2052,9 @@ const PostProductModal: FC<{ product: any; onDone: () => void }> = ({ product, o
         throw new Error(d?.message || '');
       }
       toast.show(
-        `📤 ${t('viral_product_posted', 'Added as a draft on the Calendar with')} ${d?.images ?? ''} ${t('viral_product_posted_suffix', 'image(s) — review & schedule there.')}`,
+        mode === 'now'
+          ? `🚀 ${t('viral_posted_now_toast', 'Publishing now — check the Calendar in a minute.')}`
+          : `📤 ${t('viral_product_posted', 'Added as a draft on the Calendar with')} ${d?.images ?? ''} ${t('viral_product_posted_suffix', 'image(s) — review & schedule there.')}`,
         'success'
       );
       onDone();
@@ -2090,7 +2121,17 @@ const PostProductModal: FC<{ product: any; onDone: () => void }> = ({ product, o
           </Button>
         </div>
       ) : (
-        <Button onClick={submit} loading={busy}>📤 {t('viral_post_to_calendar', 'Add to Calendar as draft')}</Button>
+        <div className="flex gap-[8px]">
+          <Button className="flex-1" onClick={() => submit('draft')} loading={busy}>📤 {t('viral_post_to_calendar', 'Add to Calendar as draft')}</Button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => submit('now')}
+            className="h-[44px] px-[14px] rounded-[8px] text-[13px] font-[700] text-[#FF8A3D] border border-[#FF8A3D]/50 hover:bg-[#FF8A3D]/10 disabled:opacity-50"
+          >
+            🚀 {t('viral_post_now', 'Publish now')}
+          </button>
+        </div>
       )}
     </div>
   );
@@ -2119,11 +2160,12 @@ const BulkPostReadyModal: FC<{
   const skipped =
     mineItems.length + productItems.length - eligibleMine.length - eligibleProducts.length;
   const total = eligibleMine.length + eligibleProducts.length;
-  const submit = useCallback(async () => {
+  const submit = useCallback(async (mode: 'draft' | 'now') => {
     if (!integrationId) {
       toast.show(t('viral_pick_channel_first', 'Pick a target channel first.'), 'warning');
       return;
     }
+    if (mode === 'now' && !(await confirmPostNow(t, total))) return;
     setBusy(true);
     let ok = 0;
     let fail = 0;
@@ -2132,7 +2174,7 @@ const BulkPostReadyModal: FC<{
     for (const c of eligibleMine) {
       const res = await fetch(`/viral/mine/${c.id}/post`, {
         method: 'POST',
-        body: JSON.stringify({ integrationId }),
+        body: JSON.stringify({ integrationId, mode }),
       }).catch(() => null);
       res?.ok ? ok++ : fail++;
       step();
@@ -2140,14 +2182,14 @@ const BulkPostReadyModal: FC<{
     for (const p of eligibleProducts) {
       const res = await fetch(`/viral/products/${p.id}/post`, {
         method: 'POST',
-        body: JSON.stringify({ integrationId }),
+        body: JSON.stringify({ integrationId, mode }),
       }).catch(() => null);
       res?.ok ? ok++ : fail++;
       step();
     }
     setBusy(false);
     toast.show(
-      `📤 ${ok} ${t('viral_bulk_posted', 'draft(s) added to the Calendar')}${fail ? ` · ${fail} ${t('viral_bulk_post_failed', 'failed')}` : ''}`,
+      `${mode === 'now' ? '🚀' : '📤'} ${ok} ${mode === 'now' ? t('viral_bulk_posted_now', 'post(s) publishing now') : t('viral_bulk_posted', 'draft(s) added to the Calendar')}${fail ? ` · ${fail} ${t('viral_bulk_post_failed', 'failed')}` : ''}`,
       fail ? 'warning' : 'success'
     );
     onDone();
@@ -2172,9 +2214,19 @@ const BulkPostReadyModal: FC<{
           <option key={i.id} value={i.id}>{i.name} ({i.identifier})</option>
         ))}
       </select>
-      <Button onClick={submit} loading={busy} disabled={!total}>
-        📤 {busy && progress ? progress + ' · ' : ''}{t('viral_bulk_post_button', 'Add all to Calendar as drafts')} ({total})
-      </Button>
+      <div className="flex gap-[8px]">
+        <Button className="flex-1" onClick={() => submit('draft')} loading={busy} disabled={!total}>
+          📤 {busy && progress ? progress + ' · ' : ''}{t('viral_bulk_post_button', 'Add all to Calendar as drafts')} ({total})
+        </Button>
+        <button
+          type="button"
+          disabled={busy || !total}
+          onClick={() => submit('now')}
+          className="h-[44px] px-[14px] rounded-[8px] text-[13px] font-[700] text-[#FF8A3D] border border-[#FF8A3D]/50 hover:bg-[#FF8A3D]/10 disabled:opacity-50"
+        >
+          🚀 {t('viral_post_now', 'Publish now')}
+        </button>
+      </div>
     </div>
   );
 };

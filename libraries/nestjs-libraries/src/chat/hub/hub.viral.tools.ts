@@ -254,12 +254,23 @@ export class HubViralTools implements HubToolGroup {
 
       hub_viral_bai_cua_minh_len_lich: hubTool({
         id: 'hub_viral_bai_cua_minh_len_lich',
-        title: 'Đưa "Bài của mình" lên Lịch (nháp)',
+        title: 'Đưa "Bài của mình" lên Lịch (nháp / đăng ngay)',
         level: 'nhap',
-        description: 'Tạo BẢN NHÁP trên Lịch cho kênh đích từ một "Bài của mình".',
-        input: z.object({ id: z.string(), kenh: z.string() }),
+        description:
+          'Tạo BẢN NHÁP trên Lịch cho kênh đích từ một "Bài của mình". dang_ngay=true thì ĐĂNG THẬT ngay (cần khoá "được đăng", chỉ khi người dùng nói rõ).',
+        input: z.object({
+          id: z.string(),
+          kenh: z.string(),
+          dang_ngay: z.boolean().optional(),
+        }),
         run: async (input, org) => {
-          const res = await this._viralService.postClone(org.id, input.id, input.kenh);
+          if (input.dang_ngay) requireLevel(org, 'dang', 'đăng ngay');
+          const res = await this._viralService.postClone(
+            org.id,
+            input.id,
+            input.kenh,
+            input.dang_ngay ? 'now' : 'draft'
+          );
           if (!res) throw new HubToolError('Không đưa lên Lịch được — thử lại.');
           return res;
         },
@@ -335,12 +346,23 @@ export class HubViralTools implements HubToolGroup {
 
       hub_viral_san_pham_len_lich: hubTool({
         id: 'hub_viral_san_pham_len_lich',
-        title: 'Đưa infographic lên Lịch (nháp)',
+        title: 'Đưa infographic lên Lịch (nháp / đăng ngay)',
         level: 'nhap',
-        description: 'Tạo BẢN NHÁP trên Lịch kèm cả bộ ảnh của một infographic đã xong.',
-        input: z.object({ id: z.string(), kenh: z.string() }),
+        description:
+          'Tạo BẢN NHÁP trên Lịch kèm cả bộ ảnh của một infographic đã xong. dang_ngay=true thì ĐĂNG THẬT ngay (cần khoá "được đăng", chỉ khi người dùng nói rõ).',
+        input: z.object({
+          id: z.string(),
+          kenh: z.string(),
+          dang_ngay: z.boolean().optional(),
+        }),
         run: async (input, org) => {
-          const res: any = await this._viralService.postProduct(org.id, input.id, input.kenh);
+          if (input.dang_ngay) requireLevel(org, 'dang', 'đăng ngay');
+          const res: any = await this._viralService.postProduct(
+            org.id,
+            input.id,
+            input.kenh,
+            input.dang_ngay ? 'now' : 'draft'
+          );
           if (!res) throw new HubToolError('Không tìm thấy sản phẩm (hoặc chưa xong / không phải infographic).');
           if (res.needRetry) {
             throw new HubToolError('Bộ ảnh tạo bằng bản cũ — gọi hub_viral_san_pham_lam_lai (lam_moi=true) rồi đưa lên lại.');

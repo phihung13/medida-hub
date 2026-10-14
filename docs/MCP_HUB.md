@@ -136,9 +136,9 @@ Luồng: cào nguồn → **chủ đề** (nhiều nguồn cùng nói một chuy
 | `hub_viral_them` | nhap | Thêm bài viral bằng link / chữ |
 | `hub_viral_nhan_ban` | nhap | Mổ công thức, viết bài mới cho kênh → nháp trên Lịch |
 | `hub_viral_cao_ngay` | nhap | Cào mọi nguồn (chạy nền vài phút) |
-| `hub_viral_bai_cua_minh` (+ `_len_lich`, `_viet_lai`, `_xoa`) | doc / nhap / dang | "Bài của mình" chờ đăng |
+| `hub_viral_bai_cua_minh` (+ `_len_lich`, `_viet_lai`, `_xoa`) | doc / nhap / dang | "Bài của mình" chờ đăng. `_len_lich`: nháp (nhap) hoặc `dang_ngay=true` đăng thật (dang) |
 | `hub_viral_san_xuat` | nhap | Xếp hàng sản xuất blog / infographic / podcast (≤ 20 mục) |
-| `hub_viral_san_pham` (+ `_len_lich`, `_lam_lai`, `_xoa`) | doc / nhap / dang | Sản phẩm đã làm; infographic → nháp trên Lịch |
+| `hub_viral_san_pham` (+ `_len_lich`, `_lam_lai`, `_xoa`) | doc / nhap / dang | Sản phẩm đã làm; infographic → nháp trên Lịch, hoặc `dang_ngay=true` đăng thật (dang) |
 | `hub_viral_nguon` / `hub_viral_nguon_them` / `hub_viral_nguon_sua` | doc / dang | Nguồn theo dõi, bật/tắt tự cào, xoá |
 | `hub_viral_chan_dung` | doc | 8 chân dung khách hàng mục tiêu |
 | `hub_viral_ban_tin` | doc | Bản tin viral tuần đã gửi |

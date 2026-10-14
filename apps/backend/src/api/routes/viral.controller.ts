@@ -196,16 +196,22 @@ export class ViralController {
     }
   }
 
-  // Đăng "Bài của mình" → bản nháp trên Lịch.
+  // Đăng "Bài của mình" lên Lịch — mode 'draft' (mặc định) hoặc 'now' (đăng thật).
   @Post('/mine/:id/post')
   async postMine(
     @GetOrgFromRequest() org: Organization,
     @Param('id') id: string,
-    @Body('integrationId') integrationId: string
+    @Body('integrationId') integrationId: string,
+    @Body('mode') mode?: string
   ) {
     this.assertCanModerate(org);
     if (!integrationId) throw new HttpException('Chọn kênh đích.', 400);
-    const res = await this._service.postClone(org.id, id, integrationId);
+    const res = await this._service.postClone(
+      org.id,
+      id,
+      integrationId,
+      mode === 'now' ? 'now' : 'draft'
+    );
     if (!res) throw new HttpException('Không đăng được — thử lại.', 400);
     return res;
   }
@@ -619,11 +625,17 @@ export class ViralController {
   async postProduct(
     @GetOrgFromRequest() org: Organization,
     @Param('id') id: string,
-    @Body('integrationId') integrationId: string
+    @Body('integrationId') integrationId: string,
+    @Body('mode') mode?: string
   ) {
     this.assertCanModerate(org);
     if (!integrationId) throw new HttpException('Chọn kênh đích.', 400);
-    const res = await this._service.postProduct(org.id, id, integrationId);
+    const res = await this._service.postProduct(
+      org.id,
+      id,
+      integrationId,
+      mode === 'now' ? 'now' : 'draft'
+    );
     if (!res) throw new HttpException('Không tìm thấy sản phẩm (hoặc chưa xong).', 404);
     if ((res as any).needRetry) {
       // Trả OBJECT (không phải string) để frontend đọc cờ needRetry → hiện nút

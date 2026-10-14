@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { HttpException, Injectable, OnModuleInit } from '@nestjs/common';
 import { ViralRepository } from '@gitroom/nestjs-libraries/database/prisma/viral/viral.repository';
 import { OpenaiService } from '@gitroom/nestjs-libraries/openai/openai.service';
 import { GeminiService } from '@gitroom/nestjs-libraries/openai/gemini.service';
@@ -887,8 +887,70 @@ export class ViralService implements OnModuleInit {
     });
   }
 
-  // Đăng "Bài của mình" → tạo BẢN NHÁP trên Lịch cho kênh đã chọn.
-  async postClone(orgId: string, cloneId: string, integrationId: string) {
+  // Đưa 1 bài lên Lịch: 'draft' = bản nháp ở giờ trống kế tiếp (người duyệt
+  // bấm đăng) · 'now' = ĐĂNG THẬT ngay — kiểm hợp lệ theo luật kênh trước
+  // (thiếu cài đặt kênh / quá dài / rỗng thì báo lỗi rõ, không tạo gì).
+  private async toCalendar(
+    orgId: string,
+    integration: { id: string; providerIdentifier: string },
+    content: string,
+    images: { id: string; path: string }[],
+    agent: string,
+    mode: 'draft' | 'now'
+  ) {
+    const settings = {
+      __type: integration.providerIdentifier as any,
+      title: '',
+      tags: [],
+      subreddit: [],
+    };
+    const value = [{ id: makeId(10), delay: 0, content, image: images }];
+    if (mode === 'now') {
+      const check = await this._postsService.validatePosts(orgId, [
+        { integration: { id: integration.id }, settings, value } as any,
+      ]);
+      for (const item of check as any[]) {
+        const why = item.emptyContent
+          ? 'bài trống'
+          : !item.valid
+          ? item.settingsError ||
+            'kênh này cần thêm cài đặt (vd tiêu đề) — đưa lên Lịch dạng nháp rồi điền'
+          : item.errors !== true
+          ? item.errors
+          : item.tooLong
+          ? `quá dài (tối đa ${item.maximumCharacters} ký tự)`
+          : '';
+        if (why) throw new HttpException(`${item.name}: ${why}`, 400);
+      }
+    }
+    const date =
+      mode === 'now'
+        ? new Date().toISOString()
+        : (await this._postsService.findFreeDateTime(orgId)) + 'Z';
+    await this._postsService.createPost(
+      orgId,
+      {
+        date,
+        order: makeId(10),
+        shortLink: false,
+        type: mode,
+        tags: [],
+        posts: [
+          { settings, group: makeId(10), integration: { id: integration.id }, value },
+        ],
+      } as any,
+      'MCP' as any,
+      agent
+    );
+  }
+
+  // Đăng "Bài của mình" lên Lịch cho kênh đã chọn — nháp (mặc định) hoặc đăng ngay.
+  async postClone(
+    orgId: string,
+    cloneId: string,
+    integrationId: string,
+    mode: 'draft' | 'now' = 'draft'
+  ) {
     const clone = await this._repo.getClone(orgId, cloneId);
     if (!clone) return null;
     const integration = await this._integrationService.getIntegrationById(
@@ -896,41 +958,16 @@ export class ViralService implements OnModuleInit {
       integrationId
     );
     if (!integration) return null;
-    const nextTime = await this._postsService.findFreeDateTime(orgId);
-    await this._postsService.createPost(
+    await this.toCalendar(
       orgId,
-      {
-        date: nextTime + 'Z',
-        order: makeId(10),
-        shortLink: false,
-        type: 'draft',
-        tags: [],
-        posts: [
-          {
-            settings: {
-              __type: integration.providerIdentifier as any,
-              title: '',
-              tags: [],
-              subreddit: [],
-            },
-            group: makeId(10),
-            integration: { id: integration.id },
-            value: [
-              {
-                id: makeId(10),
-                delay: 0,
-                content: clone.content.replace(/\n/g, '\n\n'),
-                image: [],
-              },
-            ],
-          },
-        ],
-      } as any,
-      'MCP' as any,
-      'viral-ban-cua-minh'
+      integration,
+      clone.content.replace(/\n/g, '\n\n'),
+      [],
+      'viral-ban-cua-minh',
+      mode
     );
     await this._repo.updateClone(cloneId, { status: 'posted' });
-    return { ok: true };
+    return { ok: true, mode };
   }
 
   deleteClone(orgId: string, cloneId: string) {
@@ -939,7 +976,12 @@ export class ViralService implements OnModuleInit {
 
   // Đẩy INFOGRAPHIC (bộ carousel) lên Lịch: bản nháp bài đăng kèm TOÀN BỘ ảnh
   // + caption album — người chỉnh giờ rồi bấm đăng trên Lịch như thường.
-  async postProduct(orgId: string, productId: string, integrationId: string) {
+  async postProduct(
+    orgId: string,
+    productId: string,
+    integrationId: string,
+    mode: 'draft' | 'now' = 'draft'
+  ) {
     const p: any = await this._repo.getProduct(orgId, productId);
     if (!p || p.format !== 'infographic' || p.status !== 'done') return null;
     const integration = await this._integrationService.getIntegrationById(
@@ -961,40 +1003,15 @@ export class ViralService implements OnModuleInit {
       )
       .filter(Boolean) as { id: string; path: string }[];
     if (!images.length) return { needRetry: true };
-    const nextTime = await this._postsService.findFreeDateTime(orgId);
-    await this._postsService.createPost(
+    await this.toCalendar(
       orgId,
-      {
-        date: nextTime + 'Z',
-        order: makeId(10),
-        shortLink: false,
-        type: 'draft',
-        tags: [],
-        posts: [
-          {
-            settings: {
-              __type: integration.providerIdentifier as any,
-              title: '',
-              tags: [],
-              subreddit: [],
-            },
-            group: makeId(10),
-            integration: { id: integration.id },
-            value: [
-              {
-                id: makeId(10),
-                delay: 0,
-                content: String(p.textContent || p.title || '').replace(/\n/g, '\n\n'),
-                image: images,
-              },
-            ],
-          },
-        ],
-      } as any,
-      'MCP' as any,
-      'viral-infographic'
+      integration,
+      String(p.textContent || p.title || '').replace(/\n/g, '\n\n'),
+      images,
+      'viral-infographic',
+      mode
     );
-    return { ok: true, images: images.length };
+    return { ok: true, images: images.length, mode };
   }
 
   // ── LƯU TRỮ (xóa cứng khỏi DB) ────────────────────────────────────────────
