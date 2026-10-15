@@ -26,6 +26,7 @@ import { TrackService } from '@gitroom/nestjs-libraries/track/track.service';
 import { ShortLinkService } from '@gitroom/nestjs-libraries/short-linking/short.link.service';
 import { WebhookController } from '@gitroom/backend/api/routes/webhooks.controller';
 import { SignatureController } from '@gitroom/backend/api/routes/signature.controller';
+import { ShareReportController } from '@gitroom/backend/api/routes/share-report.controller';
 import { AiCreditsController } from '@gitroom/backend/api/routes/ai-credits.controller';
 import { ViralController } from '@gitroom/backend/api/routes/viral.controller';
 import { ViralGroupsController } from '@gitroom/backend/api/routes/viral-groups.controller';
@@ -64,6 +65,7 @@ const authenticatedController = [
   CopilotController,
   WebhookController,
   SignatureController,
+  ShareReportController,
   AiCreditsController,
   ViralController,
   ViralGroupsController,

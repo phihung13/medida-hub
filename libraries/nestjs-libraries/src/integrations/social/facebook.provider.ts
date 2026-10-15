@@ -1,5 +1,6 @@
 import {
   AnalyticsData,
+  PostShareMetrics,
   AuthTokenDetails,
   PostDetails,
   PostResponse,
@@ -898,6 +899,60 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
         data: points,
       } as any;
     });
+  }
+
+  // Đặc tả v2 "ưu tiên share": share / bình luận / reaction / reach / click của
+  // MỘT bài. reach = post_total_media_view_unique (post_impressions_unique đã bị
+  // Meta bỏ 15/06/2026). Lượt LƯU không có cho bài của Trang -> không lấy.
+  // Bài video lưu releaseId = video id -> đổi sang post_id rồi đo.
+  async postShareMetrics(
+    integrationId: string,
+    accessToken: string,
+    postId: string
+  ): Promise<PostShareMetrics> {
+    accessToken = await this.ensurePageToken(integrationId, accessToken, false);
+    const get = async (path: string) => {
+      const res = await fetch(
+        `https://graph.facebook.com/v23.0/${path}${
+          path.includes('?') ? '&' : '?'
+        }access_token=${accessToken}`
+      );
+      return res.json();
+    };
+    const FIELDS =
+      'shares,comments.summary(true).limit(0),reactions.summary(true).limit(0)';
+
+    let id = postId;
+    let fields = await get(`${id}?fields=${FIELDS}`);
+    if (fields?.error) {
+      const v = await get(`${postId}?fields=post_id`);
+      if (v?.post_id) {
+        id = v.post_id;
+        fields = await get(`${id}?fields=${FIELDS}`);
+      }
+    }
+    if (fields?.error) {
+      throw new Error(fields.error.message || 'facebook post metrics error');
+    }
+
+    const insights = await get(
+      `${id}/insights?metric=post_total_media_view_unique,post_clicks`
+    );
+    const metric = (name: string): number | null => {
+      const m = (insights?.data || []).find((d: any) => d.name === name);
+      const v = m?.values?.[0]?.value;
+      return typeof v === 'number' ? v : null;
+    };
+
+    return {
+      // Graph không trả field "shares" khi bài chưa có lượt share nào.
+      shares: Number(fields?.shares?.count || 0),
+      comments: fields?.comments?.summary?.total_count ?? null,
+      reactions: fields?.reactions?.summary?.total_count ?? null,
+      reach: metric('post_total_media_view_unique'),
+      clicks: metric('post_clicks'),
+      saves: null,
+    };
   }
 
   async postAnalytics(

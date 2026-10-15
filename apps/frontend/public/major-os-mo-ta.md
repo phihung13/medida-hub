@@ -198,7 +198,7 @@ Trả lời: mỗi agent AI (và người soạn tay) làm ra bao nhiêu bài, b
 | `id` | `nd_<ngày>_<agent>_<kênh>_<loại>`: **một id cho mỗi nhóm mỗi ngày** |
 | `nguon` | `bai-dang` (bài trên Lịch) · `phat-hien-san-xuat` (sản phẩm blog / podcast / infographic / "Bài của mình" chưa nằm trên Lịch) |
 | `ngay` | ngày **làm ra** (giờ Việt Nam) |
-| `agent` | ai làm ra: `zalo-bot`, `viral-clone`, `viral-ban-cua-minh`, `viral-infographic`, `viral-blog`, `viral-podcast`, `agent-chat`, `excel-ai`, `autopost-rss`, `generator`, `thu-cong` (người tự soạn), `api`, `cli`, `ai-khac` (AI trước 06/10/2026, chưa tách được) — mô tả ở `/agent` |
+| `agent` | ai làm ra: `zalo-bot`, `viral-clone`, `viral-ban-cua-minh`, `viral-infographic`, `viral-blog`, `viral-podcast`, `agent-chat`, `excel-ai`, `autopost-rss`, `generator`, `thu-cong` (nhân viên tự soạn trên Hub, không qua agent), `api`, `cli`, `ai-khac` (AI trước 06/10/2026, chưa tách được) — mô tả ở `/agent` |
 | `kenh` | mã nền tảng (`facebook`, `instagram`, `zalo-video`, `tiktok`, `youtube`…); `hub` = sản phẩm chưa lên kênh |
 | `loai` | `chu` · `anh` (1 ảnh) · `album` (≥ 2 ảnh) · `video` · `blog` · `podcast` · `infographic` · `bai-viet` |
 | `tinh_nang` | `noi-dung.<agent>`, để xếp chung bảng tính năng |
@@ -207,6 +207,10 @@ Trả lời: mỗi agent AI (và người soạn tay) làm ra bao nhiêu bài, b
 | `so_da_dang` / `so_cho_dang` / `so_loi` | đã đăng / đã lên lịch chưa tới giờ / đăng lỗi (lỗi kênh) |
 | `so_nhap` | còn nháp, chưa ai đụng tới |
 | `so_bo` | bị xoá (không dùng) |
+| `so_het_han` | nháp Bot Zalo quá 48 giờ không ai duyệt, Hub tự xoá (từ 15/10/2026) — không tính là "bỏ" |
+| `so_nhap_trung` | nháp trùng của nhóm Zalo bật tự đăng (bài đã lên trang thẳng) — **đã loại** khỏi `so_lam_ra` |
+| `don_vi` | `the` = thẻ của một kênh (`nguon` = `bai-dang`); `bai` = một nội dung gộp mọi kênh (`nguon` = `bai-dang-gop`, `kenh` = `tat-ca`, kèm `so_the`). Bảng tổng / theo agent dùng `bai-dang-gop`; KHÔNG cộng hai nguồn với nhau |
+| `so_xong`, `so_len_web` | chỉ sản phẩm Phát hiện / Sản xuất: sản xuất xong; blog đã đăng lên website (blog "dùng" = đã lên web) |
 | `ty_le_dung` | `so_dung / so_lam_ra × 100`, làm tròn 1 chữ số |
 
 **Quan trọng:** số là **trạng thái hiện tại**. Bài làm ra hôm qua mà hôm nay mới đăng thì lượt lấy hôm nay trả lại

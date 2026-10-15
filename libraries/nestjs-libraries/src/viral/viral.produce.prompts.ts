@@ -18,6 +18,9 @@ export interface ProduceInput {
   detail?: string; // góc tiếp cận (reason từ AI chấm)
   category?: string; // nhóm khách (persona)
   url?: string; // nguồn tham khảo
+  // Đặc tả v2: khối câu chuyện thật từ thư viện (story.library.ts) — có thì
+  // dùng LÀM điểm tựa thay cho kiểu xoay vòng.
+  story?: string;
 }
 
 function hashSeed(s: string): number {
@@ -31,7 +34,10 @@ const evidenceMode = (id: string, fmt: string) => {
   return modes[hashSeed(`${id}|${fmt}`) % modes.length];
 };
 
-const diversityBlock = (evMode: string, tail: string) => `=== ĐA DẠNG ĐIỂM TỰA — CHỐNG LẶP (OVERFITTING) ===
+const diversityBlock = (evMode: string, tail: string, story?: string) =>
+  story
+    ? `=== ĐIỂM TỰA LẦN NÀY: MỘT CÂU CHUYỆN THẬT TỪ THƯ VIỆN ===\n${getSkill('thu-vien-cau-chuyen')}\n\n${story}\n- Dùng ĐÚNG 1 câu chuyện này làm điểm tựa, không thêm điểm tựa khác.`
+    : `=== ĐA DẠNG ĐIỂM TỰA — CHỐNG LẶP (OVERFITTING) ===
 Khi cần một điểm tựa/dẫn chứng để tăng sức nặng, LẦN NÀY ưu tiên theo kiểu: ${evMode}.
 - Tự chọn nhân vật/câu/ý phù hợp nhất trong kiểu đó; KHÔNG bắt buộc, không hợp thì bỏ qua.
 - TUYỆT ĐỐI tránh lặp lại vài cái tên quen (Carol Dweck, Stephen Covey, Angela Duckworth...); đa dạng tối đa.
@@ -51,7 +57,7 @@ export function buildBlogPrompt(r: ProduceInput): { system: string; user: string
     '\n\n' +
     getSkill('cong-thuc-blog') +
     '\n\nNHIỆM VỤ: từ nội dung định hướng (đã được duyệt & tối ưu cho nhóm khách), VIẾT thành 1 bài BLOG hoàn chỉnh bằng tiếng Việt theo ĐÚNG công thức ở trên, hữu ích thật sự cho phụ huynh, đúng giọng "Vui Vẻ & Thực Dụng". Bám đúng nỗi đau của nhóm khách được nêu.';
-  sys += '\n\n' + diversityBlock(evMode, '- Tối đa 1-2 cho cả bài.');
+  sys += '\n\n' + diversityBlock(evMode, '- Tối đa 1-2 cho cả bài.', r.story);
   sys += '\n\n' + getSkill('cta-that');
   sys +=
     '\n\nTRẢ VỀ theo 5 khối, mỗi nhãn trên MỘT DÒNG RIÊNG, nội dung ngay dòng dưới (KHÔNG dùng JSON, KHÔNG bọc ```):\n' +
@@ -220,7 +226,7 @@ export function buildCarouselPrompt(r: ProduceInput): {
     '\nViết SÚC TÍCH hơn một chút: giảm khoảng 10-20% lượng chữ trên mỗi slide so với mức thông thường — cắt từ thừa, bỏ ý lặp, gọn câu lại — nhưng VẪN giữ đủ ý và phong cách hiện tại (vẫn được có câu/giải thích ngắn). Mục tiêu: bớt chữ vừa phải để giảm lỗi chính tả khi render, KHÔNG làm slide trống trải hay cụt ý. Ưu tiên mỗi chữ đúng chính tả tiếng Việt có dấu.' +
     '\nstyle: TỰ CHỌN 1 phong cách infographic ĐẸP & hợp chủ đề (ĐỪNG mặc định kiểu phẳng mỗi lần) — ví dụ: Tối giản hiện đại / Minh hoạ hoạt hình / Corporate flat / Timeline / 3D... Mô tả CHI TIẾT phong cách (tông màu, font, kiểu minh hoạ, bố cục) bằng tiếng Việt để ÁP DỤNG Y HỆT cho TẤT CẢ slide — ĐỒNG NHẤT cả bộ.';
   sys += '\n\n' + getSkill('cta-that');
-  sys += '\n\n' + diversityBlock(evMode, '- Tối đa 1 điểm tựa cho CẢ BỘ.');
+  sys += '\n\n' + diversityBlock(evMode, '- Tối đa 1 điểm tựa cho CẢ BỘ.', r.story);
   sys +=
     '\n\nTrả về CHỈ 1 JSON thuần (không kèm chữ nào khác, không bọc ```): ' +
     '{"title":"tên bộ ngắn gọn","style":"mô tả CHI TIẾT phong cách đồng bộ cả bộ: tông màu + font + kiểu minh hoạ + bố cục","fb_caption":"caption đăng kèm album theo mục 5 của công thức: giọng gần gũi, KHÔNG CTA bán hàng, kết 3-5 hashtag","slides":[{"role":"cover","heading":"...","body":"..."},{"role":"body","heading":"...","body":"..."},{"role":"cta","heading":"...","body":"..."}]}. ' +

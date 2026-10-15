@@ -98,6 +98,11 @@ export async function pushToPostiz({
   groupName = '',
   integrationId = '',
   integrationIds = [],
+  // Đặc tả v2: 'now' = nhóm ổn định, bài qua 5 cổng + ≥80 điểm -> Hub ĐĂNG NGAY.
+  // Mặc định 'draft' (chờ duyệt trên Lịch) như cũ.
+  type = 'draft',
+  // Điểm dự báo + góc kể -> Hub lưu cạnh tỷ lệ share thật (bảng PostShareStat).
+  shareStat = null,
 }) {
   if (process.env.POSTIZ_ENABLED !== 'true') return { skipped: 'disabled' };
 
@@ -150,13 +155,14 @@ export async function pushToPostiz({
   const errors = [];
   for (let i = 0; i < ids.length; i++) {
     const body = {
-      type: 'draft', // vào hàng chờ duyệt trong Media Hub
+      type: type === 'now' ? 'now' : 'draft', // 'draft' = vào hàng chờ duyệt trong Media Hub
       // Thống kê "làm ra / dùng" theo agent (Hub > Major OS /noi-dung).
       agent: 'zalo-bot',
-      date: new Date(Date.now() + 2 * 3600 * 1000 + i * 60 * 1000).toISOString(),
+      date: new Date(Date.now() + (type === 'now' ? 0 : 2 * 3600 * 1000) + i * 60 * 1000).toISOString(),
       // Tag "Zalo" để Media Hub nhận diện bài chờ duyệt từ nhóm Zalo.
       tags: [{ value: 'Zalo', label: 'Zalo' }],
       shortLink: false,
+      ...(shareStat ? { shareStat } : {}),
       posts: [
         {
           integration: { id: ids[i] },

@@ -47,6 +47,9 @@ const routeView = (r: any, defaults: any = {}) => ({
   toi_da_moi_bai_phut: Math.round(Number(r.maxWaitMs ?? defaults.maxWaitMs ?? 1800000) / MIN),
   tu_them_hashtag: r.autoHashtags !== false,
   loc_anh: r.curateImages !== false,
+  cap_hoc: r.capHoc || 'mầm non',
+  co_so: r.coSo || '',
+  nhom_on_dinh: r.autoPostStable === true,
   chan_bai_nhom: r.captionFooter || '',
   comment_dau: r.comment || undefined,
   van_mau: (r.writeGuide ?? r.styleSample ?? '') || undefined,
@@ -133,6 +136,15 @@ export class HubZaloAdminTools implements HubToolGroup {
           toi_da_moi_bai_phut: z.number().min(1).max(1440).optional(),
           tu_them_hashtag: z.boolean().optional(),
           loc_anh: z.boolean().optional(),
+          cap_hoc: z
+            .string()
+            .optional()
+            .describe('Cấp học của nhóm: "mầm non" | "tiểu học" | "THCS" | "THPT" (biến trong prompt viết bài + xưng hô)'),
+          co_so: z.string().optional().describe('Tên cơ sở, thành hashtag thứ hai (VD "Mầm non Nhân Lễ")'),
+          nhom_on_dinh: z
+            .boolean()
+            .optional()
+            .describe('true = tự đăng khi bài qua 5 cổng và đạt từ 80 điểm, chỉ chờ duyệt khi ảnh bị gắn cờ an toàn'),
           comment_dau: z.string().max(2000).optional(),
           van_mau: z.string().max(20000).optional().describe('Hướng dẫn / văn mẫu cho AI viết caption'),
           chi_nhan_tu: z.array(z.string()).max(100).optional().describe('id người gửi được nhận ảnh, [] = mọi người'),
@@ -167,6 +179,9 @@ export class HubZaloAdminTools implements HubToolGroup {
             if (max < deb) r.maxWaitMs = deb;
             if (input.tu_them_hashtag !== undefined) r.autoHashtags = input.tu_them_hashtag;
             if (input.loc_anh !== undefined) r.curateImages = input.loc_anh;
+            if (input.cap_hoc !== undefined) r.capHoc = input.cap_hoc;
+            if (input.co_so !== undefined) r.coSo = input.co_so;
+            if (input.nhom_on_dinh !== undefined) r.autoPostStable = input.nhom_on_dinh;
             if (input.comment_dau !== undefined) r.comment = input.comment_dau;
             if (input.van_mau !== undefined) {
               r.writeGuide = input.van_mau;

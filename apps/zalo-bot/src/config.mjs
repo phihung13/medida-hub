@@ -50,8 +50,15 @@ export function loadConfig(file = process.env.ROUTES_FILE || DEFAULT_FILE) {
       // writeGuide là tên mới; đọc lại styleSample cũ để tương thích ngược.
       writeGuide: (r.writeGuide ?? r.styleSample ?? "").toString(),
       styleSample: r.styleSample || "", // (cũ) giữ để tương thích ngược
-      autoHashtags: r.autoHashtags !== false, // mặc định BẬT: AI tự thêm 5 hashtag cuối bài
+      autoHashtags: r.autoHashtags !== false, // mặc định BẬT: 3 hashtag cuối bài (#TruongVietAnh + cơ sở + chủ đề)
       curateImages: r.curateImages !== false, // mặc định BẬT: lọc ảnh (bỏ trùng/mờ/tối + AI chọn ảnh đẹp trong cụm)
+      // Đặc tả v2 (15/10/2026):
+      // capHoc = cấp học của nhóm ("mầm non" | "tiểu học" | "THCS" | "THPT"...) -> biến ${CAP_HOC} trong prompt + xưng hô
+      // coSo   = tên cơ sở -> hashtag thứ hai
+      // autoPostStable = nhóm ỔN ĐỊNH: bài qua 5 cổng + ≥80 điểm & checkSafety không gắn cờ -> ĐĂNG NGAY (không chờ duyệt)
+      capHoc: String(r.capHoc || "").trim() || "mầm non",
+      coSo: String(r.coSo || "").trim(),
+      autoPostStable: r.autoPostStable === true,
       gbpLocationIds: gbpIds,            // NHIỀU GBP business; rỗng = không đăng GBP
       gbpLocationId: gbpIds[0] || "",    // tương thích ngược (1 ID)
       // Kênh Media Hub (Postiz) RIÊNG của nhóm này; rỗng = dùng kênh mặc định (POSTIZ_INTEGRATION_ID)

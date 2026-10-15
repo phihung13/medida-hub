@@ -59,6 +59,7 @@ import { RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abst
 import { PostValidationException } from '@gitroom/backend/api/routes/posts.validation.exception';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
+import { ShareJudgeService } from '@gitroom/nestjs-libraries/viral/share.judge.service';
 
 // Agent được phép tự khai qua public API (bot Zalo).
 const PUBLIC_API_AGENTS = ['zalo-bot'];
@@ -74,7 +75,8 @@ export class PublicIntegrationsController {
     private _mediaService: MediaService,
     private _notificationService: NotificationService,
     private _integrationManager: IntegrationManager,
-    private _refreshIntegrationService: RefreshIntegrationService
+    private _refreshIntegrationService: RefreshIntegrationService,
+    private _shareJudge: ShareJudgeService
   ) {}
 
   @Post('/upload')
@@ -243,7 +245,25 @@ export class PublicIntegrationsController {
       ? (rawBody.agent as string)
       : undefined;
 
-    return this._postsService.createPost(org.id, body, creationMethod, agent);
+    const created = await this._postsService.createPost(
+      org.id,
+      body,
+      creationMethod,
+      agent
+    );
+    // Đặc tả v2: shareStat (tuỳ chọn) = điểm dự báo của người chấm độc lập +
+    // góc kể — lưu cạnh tỷ lệ share thật. Client cũ không gửi thì bỏ qua.
+    if (rawBody?.shareStat) {
+      await this._shareJudge
+        .saveForecastForPosts(
+          org.id,
+          (created || []).map((c: { postId: string }) => c.postId),
+          rawBody.shareStat,
+          agent
+        )
+        .catch(() => null);
+    }
+    return created;
   }
 
   @Delete('/posts/:id')

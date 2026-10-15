@@ -7,6 +7,7 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { MenuItem } from '@gitroom/frontend/components/new-layout/menu-item';
 import { useModals } from '@gitroom/frontend/components/layout/new-modal';
 import { AgentMediaModal } from '@gitroom/frontend/components/layout/agent.media.modal';
+import { isFeaturePaused } from '@gitroom/helpers/utils/paused.features';
 
 interface MenuItemInterface {
   name: string;
@@ -120,6 +121,8 @@ export const useMenuItem = () => {
         </svg>
       ),
       path: '/agents',
+      // Đặc tả v2 (15/10/2026): trang Agent chat tạm dừng (ẩn khỏi menu).
+      hide: isFeaturePaused('agent-chat'),
     },
     {
       name: t('analytics', 'Analytics'),

@@ -215,6 +215,11 @@ export type BotRoute = {
   facebookAutoPublish?: boolean;
   curateImages?: boolean;
   autoHashtags?: boolean;
+  // Đặc tả v2 (15/10/2026): cấp học (biến prompt + xưng hô), tên cơ sở
+  // (hashtag thứ 2), nhóm ổn định (tự đăng khi ≥80 điểm, không cờ an toàn).
+  capHoc?: string;
+  coSo?: string;
+  autoPostStable?: boolean;
   comment?: string;
   captionFooter?: string;
   writeGuide?: string;

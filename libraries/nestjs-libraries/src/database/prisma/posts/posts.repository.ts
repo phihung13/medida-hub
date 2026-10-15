@@ -63,6 +63,51 @@ export class PostsRepository {
     });
   }
 
+  // Bài GỐC đã đăng trên kênh có số liệu share (đặc tả v2), trong cửa sổ
+  // publishDate [from, to] — bộ đo 72 giờ chọn từ đây.
+  findPublishedForShareMetrics(
+    from: Date,
+    to: Date,
+    providers: string[],
+    take: number
+  ) {
+    return this._post.model.post.findMany({
+      where: {
+        state: 'PUBLISHED',
+        deletedAt: null,
+        parentPostId: null,
+        releaseId: { not: null },
+        publishDate: { gte: from, lte: to },
+        integration: {
+          providerIdentifier: { in: providers },
+          deletedAt: null,
+          disabled: false,
+        },
+      },
+      select: {
+        id: true,
+        organizationId: true,
+        publishDate: true,
+      },
+      orderBy: { publishDate: 'desc' },
+      take,
+    });
+  }
+
+  getPostsBrief(orgId: string, ids: string[]) {
+    return this._post.model.post.findMany({
+      where: { id: { in: ids }, organizationId: orgId },
+      select: {
+        id: true,
+        content: true,
+        publishDate: true,
+        releaseURL: true,
+        state: true,
+        integration: { select: { name: true, providerIdentifier: true } },
+      },
+    });
+  }
+
   getOldPosts(orgId: string, date: string) {
     return this._post.model.post.findMany({
       where: {
@@ -492,6 +537,32 @@ export class PostsRepository {
             }
           : {}),
       },
+    });
+  }
+
+  // Nháp do một agent làm ra (vd 'zalo-bot') nằm quá hạn chưa ai duyệt — chỉ
+  // thẻ gốc (parentPostId null), chưa xoá, còn DRAFT. Trả (org, group) để xoá
+  // đúng cách PostsService.deletePost.
+  findStaleAgentDrafts(agent: string, before: Date, take = 200) {
+    return this._post.model.post.findMany({
+      where: {
+        agent,
+        state: 'DRAFT',
+        deletedAt: null,
+        parentPostId: null,
+        createdAt: { lt: before },
+      },
+      select: { organizationId: true, group: true },
+      orderBy: { createdAt: 'asc' },
+      take,
+    });
+  }
+
+  // Ghi lý do xoá vào cột error để báo cáo phân biệt "hết hạn" với "bị bỏ".
+  markGroupExpired(orgId: string, group: string, reason: string) {
+    return this._post.model.post.updateMany({
+      where: { organizationId: orgId, group },
+      data: { error: reason },
     });
   }
 

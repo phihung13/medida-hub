@@ -34,22 +34,80 @@ const fileOf = (key: string) => path.join(DIR(), `${key}.md`);
 
 // ── NỘI DUNG MẶC ĐỊNH (nguyên văn từ code/n8n) ─────────────────────────────
 
-const HO_SO_TRUONG = `HỒ SƠ TRƯỜNG (chỉ dùng đúng dữ kiện thật dưới đây, KHÔNG bịa số):
-• Tên: Hệ thống Trường Liên cấp Việt Anh (vận hành bởi Major Education, thành lập 2011, hơn 15 năm kinh nghiệm). Triết lý cốt lõi: "Vui Vẻ & Thực Dụng". Slogan: "Kiến Tạo Những Công Dân Toàn Cầu Hạnh Phúc". Tagline: "Nơi Con Học Vui, Lớn Lên Tự Tin, Ra Đời Vững Vàng".
-• Quy mô: 8 cơ sở (TP.HCM, Cần Giuộc, Rạch Giá), hơn 1.000 học sinh mỗi năm; đánh giá 4.9/5 (300+ lượt); 99% học sinh đỗ đại học theo nguyện vọng; tái ghi danh khoảng 90%/năm; hơn 95% học sinh tiến bộ (đo bằng hệ PDR).
-• Mầm non (13 tháng–5 tuổi): 100% tiếng Anh immersion, Montessori + SteamE, giáo viên bản ngữ, lớp siêu nhỏ ≤15 bé. Học phí khoảng 8–12 triệu/tháng (cơ sở Nhân Lễ khoảng 5 triệu).
-• Tiểu học: chương trình Anh Quốc Oxford (OIC, đối tác Oxford University Press), STEM + Lập trình, 16 kỹ năng thế kỷ 21; mục tiêu IELTS 4.0 cuối lớp 5. Học phí từ khoảng 5 triệu/tháng.
-• THCS: Academic English chuyên sâu, Leader in Me (7 thói quen), dự án cộng đồng thực tế; mục tiêu IELTS 5.5 cuối lớp 9.
-• THPT: luyện IELTS chuyên sâu (trường là trung tâm khảo thí IELTS tại TP.HCM), hướng nghiệp & du học; cam kết đầu ra IELTS 6.0–8.0 (trung bình 6.5, có văn bản ký kết); 99% đỗ đại học.
-• Học phí chung 5–12 triệu/tháng (bằng khoảng 1/3 trường quốc tế). 100% học sinh có chứng chỉ tin học quốc tế ICDL.
-• Đối tác/công nhận: Oxford University Press, British Council, Franklin Covey (Leader in Me), Birmingham City University.
-• Hotline tuyển sinh: 0916 961 409. Website: truongvietanh.com. Đối tượng đọc: mẹ Millennial 28–40 tuổi.`;
+const HO_SO_TRUONG = `HỒ SƠ TRƯỜNG — v2 (chốt 15/10/2026). Chỉ dùng đúng dữ kiện dưới đây. Không có ở đây = KHÔNG nói.
 
-const HO_SO_TRUONG_NGAN = `HỒ SƠ TRƯỜNG (chỉ dùng đúng dữ kiện thật dưới đây, KHÔNG bịa số):
-• Tên: Hệ thống Trường Liên cấp Việt Anh (Major Education, thành lập 2011, hơn 15 năm). Triết lý: "Vui Vẻ & Thực Dụng". Slogan: "Kiến Tạo Những Công Dân Toàn Cầu Hạnh Phúc".
-• Quy mô: 8 cơ sở (TP.HCM, Cần Giuộc, Rạch Giá), hơn 1.000 học sinh/năm; đánh giá 4.9/5; 99% đỗ đại học theo nguyện vọng.
-• Mầm non: 100% tiếng Anh immersion, Montessori + SteamE, lớp ≤15 bé. Tiểu học: Oxford (OIC), IELTS 4.0 lớp 5. THCS: Leader in Me, IELTS 5.5 lớp 9. THPT: cam kết IELTS 6.0–8.0, 99% đỗ đại học.
-• Học phí 5–12 triệu/tháng (bằng ~1/3 trường quốc tế). Hotline: 0916 961 409.`;
+NHẬN DIỆN
+• Hệ thống Trường Việt Anh, vận hành bởi Major Education, thành lập 2011 tại TP.HCM.
+• 6 cơ sở đang hoạt động (TP.HCM 3 · Tây Ninh 2 · An Giang 1), gồm 8 trường. Chỉ nói "8 trường" khi có giải thích kèm.
+  - TP.HCM: Mầm non Việt Anh Gò Vấp (573 Lê Đức Thọ); Liên cấp Việt Anh Gò Vấp lớp 1–12 (160/72 Phan Huy Ích); Liên cấp Việt Anh Bình Tân lớp 1–12 (Số 7, Đường 38A, P. Tân Tạo).
+  - Tây Ninh (Long Hậu): Mầm non Nhân Lễ; Mầm non & Tiểu học Thái Sơn.
+  - An Giang (Rạch Giá): Mầm non & Tiểu học Mekong Xanh.
+• Nhận học sinh từ 12 tháng đến 18 tuổi. Hơn 1.000 học sinh mỗi năm. Tỷ lệ tái ghi danh trung bình 85–95% mỗi năm.
+• Từ năm học 2026–2027: AI-Powered School — mọi lớp 1–12 học 30 tiết AI/năm. Mục tiêu: con làm chủ AI, không lệ thuộc AI.
+• Thần chú: "Vui vẻ và Thực dụng". Tagline: "Kiến Tạo Những Công Dân Toàn Cầu Hạnh Phúc". Tagline website: "Nơi Con Học Vui, Lớn Lên Tự Tin, Ra Đời Vững Vàng".
+
+TRIẾT LÝ & CÁCH ĐO
+• 5 giá trị cốt lõi: Tôn trọng và tự trọng, Trách nhiệm, Tài giỏi, Chính trực, Yêu thương.
+• 16 kỹ năng thế kỷ 21 theo WEF.
+• 4 lĩnh vực: Kiến thức (cái đầu), Kỹ năng lãnh đạo (đôi tay), Phẩm chất (trái tim), Sức khoẻ (cơ thể). Đo chính thức 3 lần/năm; mỗi học sinh đánh giá trên sự tiến bộ của chính mình. Trên 90% học sinh tiến bộ.
+• Trụ cột học thuật: HighScope, Responsive Classroom, Leader in Me (Franklin Covey), GDPT 2018.
+• PDR là nhịp rà soát hằng tuần: Mầm non = Plan–Do–Recall; Tiểu học trở lên = Plan–Do–Review.
+
+TỪNG CẤP
+• Mầm non (mọi cơ sở): sĩ số 10–24 bé/lớp tuỳ độ tuổi; tỷ lệ bé/cô luôn dưới 8.
+• Mầm non Việt Anh Gò Vấp: 100% tiếng Anh immersion, giáo viên bản ngữ, Montessori + SteamE.
+• Mầm non Long Hậu & Mekong Xanh: học tiếng Anh với giáo viên bản ngữ, KHÔNG phải 100% tiếng Anh.
+• Tiểu học: tích hợp Oxford International Curriculum (Oxford University Press đã kiểm định), STEM + lập trình; mục tiêu IELTS 4.0 cuối lớp 5. Sĩ số: Thái Sơn 24–34, Mekong Xanh 20–28 học sinh/lớp.
+• THCS: Academic English, Leader in Me, dự án cộng đồng; mục tiêu IELTS 5.5 cuối lớp 9.
+• THPT: Lộ trình tiếng Anh của trường đảm bảo giúp học sinh có thể đạt IELTS 6.0+ trước khi tốt nghiệp THPT. Bảo hành IELTS 6.0+ ghi trong hợp đồng: chưa đạt, trường kèm miễn phí đến khi đạt. 100% học sinh THPT có chứng chỉ tin học quốc tế ICDL. Có hướng nghiệp & du học.
+• Hai cơ sở liên cấp TP.HCM: sĩ số 24, phòng học 64–72 m²; nội trú nhận từ lớp 6.
+
+KẾT QUẢ (dùng đúng câu chữ)
+• "100% học sinh tốt nghiệp THPT và được tiếp nhận vào đại học."
+• "100% học sinh tốt nghiệp đạt điểm IELTS được chuyển đổi thành điểm 10 môn Tiếng Anh kỳ thi tốt nghiệp THPT."
+• "Top 15 toàn cầu cuộc thi Leader in Me 2023."
+• "30% học sinh du học" (KHÔNG gọi là học bổng du học).
+• "120 giải thưởng các loại năm 2025–2026" (là số GIẢI, không phải số học sinh).
+• Các kết quả THPT chỉ nói khi bài nói về THPT hoặc toàn hệ thống; KHÔNG đặt vào bài chỉ về Mầm non/Tiểu học.
+
+TIẾNG ANH
+• Nổi tiếng tại TP.HCM ở mảng tiếng Anh từ khi thành lập (slogan sáng lập: "Đào tạo học sinh giỏi chuyên Anh").
+• 10+ giáo viên bản ngữ (Anh, Mỹ, Úc, Canada, Nam Phi).
+• Đã tập huấn giáo viên tiếng Anh cho hơn 100 trường khác tại TP.HCM.
+
+HỌC PHÍ — luôn nói "từ khoảng", theo tháng, là mức sàn
+• MN Việt Anh Gò Vấp 10 triệu · MN Nhân Lễ 3,39 triệu · MN & TH Thái Sơn 2,99 triệu · MN & TH Mekong Xanh từ 3,39 triệu (chương trình International cao hơn) · Tiểu học Việt Anh 10 triệu · THCS 12 triệu · THPT 13 triệu.
+• Nội trú (VAGV, VABT, từ lớp 6): khoảng 2,5–3,5 triệu/tháng tiền chỗ ở, chưa gồm ăn.
+
+CAM KẾT & ƯU ĐÃI CÓ THẬT
+• Cam kết Giá trị 4 Tuần: học sinh mới, sau 4 tuần nếu chưa như kỳ vọng → hoàn 100% học phí (đi học tối thiểu 18/20 ngày; không hoàn bảo hiểm, dã ngoại, tiền ăn, đồng phục, dịch vụ đã dùng; xử lý trong 7 ngày làm việc).
+• Early Bird đóng trước nhiều năm: giảm đến 46%, khoá giá năm đầu.
+• Anh chị em ruột: con thứ hai giảm 50%, con thứ ba giảm 25%.
+
+LIÊN HỆ — chọn đúng khu vực
+• TP.HCM: 0916 961 409 · Zalo OA · truongvietanh.com
+• Long Hậu (Nhân Lễ, Thái Sơn): 0902 095 956
+• Mekong Xanh (Rạch Giá): 0346 455 455
+• Tham quan 7 ngày/tuần, 7:00–19:00, ưu tiên ngày trong tuần.
+
+TUYỆT ĐỐI KHÔNG NÓI
+• Số sao / số lượt đánh giá Google.
+• "99% vào đại học" (đã thay bằng câu ở mục Kết quả).
+• "Cam kết đầu ra IELTS 6.0–8.0", "trung bình 6.5".
+• British Council, Birmingham City University, Buckinghamshire.
+• "8 cơ sở" · "trung tâm khảo thí IELTS" · "bằng 1/3 trường quốc tế" · "liên cấp duy nhất" · "lần đầu tại TP.HCM".
+• "nhất / duy nhất / tốt nhất / số 1" khi không có văn bản chứng nhận.
+• 4 lĩnh vực kiểu cũ "Kiến thức · Kỹ năng · Tiếng Anh · Thể chất".
+• Chi tiết hỗ trợ học phí của bất kỳ gia đình cụ thể nào.
+• "gia đình trí thức trung lưu" · "Play-Discover-Reflect" · "cơ sở Tân Phú / Bình Chánh" · tên trường khác.`;
+
+const HO_SO_TRUONG_NGAN = `HỒ SƠ TRƯỜNG (gọn, v2 15/10/2026) — chỉ dùng dữ kiện dưới đây, KHÔNG bịa số.
+• Hệ thống Trường Việt Anh (Major Education), thành lập 2011; 6 cơ sở tại TP.HCM, Tây Ninh, An Giang; nhận học sinh 12 tháng–18 tuổi; hơn 1.000 học sinh/năm. AI-Powered School: 30 tiết AI/năm lớp 1–12.
+• Triết lý "Vui vẻ và Thực dụng". Phát triển 4 lĩnh vực Kiến thức, Kỹ năng lãnh đạo, Phẩm chất, Sức khoẻ — đo 3 lần/năm; trên 90% học sinh tiến bộ.
+• Mầm non: tỷ lệ bé/cô dưới 8. Tiểu học: Oxford International Curriculum. THPT: lộ trình đảm bảo giúp học sinh có thể đạt IELTS 6.0+ trước khi tốt nghiệp, bảo hành ghi trong hợp đồng; 100% học sinh THPT có ICDL.
+• 100% học sinh tốt nghiệp THPT và được tiếp nhận vào đại học; 30% du học.
+• Cam kết Giá trị 4 Tuần: chưa như kỳ vọng sau 4 tuần → hoàn 100% học phí.
+• KHÔNG nói: số sao Google, "99%", "cam kết IELTS 6.0–8.0", British Council, "8 cơ sở", "nhất/số 1", tên trường khác.`;
 
 const GIONG_BLOG = `GIỌNG VĂN (5 phẩm chất của nhà sáng lập Nguyễn Mạnh Dương): THẲNG THẮN — UYÊN BÁC — THỰC TẾ — CẢM XÚC — HIỆU QUẢ. Ấm áp, chân thật, minh bạch, tự tin nhưng KHÔNG khoa trương. Dùng số thật, không phóng đại. KHÔNG nói "tốt nhất/số 1" khi không có bằng chứng. Không dạy đời. Chưa có số liệu thì nói mềm ("nhiều gia đình nhận thấy", "có thể"), KHÔNG bịa. TUYỆT ĐỐI không nhắc tên đối thủ / KOL / thương hiệu / trường khác. Xưng hô: "Việt Anh"/"chúng tôi" (nhà trường) và "ba mẹ"/"bạn" (phụ huynh).`;
 
@@ -57,13 +115,24 @@ const GIONG_PODCAST = `GIỌNG: ấm áp, thấu hiểu, trò chuyện tự nhi�
 
 const CHINH_TA = `CHÍNH TẢ — BẮT BUỘC TUYỆT ĐỐI: viết tiếng Việt CÓ DẤU chuẩn xác 100%, đúng dấu thanh, KHÔNG lỗi gõ. Tên trường LUÔN LUÔN viết đúng là "Việt Anh" — TUYỆT ĐỐI KHÔNG được viết "Vịt Anh", "Viêt Anh", "Việt anh", "Viet Anh" hay bất kỳ biến thể sai dấu nào. Trước khi trả kết quả, TỰ RÀ SOÁT lại toàn bộ chính tả một lượt và sửa hết lỗi dấu/lỗi gõ.`;
 
-const CTA_THAT = `=== CTA/CHỐT CHỈ DÙNG THẬT — CẤM BỊA ƯU ĐÃI ===
-Khi viết phần kêu gọi/chốt (comment ghim, cuối bài, lời mời, funnel), CHỈ được mời các kênh CÓ THẬT của trường:
-- Hotline tư vấn: 0916 961 409
-- Đặt lịch tham quan / trải nghiệm tại cơ sở
-- Nhắn tin fanpage để được tư vấn (không áp lực)
-- Website: truongvietanh.com
-TUYỆT ĐỐI KHÔNG bịa ra: tài liệu/ebook/checklist/bộ câu hỏi miễn phí, quà tặng, mã giảm học phí, học bổng, sự kiện, hay trò "nhắn từ khóa X để nhận Y"/automation tự động — TRỪ KHI có dữ kiện thật được cung cấp trong input. Không chắc chắn có thật thì KHÔNG nhắc tới. Lời hứa ảo khiến phụ huynh nhắn vào mà không có gì để gửi → mất uy tín.`;
+const CTA_THAT = `=== CTA / CHỐT CHỈ DÙNG THẬT — CẤM BỊA (v2, 15/10/2026) ===
+LIÊN HỆ (chọn đúng khu vực của kênh/bài):
+• TP.HCM 0916 961 409 · Long Hậu (Nhân Lễ, Thái Sơn) 0902 095 956 · Mekong Xanh 0346 455 455 · Zalo OA · đặt lịch tham quan.
+
+LỜI MỜI NHẸ CÓ THẬT (đặt ở BÌNH LUẬN GHIM; caption carousel KHÔNG chứa link):
+• Bản đồ Khôn Lớn — nguyenmanhduong.com/ban-do-khon-lon — xem mức phát triển 4 lĩnh vực và môi trường phát triển của con. Dùng cho con từ 3 tuổi đến THPT; KHÔNG dùng cho con dưới 3 tuổi.
+• Quiz trình độ tiếng Anh — truongvietanh.com/quiz — ước lượng trình độ CEFR từ Pre-A1 đến B2.
+• Hướng nghiệp — huongnghiep.bandohoctap.com — cho học sinh từ lớp 8 trở lên.
+
+GHÉP THEO CẤP:
+• Mầm non: tham quan; quiz tiếng Anh (bé lớn); Bản đồ Khôn Lớn (từ 3 tuổi).
+• Tiểu học và lớp 6–7: Bản đồ Khôn Lớn; quiz tiếng Anh.
+• Lớp 8–12: Hướng nghiệp; Bản đồ Khôn Lớn; quiz tiếng Anh.
+
+ƯU ĐÃI (CHỈ nhắc khi bài nói về tuyển sinh/học phí):
+• Cam kết Giá trị 4 Tuần · Early Bird đến 46% · ưu đãi anh chị em ruột.
+
+CẤM: chương trình 66 ngày (chưa ra mắt), ebook, checklist, quà tặng, mã giảm, sự kiện, hay "nhắn từ khoá X nhận Y" — trừ khi input cung cấp dữ kiện thật.`;
 
 const DIEM_TUA = `nhà tâm lý học hoặc chuyên gia giáo dục (tự chọn người phù hợp, KHÔNG mặc định vài tên quen)
 triết gia / nhà tư tưởng
@@ -72,8 +141,22 @@ một phát hiện khoa học về não bộ và sự phát triển của trẻ
 ca dao - tục ngữ hoặc minh triết dân gian Việt Nam
 một nghiên cứu / số liệu giáo dục (không chắc nguồn thì nói chung, KHÔNG bịa số)
 một danh nhân lịch sử (trong hoặc ngoài nước)
-trải nghiệm thực tế của thầy cô / cha mẹ — KHÔNG cần trích ai
+một câu chuyện thật từ THƯ VIỆN CÂU CHUYỆN (chọn theo cấp học và nỗi lo, theo skill thu-vien-cau-chuyen)
 KHÔNG dùng trích dẫn nào — để nội dung tự đứng vững`;
+
+const THU_VIEN_CAU_CHUYEN = `THƯ VIỆN CÂU CHUYỆN THẬT — quy tắc dùng cho mọi agent (v1, 15/10/2026)
+
+1. CHỈ dùng dòng có đồng ý = "Có" và KHÔNG thuộc danh sách loại trừ:
+   dòng 46 (chi tiết học phí) · dòng 76–79 (chưa kiểm) · dòng có ghi chú "cần kiểm".
+2. CHỌN câu chuyện khi: cấp học khớp người đọc VÀ "Nỗi lo chính" khớp chủ đề bài.
+   Tôn trọng cột "Khi nào KHÔNG nên gửi".
+3. ĐƯỢC dùng: tóm tắt (viết lại bằng lời mình), "Câu nói hay" (trích nguyên văn, nói rõ ai nói:
+   "mẹ một bạn lớp 3", "một học sinh lớp 11 nội trú"), link video.
+4. KHÔNG chép cột "Lời dẫn gợi ý". KHÔNG thêm chi tiết ngoài sheet.
+   Lời phụ huynh là lời phụ huynh, KHÔNG biến thành cam kết của trường
+   (vd "nói như tiếng mẹ đẻ" chỉ được trích trong ngoặc, không viết thành tuyên bố).
+5. Tên: chỉ dùng tên đã có trong tiêu đề video công khai; không thêm họ, không thêm lớp nếu tiêu đề không có.
+6. Mỗi bài tối đa 1 câu chuyện; cùng một câu chuyện không dùng lại trong 30 ngày.`;
 
 const CONG_THUC_BLOG = `ÁP DỤNG PHƯƠNG PHÁP "mkt-blog-article-writer" (giáo trình viết blog SEO chuẩn EEAT của anh Dương). Bài blog này đăng lên website truongvietanh.com nên phải vừa lên top Google vừa giữ chân người đọc.
 
@@ -202,6 +285,55 @@ const TIEU_CHI_CHAM_DIEM = `RUBRIC CHẤM (tổng 100):
 - SEO/Hashtag (15): có 4-6 hashtag đúng chủ đề + từ khoá tìm kiếm
 Chấm BẢN VIẾT LẠI (không chấm bài gốc). Chấm rộng rãi: bản viết tốt, đúng brand, đủ hook+CTA+hashtag → 90-100; ổn còn 1 điểm nhỏ → 80-89; tạm/ý tưởng gốc yếu → 60-79; dưới 50 chỉ khi nội dung thật sự không liên quan giáo dục/phụ huynh hoặc không thể tận dụng.`;
 
+// Đặc tả v2 (15/10/2026): RUBRIC DỰ BÁO SHARE — dùng cho NGƯỜI CHẤM ĐỘC LẬP
+// (share.judge.ts, temperature 0, lệnh gọi riêng). Nguyên văn bản đã chốt.
+const RUBRIC_DU_BAO_SHARE = `RUBRIC DỰ BÁO SHARE — Trường Việt Anh (v2, 15/10/2026)
+
+Bạn là người chấm ĐỘC LẬP. Bạn KHÔNG viết bài này và KHÔNG sửa bài.
+Chấm khắt khe. Điểm 18/20 trở lên chỉ dành cho bài bạn tin nằm trong top 20% fanpage giáo dục Việt Nam.
+Với MỖI tiêu chí: trích nguyên văn đoạn trong bài làm bằng chứng, rồi mới cho điểm.
+Không tìm được bằng chứng = 0 điểm cho tiêu chí đó.
+
+BƯỚC 1 — CỔNG LOẠI (trượt 1 cổng = verdict "loại", không chấm tiếp)
+G1. Có dữ kiện/số liệu KHÔNG có trong HỒ SƠ TRƯỜNG, thư viện câu chuyện hoặc ghi chú giáo viên.
+G2. Lộ tên đầy đủ học sinh, hoặc ảnh/miêu tả có nguy cơ về an toàn, riêng tư trẻ em.
+G3. Dùng "nhất / duy nhất / tốt nhất / số 1", hoặc nhắc trường khác.
+G4. Sai tên "Việt Anh", hoặc sai chính tả tiếng Việt có dấu.
+G5. Hứa ưu đãi, quà, tài liệu không có trong danh sách CTA thật.
+
+BƯỚC 2 — CHẤM 7 TIÊU CHÍ
+Trọng số: [GT] = Trao giá trị (carousel, bài founder, blog trích) · [UGC] = khoảnh khắc lớp học (Bot Zalo)
+
+1. DANH TÍNH NGƯỜI SHARE — [GT] 20 · [UGC] 25
+   Share bài này giúp người share trông tốt hơn (hiểu biết, tâm lý, tự hào về con).
+   Đủ điểm: nói rõ được người share "được gì". Nửa điểm: có nhưng mờ. 0: không ai được gì.
+2. GIÁ TRỊ DÙNG NGAY — [GT] 20 · [UGC] 5
+   Có thứ làm được trong 24h hoặc đáng lưu lại (câu nói nguyên văn, bước cụ thể, checklist, bảng).
+   0 điểm nếu chỉ là lời khuyên chung ("hãy kiên nhẫn với con").
+3. HOOK DỪNG TAY — [GT] 15 · [UGC] 15
+   Dòng đầu / thẻ bìa có chi tiết cụ thể, con số có cơ sở, hoặc lật một ngộ nhận.
+   0 điểm nếu mở bằng câu chung ("Ba mẹ ơi, hôm nay các con…").
+4. CẢM XÚC KÍCH HOẠT — [GT] 10 · [UGC] 15
+   Gây tự hào, bật cười, ngạc nhiên, hoặc lo lắng-có-lối-ra. "Ấm áp, vui vẻ" chung chung = tối đa 3 điểm.
+5. KHOẢNH KHẮC / BẰNG CHỨNG CỤ THỂ — [GT] 15 · [UGC] 25
+   Có ít nhất 1 chi tiết chỉ Việt Anh có: hành động thật, câu nói thật, tiến bộ thật, câu chuyện từ thư viện.
+   0 điểm nếu bài thay tên trường khác vào vẫn đúng.
+6. NGƯỜI NHẬN RÕ RÀNG — [GT] 10 · [UGC] 10
+   Đọc xong biết ngay gửi cho ai (nhóm Zalo lớp, vợ/chồng, ông bà).
+7. MA SÁT SHARE THẤP — [GT] 10 · [UGC] 5
+   Thân bài KHÔNG có CTA tuyển sinh, hotline, "inbox ngay"; không giọng quảng cáo. CTA nếu có chỉ nằm ở bình luận ghim.
+
+BƯỚC 3 — KẾT LUẬN
+[GT]: ≥ 90 "đăng" · 75–89 "sửa 1 lần" (ghi đúng 1 việc cần sửa quan trọng nhất), chấm lại; vẫn < 90 thì "bỏ" · < 75 "bỏ".
+[UGC]: qua đủ 5 cổng và ≥ 80 "đăng" · < 80 "bỏ".
+KHÔNG so với điểm bản trước. KHÔNG yêu cầu viết lại đến khi tăng điểm.
+
+TRẢ VỀ JSON:
+{"gates":{"G1":bool,"G2":bool,"G3":bool,"G4":bool,"G5":bool},"type":"GT|UGC",
+ "scores":{"identity":n,"value":n,"hook":n,"emotion":n,"proof":n,"recipient":n,"friction":n},
+ "evidence":{"identity":"trích...", ...},
+ "total":n,"verdict":"đăng|sửa 1 lần|bỏ|loại","one_fix":"..."}`;
+
 // LEAD MAGNET — "mồi câu" đổi lấy thông tin liên hệ của phụ huynh. Với MỖI
 // content, AI chấm CẢ 5 loại mồi (không chỉ chọn 1) để đội nội dung nhìn được
 // xếp hạng: loại nào hợp chủ đề này nhất, loại nào không nên làm.
@@ -284,6 +416,7 @@ export const VIRAL_SKILL_DEFS: ViralSkillDef[] = [
   { key: 'chinh-ta', label: 'Chính tả bắt buộc', group: 'Nền tảng chung', description: 'Luật chính tả tiếng Việt + tên trường — mọi định dạng', content: CHINH_TA },
   { key: 'cta-that', label: 'CTA chỉ dùng thật', group: 'Nền tảng chung', description: 'Kênh liên hệ có thật, cấm bịa ưu đãi — blog & podcast', content: CTA_THAT },
   { key: 'diem-tua', label: 'Đa dạng điểm tựa (9 kiểu)', group: 'Nền tảng chung', description: 'Mỗi dòng 1 kiểu dẫn chứng — xoay vòng chống lặp khi sản xuất', content: DIEM_TUA },
+  { key: 'thu-vien-cau-chuyen', label: 'Thư viện câu chuyện thật', group: 'Nền tảng chung', description: 'Quy tắc dùng câu chuyện từ sheet Testimonials — điểm tựa cho carousel & blog', content: THU_VIEN_CAU_CHUYEN },
   { key: 'he-thong-viet-anh', label: 'Vai hệ thống Việt Anh', group: 'Nền tảng chung', description: 'Câu lệnh vai trò gốc cho chấm điểm / viết lại / caption', content: HE_THONG_VA },
   // Sản xuất
   { key: 'giong-van-blog', label: 'Giọng văn Blog', group: 'Sản xuất', description: '5 phẩm chất giọng anh Dương — dùng khi viết blog', content: GIONG_BLOG },
@@ -296,7 +429,11 @@ export const VIRAL_SKILL_DEFS: ViralSkillDef[] = [
   // Chấm điểm & phân loại
   { key: 'nguyen-tac-chon-nhom', label: 'Nguyên tắc chọn nhóm (cấp học)', group: 'Chấm & phân loại', description: 'Dấu hiệu MN/TH/THCS/THPT — routing khi chấm điểm', content: NGUYEN_TAC_CHON_NHOM },
   { key: 'skill-phan-loai-viet-lai', label: 'Phân loại + viết lại (4 bước)', group: 'Chấm & phân loại', description: 'Nhiệm vụ A/B/C/D: chọn nhóm, viết lại, chấm, gán loại SX + podcast_score', content: SKILL_PHAN_LOAI_VIET_LAI },
-  { key: 'tieu-chi-cham-diem', label: 'Rubric chấm điểm (100đ)', group: 'Chấm & phân loại', description: 'Thang điểm hook/clarity/brand/value/CTA/SEO + ngưỡng nới tay', content: TIEU_CHI_CHAM_DIEM },
+  { key: 'rubric-du-bao-share', label: 'Rubric dự báo share (v2)', group: 'Chấm & phân loại', description: 'Người chấm độc lập: 5 cổng loại + 7 tiêu chí, ngưỡng 90 (Bot Zalo 80) — chấm bài của trường trước khi đăng', content: RUBRIC_DU_BAO_SHARE },
+  // Đặc tả v2: rubric cũ CHỈ còn dùng để LỌC bài nguồn cào (bài của trang khác,
+  // chưa phải bài của trường — chấm bằng rubric share sẽ trượt cổng G4 hết).
+  // Giữ key để không vỡ UI/bản tuỳ chỉnh cũ.
+  { key: 'tieu-chi-cham-diem', label: '(cũ) Rubric lọc bài nguồn cào', group: 'Chấm & phân loại', description: 'Chỉ dùng để lọc bài viral cào về; bài của trường chấm bằng "Rubric dự báo share (v2)"', content: TIEU_CHI_CHAM_DIEM },
   { key: 'skill-lead-magnet', label: 'Gợi ý Lead magnet (5 loại, có xếp hạng)', group: 'Chấm & phân loại', description: 'Chấm ebook/checklist/app/template/quiz cho từng content — loại nào nên làm nhất', content: SKILL_LEAD_MAGNET },
   { key: 'skill-mo-cong-thuc', label: 'Mổ công thức viral', group: 'Chấm & phân loại', description: 'Vai phân tích vì sao bài được share (nút Mổ công thức)', content: SKILL_MO_CONG_THUC },
   { key: 'skill-tong-hop-chu-de', label: 'Tổng hợp chủ đề (nhiều nguồn → 1 content)', group: 'Chấm & phân loại', description: 'Gom nhiều nguồn cùng chủ đề thành 1 content gốc + chọn nhóm + viết + chấm', content: SKILL_TONG_HOP_CHU_DE },

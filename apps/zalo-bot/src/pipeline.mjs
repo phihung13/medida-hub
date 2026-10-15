@@ -4,7 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { downloadAll } from "./download.mjs";
 import { curate } from "./curate.mjs";
-import { pickBest } from "./pickbest.mjs";
+import { pickBest, pickTop } from "./pickbest.mjs";
+import { judgeShare } from "./judge.mjs";
 import { checkSafety } from "./safety.mjs";
 import { formatImage, formatVideo, extractFrames } from "./format.mjs";
 import { writeCaption, captionImageSet, captionFromFrames, combineTexts, generateHashtags } from "./caption.mjs";
@@ -86,6 +87,22 @@ export async function processBatch(batch, reason, opts = {}) {
     }
   }
 
+  // 2c) Đặc tả v2: TỐI ĐA 3 ẢNH mỗi bài. AI chọn top 3 (ưu tiên ảnh có hành
+  // động hơn ảnh tạo dáng); ảnh dư KHÔNG xoá — chuyển sang ẩn ("vuot-gioi-han")
+  // để người duyệt vẫn đổi được trên Media Hub.
+  const maxPhotos = opts.maxPhotos || 3;
+  let keptOverflow = [];
+  if (keptSafe.length > maxPhotos) {
+    onStage("AI đang chọn 3 ảnh đẹp nhất", { from: keptSafe.length });
+    const idx = opts.disableAI ? null : await pickTop(keptSafe, maxPhotos, { log });
+    const chosen = idx
+      ? idx.map((i) => keptSafe[i])
+      : [...keptSafe].sort((a, b) => (b.sharpness || 0) - (a.sharpness || 0)).slice(0, maxPhotos);
+    const set = new Set(chosen);
+    keptOverflow = keptSafe.filter((im) => !set.has(im)).map((im) => ({ ...im, reason: "vuot-gioi-han" }));
+    keptSafe = chosen;
+  }
+
   // 3) format TOÀN BỘ ảnh (an toàn + bị lọc/bị chặn) + lưu — ảnh bị lọc/chặn
   // KHÔNG bị xoá, chỉ đánh dấu hidden để Media Hub vẫn hiển thị cho người
   // duyệt xem lại (bấm mắt để hiện), phòng khi bộ lọc/AI nhầm một ảnh còn đẹp.
@@ -104,7 +121,7 @@ export async function processBatch(batch, reason, opts = {}) {
     } catch (e) { log(`format ảnh lỗi, bỏ: ${e.message}`); }
   }
   const keptCount = savedImages.length;
-  for (const im of [...keptUnsafe, ...dropped]) {
+  for (const im of [...keptUnsafe, ...keptOverflow, ...dropped]) {
     try {
       const out = await formatImage(im.buffer, { mode });
       const f = path.join(dir, `anh_an_${String(++counter).padStart(2, "0")}.jpg`);
@@ -135,7 +152,7 @@ export async function processBatch(batch, reason, opts = {}) {
   onStage("AI đang nghĩ nội dung bài đăng", { kept: keptSafe.length });
   const cap = await writeCaption(
     { items: keptSafe.map((k) => ({ kind: "image", buffer: k.buffer })), texts: batch.texts },
-    { log, disableAI: opts.disableAI, guide: opts.guide },
+    { log, disableAI: opts.disableAI, guide: opts.guide, capHoc: opts.capHoc, seedKey: `${batch.threadId}_${stamp}`, maxImages: maxPhotos },
   );
   fs.writeFileSync(path.join(dir, "caption.txt"), cap.caption || "");
 
@@ -144,7 +161,7 @@ export async function processBatch(batch, reason, opts = {}) {
   if (opts.autoHashtags !== false && !opts.disableAI) {
     onStage("AI đang tạo hashtag", {});
     const noteForTags = combineTexts(batch.texts);
-    hashtags = await generateHashtags([cap.caption, noteForTags].filter(Boolean).join("\n"), { guide: opts.guide, log });
+    hashtags = await generateHashtags([cap.caption, noteForTags].filter(Boolean).join("\n"), { guide: opts.guide, coSo: opts.coSo, count: 3, log });
   }
 
   // 5b) caption RIÊNG từng ảnh + từng video (video: trích khung hình cho AI "xem").
@@ -156,7 +173,7 @@ export async function processBatch(batch, reason, opts = {}) {
   if (perItem && keptSafe.length) onStage("AI đang chú thích từng ảnh", { kept: keptCount });
   const imageCaptions = perItem
     ? [
-        ...(await captionImageSet(keptSafe.map((k) => k.buffer), { log, note: noteText })),
+        ...(await captionImageSet(keptSafe.map((k) => k.buffer), { log, note: noteText, capHoc: opts.capHoc, openLine: String(cap.caption || "").split("\n")[0].trim() })),
         ...new Array(savedImages.length - keptCount).fill(""),
       ]
     : [];
@@ -166,6 +183,14 @@ export async function processBatch(batch, reason, opts = {}) {
     // 1 khung/10s: video 1 phút -> 6 khung, 2 phút -> 12 khung (giới hạn 2..30 khung)
     try { videoCaptions.push(await captionFromFrames(await extractFrames(vp, { perSeconds: 10 }), { log })); }
     catch (e) { log(`caption video lỗi: ${e.message}`); videoCaptions.push(""); }
+  }
+
+  // 5d) Người chấm ĐỘC LẬP (rubric dự báo share, loại UGC) — gọi Hub, không
+  // thấy prompt viết. Lỗi/tắt -> null: bài đi luồng chờ duyệt như cũ.
+  let rubric = null;
+  if (!opts.disableAI && cap.source === "ai" && opts.judge !== false) {
+    onStage("Đang chấm điểm dự báo share", {});
+    rubric = await judgeShare({ text: cap.caption, note: noteText }, { log });
   }
 
   // 5c) IN BẢN NHÁP rõ ràng ra terminal + lưu file
@@ -203,7 +228,7 @@ export async function processBatch(batch, reason, opts = {}) {
   }
 
   // 7) tóm tắt + báo lại nhóm
-  const hiddenCount = keptUnsafe.length + dropped.length;
+  const hiddenCount = keptUnsafe.length + keptOverflow.length + dropped.length;
   const summary =
     `✅ Đã xử lý xong (${reason}): ${keptCount} ảnh` +
     (savedVideos.length ? ` + ${savedVideos.length} video` : "") +
@@ -226,6 +251,10 @@ export async function processBatch(batch, reason, opts = {}) {
     imageHiddenReasons,
     caption: cap.caption,
     captionSource: cap.source,
+    goc: cap.goc || null,
+    rubric,
+    // checkSafety gắn cờ ít nhất 1 ảnh -> bài PHẢI chờ người duyệt (kể cả nhóm ổn định)
+    safetyFlagged: keptUnsafe.length > 0,
     hashtags,
     droppedCount: hiddenCount,
     fbLinks,

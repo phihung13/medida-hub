@@ -61,22 +61,53 @@ export function fallbackCaption(texts = []) {
   return combineTexts(texts);
 }
 
-const SYSTEM = [
-  "Bạn là người viết nội dung cho fanpage Facebook của một trường mầm non Việt Nam.",
-  "Giọng văn ấm áp, gần gũi, đáng tin, hướng tới phụ huynh.",
-  "LUÔN viết tiếng Việt CÓ DẤU đầy đủ và đúng chính tả.",
-  // QUY TẮC AN TOÀN khi tả tranh/sản phẩm của trẻ:
-  "Tranh và sản phẩm của trẻ mầm non thường ngây ngô, trừu tượng — người lớn KHÓ đoán đúng.",
-  "TUYỆT ĐỐI KHÔNG áp đặt/đoán bức vẽ là con gì hay vật gì cụ thể (ví dụ: cá vàng, con sứa, bông hoa...) trừ khi nhìn RÕ RÀNG chắc chắn.",
-  "Khi không chắc, hãy mô tả TRUNG TÍNH: 'tác phẩm đầy màu sắc của bé', 'bức tranh của con', 'sản phẩm sáng tạo'.",
-  "Tập trung vào điều QUAN SÁT ĐƯỢC chắc chắn: sự chăm chú, đôi tay tỉ mỉ, nụ cười, niềm vui, sự sáng tạo, không khí lớp học.",
-  "Thà viết chung chung còn hơn nói sai chi tiết. Không thêm chi tiết không nhìn thấy rõ.",
-  "KHÔNG dùng định dạng markdown: không dùng ** hay * để in đậm/nghiêng — Facebook sẽ hiện nguyên ký tự đó, rất xấu.",
-  // Xưng hô thân mật (MẶC ĐỊNH — có thể bị Hướng dẫn riêng của Trang ghi đè):
-  "MẶC ĐỊNH xưng hô thân mật như cô giáo gọi học trò: ưu tiên 'con', 'các con' thay cho 'bé', 'em'.",
-  "NHƯNG nếu có HƯỚNG DẪN riêng của Trang chỉ định cách xưng hô/phong cách khác thì PHẢI theo Hướng dẫn của Trang.",
-  "Dùng tự nhiên, linh hoạt — KHÔNG thay máy móc/lặp cứng nhắc; cốt sao câu mượt và ấm áp.",
+// Đặc tả v2 (15/10/2026) — prompt Bot Zalo "ưu tiên share". ${capHoc} theo cấu hình từng nhóm.
+export const buildSystem = (capHoc) => [
+  `Bạn viết bài cho fanpage của Trường Việt Anh, kể lại một khoảnh khắc THẬT trong lớp ${capHoc} cho phụ huynh.`,
+  "Mục tiêu duy nhất: ba mẹ có con trong ảnh muốn CHIA SẺ bài này (vì tự hào về con), và ba mẹ khác đọc xong thấy được con học thế nào ở Việt Anh.",
+  "LUÔN viết tiếng Việt CÓ DẤU đầy đủ, đúng chính tả. Tên trường luôn là \"Việt Anh\".",
+  "Chỉ viết điều THẤY RÕ trong ảnh hoặc có trong ghi chú giáo viên. Ghi chú giáo viên là nguồn đúng nhất.",
+  "Tranh, sản phẩm của trẻ thường trừu tượng: KHÔNG đoán là con gì, vật gì nếu không thấy rõ. Thà viết ít còn hơn viết sai.",
+  "KHÔNG nêu họ tên học sinh, KHÔNG nêu chi tiết giúp nhận diện một em cụ thể ngoài ảnh.",
+  "Giọng chân thật, cụ thể, không sến, không khoa trương. Cấm: xuất sắc, đỉnh cao, tuyệt vời, rạng rỡ, thiên thần nhỏ, lột xác, phép màu, hành trang, cơ hội vàng, nhất, số 1.",
+  "Xưng hô: Mầm non và Tiểu học gọi học sinh là \"các con\"; THCS và THPT gọi là \"các bạn\" hoặc \"học sinh lớp …\". Gọi người đọc là \"ba mẹ\".",
+  "KHÔNG markdown, KHÔNG viết hoa cả câu. Tối đa 2 emoji cho cả bài.",
+  "KHÔNG kêu gọi tuyển sinh, KHÔNG \"thả tim / theo dõi fanpage / inbox\". KHÔNG nhắc đây là AI.",
+  "Nếu có HƯỚNG DẪN RIÊNG của Trang, theo hướng dẫn đó về giọng và xưng hô — nhưng KHÔNG được bỏ các quy tắc SỰ THẬT và quy tắc không kêu gọi tuyển sinh trong thân bài.",
 ].join(" ");
+
+// Mặc định cho các hàm không biết cấp học (viết lại, chú thích video...).
+const SYSTEM = buildSystem("mầm non");
+
+// 5 góc kể — code xoay vòng theo hashSeed(batchId). B và C chỉ khi ghi chú có dữ liệu tương ứng; không thì lùi về A.
+export const GOC_KE = {
+  A: "KHOẢNH KHẮC NHỎ: kể đúng 1 hành động cụ thể nhất thấy trong ảnh, như người đứng cạnh kể lại.",
+  B: "TRƯỚC – SAU: điều các con/các bạn trước đây chưa làm được và hôm nay đã làm được (CHỈ dùng khi ghi chú giáo viên có nêu).",
+  C: "MỘT CÂU NÓI: mở bằng câu nói thật của học sinh hoặc thầy cô trong ghi chú, rồi kể bối cảnh (CHỈ khi ghi chú có câu nói).",
+  D: "VÌ SAO LÀM HOẠT ĐỘNG NÀY: hoạt động rèn điều gì cho con — CHỈ lấy từ ghi chú, không tự suy diễn lợi ích.",
+  E: "NHÌN TỪ CHỖ NGỒI CỦA CON: kể lại buổi học qua góc nhìn của một học sinh (không nêu tên), giữ đúng điều thấy được.",
+};
+
+export function hashSeed(s) {
+  let h = 2166136261;
+  for (const ch of String(s || "")) { h ^= ch.codePointAt(0); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+
+// Ghi chú có nói "trước – sau" (tiến bộ) / có câu nói trích dẫn không.
+const hasBeforeAfter = (note) =>
+  /(trước đây|trước kia|lúc đầu|ban đầu|lần đầu|đã biết|đã có thể|tiến bộ|bây giờ đã|giờ đã|hôm nay đã|chưa (biết|dám|làm))/i.test(note);
+const hasQuote = (note) => /["“”«»]|nói:|bảo:|hỏi:|kể:/i.test(note);
+
+export function chooseGoc(seedKey, noteText = "") {
+  const keys = Object.keys(GOC_KE);
+  const goc = keys[hashSeed(seedKey) % keys.length];
+  const note = String(noteText || "");
+  if (goc === "B" && !hasBeforeAfter(note)) return "A";
+  if (goc === "C" && !hasQuote(note)) return "A";
+  if (goc === "D" && !note.trim()) return "A"; // D chỉ lấy từ ghi chú
+  return goc;
+}
 
 /**
  * Dọn thứ Facebook KHÔNG hiểu ra khỏi caption: ký tự markdown (**, *, __) và
@@ -131,39 +162,50 @@ export function formatHashtags(arr, count = 5) {
   return out.join(" ");
 }
 
+/** Hashtag từ tên riêng (cơ sở...): bỏ dấu, CamelCase. "Mầm non Nhân Lễ" -> "#MamNonNhanLe". */
+export function toHashtag(name) {
+  const words = stripDiacritics(String(name || "")).replace(/[^A-Za-z0-9 ]/g, " ").split(/\s+/).filter(Boolean);
+  if (!words.length) return "";
+  return "#" + words.map((w) => w[0].toUpperCase() + w.slice(1)).join("");
+}
+
+export const BRAND_HASHTAG = "#TruongVietAnh";
+
 /**
- * Sinh `count` hashtag bám nội dung bài + định hướng của Trang. Trả về chuỗi "#a #b..." hoặc "" nếu lỗi/tắt AI.
+ * Đặc tả v2: đúng 3 hashtag — #TruongVietAnh, tên cơ sở (coSo), 1 theo chủ đề bài.
+ * Chưa cấu hình cơ sở -> 2 hashtag chủ đề. Trả chuỗi "#a #b #c"; lỗi AI -> phần cố định.
  * KHÔNG dùng SYSTEM (SYSTEM ép viết CÓ DẤU — hashtag lại cần KHÔNG dấu).
  */
-export async function generateHashtags(context, { guide = "", count = 5, log = () => {} } = {}) {
+export async function generateHashtags(context, { guide = "", count = 3, coSo = "", log = () => {} } = {}) {
+  const fixed = [BRAND_HASHTAG, toHashtag(coSo)].filter(Boolean);
+  const topicCount = Math.max(0, count - fixed.length);
   const src = String(context || "").trim();
-  if (!hasApiKey() || !src) return "";
+  if (!hasApiKey() || !src || !topicCount) return formatHashtags(fixed, count);
   try {
     const client = new Anthropic();
     const instruction = [
-      `Đọc bài đăng Facebook dưới đây rồi tạo đúng ${count} hashtag bám CHỦ ĐỀ bài + lĩnh vực/thương hiệu của Trang.`,
-      guide ? ("ĐỊNH HƯỚNG CỦA TRANG (bám để chọn hashtag đúng thương hiệu/chương trình):\n" + String(guide).slice(0, 1200)) : "",
+      `Đọc bài đăng Facebook dưới đây rồi tạo đúng ${topicCount} hashtag bám CHỦ ĐỀ hoạt động trong bài (không phải tên trường, không phải tên cơ sở).`,
+      guide ? ("ĐỊNH HƯỚNG CỦA TRANG:\n" + String(guide).slice(0, 1200)) : "",
       "Bài đăng:\n" + src.slice(0, 2000),
       [
         "Quy tắc:",
-        "- Mỗi hashtag KHÔNG dấu cách, viết liền hoặc CamelCase (VD: #MamNonVietAnh, #BeVuiHoc, #GiaoDucSom).",
+        "- Mỗi hashtag KHÔNG dấu cách, viết CamelCase (VD: #HocQuaChoi, #KyNangTuPhucVu).",
         "- BỎ dấu tiếng Việt trong hashtag.",
-        "- 1–2 hashtag mang tính thương hiệu/khu vực (nếu suy ra được), còn lại bám nội dung bài.",
-        "- KHÔNG trùng lặp, KHÔNG emoji.",
+        `- KHÔNG dùng ${fixed.join(", ")} (hệ thống tự thêm). KHÔNG emoji.`,
       ].join("\n"),
-      `Trả về JSON {"hashtags":[...]} đúng ${count} phần tử, mỗi phần tử bắt đầu bằng #.`,
+      `Trả về JSON {"hashtags":[...]} đúng ${topicCount} phần tử, mỗi phần tử bắt đầu bằng #.`,
     ].filter(Boolean).join("\n\n");
     const resp = await client.messages.create({
-      model: MODEL, max_tokens: 300,
+      model: MODEL, max_tokens: 200,
       output_config: { format: { type: "json_schema", schema: { type: "object", properties: { hashtags: { type: "array", items: { type: "string" } } }, required: ["hashtags"], additionalProperties: false } } },
       messages: [{ role: "user", content: instruction }],
     });
-    if (resp.stop_reason === "refusal") return "";
+    if (resp.stop_reason === "refusal") return formatHashtags(fixed, count);
     const txt = resp.content.filter((b) => b.type === "text").map((b) => b.text).join("");
     let arr = [];
     try { arr = JSON.parse(txt).hashtags || []; } catch { arr = []; }
-    return formatHashtags(arr, count);
-  } catch (e) { log(`generateHashtags lỗi: ${e.message}`); return ""; }
+    return formatHashtags([...fixed, ...arr], count);
+  } catch (e) { log(`generateHashtags lỗi: ${e.message}`); return formatHashtags(fixed, count); }
 }
 
 /** Gửi 1 bộ ảnh + chỉ dẫn cho Claude vision -> text. null nếu lỗi/từ chối. */
@@ -243,11 +285,12 @@ export async function captionImageSet(buffers, opts = {}) {
         `\n3) Tối ưu RIÊNG cho từng ảnh: tả đúng việc bé đang làm hoặc biểu cảm trong CHÍNH ảnh đó (số lượng bé, hành động, khoảnh khắc).` +
         `\n4) KHÔNG khẳng định bức vẽ là con/vật gì nếu không nhìn rõ; chỉ dùng ngữ cảnh giáo viên cho an toàn.` +
         `\n5) KHÔNG markdown, không đánh số đầu câu, không emoji quá nhiều (tối đa 1/câu).` +
+        (opts.openLine ? `\n6) Câu của ẢNH 1 KHÔNG được lặp lại dòng mở của thân bài: """${opts.openLine}"""` : "") +
         `\nTrả về JSON {"captions": [...]} đúng ${n} phần tử, theo thứ tự ảnh.`,
     });
     const client = new Anthropic();
     const resp = await client.messages.create({
-      model: MODEL, max_tokens: 2000, system: SYSTEM,
+      model: MODEL, max_tokens: 2000, system: buildSystem(opts.capHoc || "mầm non"),
       output_config: { format: { type: "json_schema", schema: { type: "object", properties: { captions: { type: "array", items: { type: "string" } } }, required: ["captions"], additionalProperties: false } } },
       messages: [{ role: "user", content }],
     });
@@ -274,78 +317,68 @@ export async function captionFromFrames(frameBuffers, opts = {}) {
 }
 
 /**
- * Viết caption từ ảnh + ghi chú.
+ * Viết caption từ ảnh + ghi chú (đặc tả v2: 60–120 từ, tối đa 3 ảnh, 5 góc kể xoay vòng).
  * @param {object} batch  { items: [{buffer,kind,posterUrl,...}], texts: [{text}] }
- * @param {object} o  { log, maxImages, disableAI }
- * @returns {Promise<{caption:string, source:"ai"|"fallback"}>}
+ * @param {object} o  { log, maxImages, disableAI, guide, capHoc, seedKey }
+ * @returns {Promise<{caption:string, source:"ai"|"fallback", goc:string|null}>}
  */
 export async function writeCaption(batch, o = {}) {
   const texts = batch?.texts || [];
   const noteText = combineTexts(texts);
   const guide = (o.guide ?? o.styleGuide ?? "").toString().trim(); // HƯỚNG DẪN viết của Trang (chỉ thị, không phải bài mẫu)
-  const maxImages = o.maxImages || 6;
+  const capHoc = String(o.capHoc || "mầm non");
+  const maxImages = o.maxImages || 3;
+  // Góc kể do CODE chọn (không để AI tự chọn) -> so được tỷ lệ share theo góc.
+  const goc = chooseGoc(o.seedKey || noteText || String(Date.now()), noteText);
 
   // gom buffer ảnh (chỉ ảnh; video bỏ qua phần nhìn)
   const imageItems = (batch?.items || []).filter((it) => it.kind === "image" && it.buffer).slice(0, maxImages);
 
   if (o.disableAI || !hasApiKey() || imageItems.length === 0) {
-    return { caption: fallbackCaption(texts), source: "fallback" };
+    return { caption: fallbackCaption(texts), source: "fallback", goc: null };
   }
 
   try {
     const thumbs = await Promise.all(imageItems.map((it) => toThumb(it.buffer)));
     const content = [];
     thumbs.forEach((t) => content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: t.toString("base64") } }));
+    const core =
+      `Đây là ${thumbs.length} ảnh (tối đa 3) của lớp ${capHoc} hôm nay.` +
+      (noteText ? `\n\nGHI CHÚ GIÁO VIÊN (nguồn đúng nhất, bám theo):\n"""${noteText}"""` : "\n\n(Không có ghi chú: chỉ tả điều thấy chắc chắn.)") +
+      `\n\nGÓC KỂ LẦN NÀY: ${GOC_KE[goc]}`;
+    const recipe =
+      `\n\nVIẾT 1 bài 60–120 từ theo đúng thứ tự:` +
+      `\n1) Dòng mở ≤ 15 từ chứa CHI TIẾT CỤ THỂ NHẤT (một hành động, một con số, một câu nói). KHÔNG mở bằng "Ba mẹ ơi", "Hôm nay", "Cùng xem".` +
+      `\n2) 2–4 câu kể theo góc kể trên. Mỗi câu chứa ít nhất một chi tiết nhìn thấy hoặc có trong ghi chú.` +
+      `\n3) Câu cuối dạng: "Tối nay ba mẹ thử hỏi con: …?" — một câu hỏi mở, cụ thể, gắn đúng hoạt động hôm nay, để con kể lại ở nhà.` +
+      `\n\nTỰ KIỂM trước khi trả: (a) thay tên trường khác vào bài có còn đúng không? Nếu còn đúng → viết lại cho cụ thể hơn. (b) có chi tiết nào không thấy trong ảnh/ghi chú không? Có → xoá.` +
+      `\n\nChỉ trả về THÂN BÀI, không giải thích. Hệ thống tự chèn chân bài và hashtag.`;
     content.push({
       type: "text",
-      text:
-        `Đây là ${thumbs.length} ảnh hoạt động của các bé hôm nay tại trường.` +
-        (noteText
-          ? `\n\nGHI CHÚ CỦA GIÁO VIÊN (nguồn thông tin CHÍNH, ĐÁNG TIN — hãy bám theo):\n"""${noteText}"""`
-          : "\n\n(Không có ghi chú kèm theo.)") +
-        (guide
-          ? `\n\nViết MỘT bài đăng Facebook MỚI cho bộ ảnh hôm nay, TÙY BIẾN theo HƯỚNG DẪN RIÊNG của Trang này.` +
-            `\nDưới đây là HƯỚNG DẪN của Trang — là CHỈ THỊ (phong cách viết, cách xưng hô, chương trình/campaign đang chạy, lead magnet, lời kêu gọi...), KHÔNG phải bài mẫu để chép:` +
-            `\n\n=== HƯỚNG DẪN CỦA TRANG (BẮT BUỘC BÁM THEO) ===\n${guide}\n=== HẾT HƯỚNG DẪN ===` +
-            `\n\n- Đọc kỹ & ÁP DỤNG đúng hướng dẫn: giọng văn, cách xưng hô, thông điệp, chương trình đang chạy, lời mời/kêu gọi.` +
-            `\n- Nếu hướng dẫn MÂU THUẪN với quy tắc mặc định (vd cách xưng hô), ƯU TIÊN HƯỚNG DẪN của Trang.` +
-            `\n- Nội dung bám ẢNH & GHI CHÚ hôm nay; KHÔNG bịa chi tiết không thấy. KHÔNG tự chèn liên hệ/hashtag ở cuối — hệ thống tự chèn.`
-          : `\n\nHãy viết MỘT bài đăng Facebook cho fanpage trường mầm non, theo CẤU TRÚC:` +
-            `\n1) DÒNG TIÊU ĐỀ giật tít gửi "ba mẹ", VIẾT HOA phần chính, 1–3 emoji.` +
-            `\n2) Đoạn MỞ "Ba mẹ ơi, ..." dẫn vào hoạt động.` +
-            `\n3) 3–4 GẠCH ĐẦU DÒNG: emoji + cụm IN HOA nêu lợi ích + giải thích (thẩm mỹ/sáng tạo, vận động tinh, tập trung/tự hào, hợp tác).` +
-            `\n4) Câu TRIẾT LÝ thương hiệu "Tại trường ...".` +
-            `\n5) LỜI MỜI cuối: xem album + thả tim, theo dõi Fanpage.` +
-            `\n- Không hashtag. Độ dài ~150–300 từ.`) +
-        `\n\nQUY TẮC CHUNG:` +
-        (noteText
-          ? `\n- DÙNG ghi chú giáo viên làm nội dung chính; giáo viên nói gì coi là ĐÚNG (vd hoạt động làm con sứa).`
-          : `\n- Không có ghi chú: mô tả TRUNG TÍNH điều thấy chắc, KHÔNG đoán bức vẽ là con/vật gì.`) +
-        `\n- Tiếng Việt CÓ DẤU đầy đủ; ấm áp.` +
-        (guide ? `` : `\n- Xưng "con/các con".`) +
-        `\n- KHÔNG markdown (không * hay **) — nhấn mạnh bằng VIẾT HOA. KHÔNG khẳng định bức vẽ nếu không nhìn rõ. KHÔNG bịa.` +
-        `\n- KHÔNG tự thêm số điện thoại / địa chỉ / tên cơ sở ở cuối — hệ thống tự chèn chân bài. (Hashtag/Google Maps cũng nằm ở chân bài.)` +
-        `\n- KHÔNG nhắc đây là AI.` +
-        `\n\nChỉ trả về DUY NHẤT nội dung THÂN BÀI (KHÔNG kèm phần liên hệ/hashtag ở cuối), không giải thích.`,
+      text: guide
+        ? core +
+          `\n\n=== HƯỚNG DẪN RIÊNG CỦA TRANG (chỉ thị về giọng, xưng hô — KHÔNG phải bài mẫu để chép) ===\n${guide}\n=== HẾT HƯỚNG DẪN ===` +
+          recipe
+        : core + recipe,
     });
 
     const client = new Anthropic();
     const resp = await client.messages.create({
       model: MODEL,
-      max_tokens: 2000,
-      system: SYSTEM,
+      max_tokens: 1200,
+      system: buildSystem(capHoc),
       messages: [{ role: "user", content }],
     });
 
     if (resp.stop_reason === "refusal") {
       o.log?.("caption: AI từ chối -> fallback");
-      return { caption: fallbackCaption(texts), source: "fallback" };
+      return { caption: fallbackCaption(texts), source: "fallback", goc: null };
     }
     const text = resp.content.filter((b) => b.type === "text").map((b) => b.text).join("").trim();
-    if (!text) return { caption: fallbackCaption(texts), source: "fallback" };
-    return { caption: stripMarkdown(text), source: "ai" };
+    if (!text) return { caption: fallbackCaption(texts), source: "fallback", goc: null };
+    return { caption: stripMarkdown(text), source: "ai", goc };
   } catch (e) {
     o.log?.(`caption lỗi (${e.message}) -> fallback dùng nguyên text`);
-    return { caption: fallbackCaption(texts), source: "fallback" };
+    return { caption: fallbackCaption(texts), source: "fallback", goc: null };
   }
 }

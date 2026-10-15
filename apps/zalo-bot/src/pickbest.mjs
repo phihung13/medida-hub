@@ -68,3 +68,53 @@ export async function pickBest(images, { log = () => {} } = {}) {
     return null;
   }
 }
+
+const TOP_SCHEMA = {
+  type: "object",
+  properties: {
+    indexes: { type: "array", items: { type: "integer" }, description: "Chỉ số (0-based) các ảnh được chọn, ảnh tốt nhất trước" },
+    reason: { type: "string" },
+  },
+  required: ["indexes", "reason"],
+  additionalProperties: false,
+};
+
+/**
+ * Đặc tả v2: chọn TOP n ảnh (mặc định 3) cho 1 bài. Giữ tiêu chí cũ (mắt mở,
+ * nét, biểu cảm), THÊM ưu tiên ảnh có HÀNH ĐỘNG rõ hơn ảnh tạo dáng.
+ * @returns {Promise<number[]|null>} null -> tầng trên fallback (ảnh nét nhất)
+ */
+export async function pickTop(images, n = 3, { log = () => {} } = {}) {
+  if (!hasApiKey() || !Array.isArray(images) || images.length <= n) return null;
+  try {
+    const thumbs = await Promise.all(images.map((im) => toThumb(im.buffer ?? im.path, 384)));
+    const content = [];
+    thumbs.forEach((t, i) => {
+      content.push({ type: "text", text: `Ảnh ${i}:` });
+      content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: t.toString("base64") } });
+    });
+    content.push({
+      type: "text",
+      text:
+        `Chọn ĐÚNG ${n} ảnh tốt nhất trong ${images.length} ảnh trên để đăng 1 bài fanpage trường học. ` +
+        `Ưu tiên: (1) ảnh có HÀNH ĐỘNG rõ (đang làm, đang thử, đang hợp tác) hơn ảnh tạo dáng nhìn máy; ` +
+        `(2) mắt mở, mặt rõ không nhòe, biểu cảm tự nhiên; (3) bố cục tốt; (4) ${n} ảnh KHÁC nhau về khoảnh khắc. ` +
+        `Trả indexes (0..${images.length - 1}), ảnh tốt nhất trước, và lý do ngắn tiếng Việt.`,
+    });
+    const client = new Anthropic();
+    const resp = await client.messages.create({
+      model: MODEL,
+      max_tokens: 600,
+      output_config: { format: { type: "json_schema", schema: TOP_SCHEMA } },
+      messages: [{ role: "user", content }],
+    });
+    if (resp.stop_reason === "refusal") { log("pickTop: AI từ chối -> fallback"); return null; }
+    const text = resp.content.find((b) => b.type === "text")?.text;
+    if (!text) return null;
+    const idx = [...new Set((JSON.parse(text).indexes || []).filter((i) => Number.isInteger(i) && i >= 0 && i < images.length))];
+    return idx.length ? idx.slice(0, n) : null;
+  } catch (e) {
+    log(`pickTop lỗi (${e.message}) -> fallback ảnh nét nhất`);
+    return null;
+  }
+}

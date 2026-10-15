@@ -40,8 +40,27 @@ import {
   getSkill,
   retireSkillOverride,
 } from '@gitroom/nestjs-libraries/viral/viral.skills';
+import {
+  markStoryUsed,
+  pickStories,
+  storyBlock,
+  storyLibraryConfigured,
+} from '@gitroom/nestjs-libraries/viral/story.library';
 import { NotificationService } from '@gitroom/nestjs-libraries/database/prisma/notifications/notification.service';
 import { blogHtmlToDocx } from '@gitroom/nestjs-libraries/viral/viral.docx';
+import {
+  judgeShare,
+  ShareJudgeResult,
+  ShareVerdict,
+} from '@gitroom/nestjs-libraries/viral/share.judge';
+import { ShareStatsService } from '@gitroom/nestjs-libraries/database/prisma/share-stats/share-stats.service';
+import { isFeaturePaused } from '@gitroom/helpers/utils/paused.features';
+
+// Đặc tả v2 (15/10/2026): tạm dừng (HUB_PAUSED_FEATURES) — xem paused.features.ts.
+const paused = (k: 'podcast-tts' | 'agent-chat' | 'viet-lai-cham-diem') =>
+  isFeaturePaused(k, process.env.HUB_PAUSED_FEATURES);
+const PAUSED_MSG =
+  'Tính năng đang tạm dừng theo Đặc tả v2 (15/10/2026) — đến khi rubric dự báo share chạy ổn.';
 
 // Entity HTML có tên hay gặp trong RSS tiếng Việt (báo VN dùng Latin-1 có dấu).
 const RSS_ENTITIES: Record<string, string> = {
@@ -114,8 +133,42 @@ export class ViralService implements OnModuleInit {
     private _media: MediaService,
     private _postsService: PostsService,
     private _integrationService: IntegrationService,
-    private _notification: NotificationService
+    private _notification: NotificationService,
+    private _shareStats: ShareStatsService
   ) {}
+
+  // ── NGƯỜI CHẤM ĐỘC LẬP (Đặc tả v2, 15/10/2026) ───────────────────────────
+  // Bài Trao giá trị (GT): chấm 1 lần; 75–89 → sửa ĐÚNG 1 việc (one_fix) rồi
+  // chấm lại 1 lần; vẫn < 90 → bỏ. KHÔNG có vòng "viết lại tới khi tăng điểm".
+  async judgeGtWithOneFix(
+    content: string
+  ): Promise<{ content: string; result: ShareJudgeResult | null; fixed: boolean }> {
+    let result = await judgeShare({ type: 'GT', text: content }).catch(() => null);
+    if (result?.verdict !== 'sửa 1 lần' || !result.one_fix) {
+      return { content, result, fixed: false };
+    }
+    const fixedText = await this._openai.applyOneFix(content, result.one_fix);
+    if (!fixedText) return { content, result: { ...result, verdict: 'bỏ' }, fixed: false };
+    const again = await judgeShare({ type: 'GT', text: fixedText }).catch(() => null);
+    if (!again) return { content, result: { ...result, verdict: 'bỏ' }, fixed: false };
+    // Chấm lại vẫn chưa đạt → "bỏ" (không sửa lần 2).
+    if (again.verdict === 'sửa 1 lần') again.verdict = 'bỏ' as ShareVerdict;
+    return { content: fixedText, result: again, fixed: true };
+  }
+
+  private shareDetail(r: ShareJudgeResult | null) {
+    return r
+      ? {
+          rubric: 'du-bao-share-v2',
+          type: r.type,
+          gates: r.gates,
+          scores: r.scores,
+          evidence: r.evidence,
+          verdict: r.verdict,
+          reason: r.one_fix,
+        }
+      : { rubric: 'du-bao-share-v2', verdict: 'chưa chấm được', reason: 'Người chấm lỗi — thử lại sau' };
+  }
 
   // Scheduler cào định kỳ — CHỈ chạy ở tiến trình backend (main.ts set cờ),
   // không chạy ở orchestrator để tránh cào 2 lần.
@@ -126,6 +179,10 @@ export class ViralService implements OnModuleInit {
     // bản cũ được giữ lại dưới dạng .bak-social-first nếu cần xem lại.
     // Đặt TRƯỚC lệnh return bên dưới: máy không chạy crawler vẫn phải thu hồi.
     retireSkillOverride('skill-ban-tin-tuan', 'social-first');
+    // Đặc tả v2 (15/10/2026): hồ sơ trường + CTA thay TOÀN VĂN.
+    for (const k of ['ho-so-truong', 'ho-so-truong-ngan', 'cta-that', 'diem-tua']) {
+      retireSkillOverride(k, 'v2-1510');
+    }
     if (process.env.RUN_VIRAL_CRAWLER !== '1') return;
     const tick = async () => {
       const hours = getViralConfig().crawlEveryHours;
@@ -802,6 +859,7 @@ export class ViralService implements OnModuleInit {
   // Clone hàng loạt → "Bài của mình". Chạy NỀN (mỗi bài 1 lần gọi AI) rồi thẻ
   // hiện dần ở tab Bài của mình. Trả số bài đưa vào hàng đợi.
   async bulkCloneToMine(orgId: string, ids: string[]): Promise<{ queued: number }> {
+    if (paused('viet-lai-cham-diem')) throw new HttpException(PAUSED_MSG, 423);
     const posts = await this._repo.getByIds(orgId, ids);
     const toClone = posts.filter((p: any) => !p.deletedAt);
     (async () => {
@@ -829,18 +887,16 @@ export class ViralService implements OnModuleInit {
       })
       .catch(() => null);
     if (!res?.content) return null;
+    // Điểm do NGƯỜI CHẤM ĐỘC LẬP (rubric dự báo share), không lấy điểm tự chấm.
+    const judged = await this.judgeGtWithOneFix(String(res.content));
     const clone = await this._repo.createClone(orgId, {
       sourceId: post.id,
       title: post.title,
-      content: res.content,
+      content: judged.content,
       persona: res.persona || post.persona,
-      score: typeof res.score === 'number' ? Math.round(res.score) : null,
+      score: judged.result ? judged.result.total : null,
       sourceScore: post.score ?? null,
-      scoreDetail: JSON.stringify({
-        scores: res.scores || {},
-        verdict: res.verdict || '',
-        reason: res.reason || '',
-      }),
+      scoreDetail: JSON.stringify(this.shareDetail(judged.result)),
     });
     await this._repo
       .update(post.id, { clonedCount: (post.clonedCount || 0) + 1 })
@@ -854,12 +910,13 @@ export class ViralService implements OnModuleInit {
   }
 
   async regenerateClone(orgId: string, cloneId: string) {
+    if (paused('viet-lai-cham-diem')) throw new HttpException(PAUSED_MSG, 423);
     const clone = await this._repo.getClone(orgId, cloneId);
     if (!clone) return null;
     const personasText = VIRAL_PERSONAS.map(
       (p) => `- ${p.code} (${p.label}): ${p.profile}`
     ).join('\n');
-    // nguồn để so: bản clone hiện tại (viết cho hơn nó)
+    // nguồn tham khảo: bản clone hiện tại (không ép "điểm phải cao hơn")
     const source = clone.sourceId
       ? await this._repo.getById(orgId, clone.sourceId)
       : null;
@@ -875,15 +932,12 @@ export class ViralService implements OnModuleInit {
       })
       .catch(() => null);
     if (!res?.content) return null;
+    const judged = await this.judgeGtWithOneFix(String(res.content));
     return this._repo.updateClone(cloneId, {
-      content: res.content,
+      content: judged.content,
       persona: res.persona || clone.persona,
-      score: typeof res.score === 'number' ? Math.round(res.score) : clone.score,
-      scoreDetail: JSON.stringify({
-        scores: res.scores || {},
-        verdict: res.verdict || '',
-        reason: res.reason || '',
-      }),
+      score: judged.result ? judged.result.total : clone.score,
+      scoreDetail: JSON.stringify(this.shareDetail(judged.result)),
     });
   }
 
@@ -896,8 +950,21 @@ export class ViralService implements OnModuleInit {
     content: string,
     images: { id: string; path: string }[],
     agent: string,
-    mode: 'draft' | 'now'
+    mode: 'draft' | 'now',
+    format = 'khac'
   ) {
+    // Đặc tả v2: người chấm độc lập chấm bài GT trước khi lên Lịch. Đăng NGAY
+    // chỉ khi đạt ≥ 90 ("đăng"); nháp thì vẫn tạo (người duyệt xem điểm).
+    // Người chấm lỗi → không chặn (không để sự cố AI làm đứng việc đăng).
+    const judged = await judgeShare({ type: 'GT', text: content }).catch(() => null);
+    if (mode === 'now' && judged && judged.verdict !== 'đăng') {
+      throw new HttpException(
+        `Bài mới đạt ${judged.total}/100 (cần ≥ 90 để đăng ngay — ${judged.verdict})` +
+          (judged.one_fix ? `. Cần sửa: ${judged.one_fix}` : '') +
+          '. Đưa lên Lịch dạng nháp nếu vẫn muốn người duyệt xem.',
+        400
+      );
+    }
     const settings = {
       __type: integration.providerIdentifier as any,
       title: '',
@@ -927,7 +994,7 @@ export class ViralService implements OnModuleInit {
       mode === 'now'
         ? new Date().toISOString()
         : (await this._postsService.findFreeDateTime(orgId)) + 'Z';
-    await this._postsService.createPost(
+    const created = await this._postsService.createPost(
       orgId,
       {
         date,
@@ -942,6 +1009,21 @@ export class ViralService implements OnModuleInit {
       'MCP' as any,
       agent
     );
+    // Lưu điểm dự báo cạnh tỷ lệ share thật (đo sau 72 giờ).
+    for (const c of (created || []) as { postId: string }[]) {
+      await this._shareStats
+        .upsertForecast({
+          postId: c.postId,
+          organizationId: orgId,
+          agent,
+          format,
+          rubricType: 'GT',
+          forecastScore: judged ? judged.total : null,
+          verdict: judged ? judged.verdict : null,
+          rubric: judged ? JSON.stringify(judged).slice(0, 8000) : null,
+        })
+        .catch(() => null);
+    }
   }
 
   // Đăng "Bài của mình" lên Lịch cho kênh đã chọn — nháp (mặc định) hoặc đăng ngay.
@@ -964,7 +1046,8 @@ export class ViralService implements OnModuleInit {
       clone.content.replace(/\n/g, '\n\n'),
       [],
       'viral-ban-cua-minh',
-      mode
+      mode,
+      'bai-chu'
     );
     await this._repo.updateClone(cloneId, { status: 'posted' });
     return { ok: true, mode };
@@ -1009,7 +1092,8 @@ export class ViralService implements OnModuleInit {
       String(p.textContent || p.title || '').replace(/\n/g, '\n\n'),
       images,
       'viral-infographic',
-      mode
+      mode,
+      'carousel'
     );
     return { ok: true, images: images.length, mode };
   }
@@ -1247,7 +1331,7 @@ export class ViralService implements OnModuleInit {
       .catch(() => null);
     if (!res) return false;
     let score = Math.max(0, Math.min(100, Number(res.score) || 0));
-    let persona = res.persona ? String(res.persona).slice(0, 30) : null;
+    const persona = res.persona ? String(res.persona).slice(0, 30) : null;
     let aiContent = res.rewritten ? String(res.rewritten).slice(0, 4000) : null;
     let scores = res.scores;
     let verdict = res.verdict;
@@ -1255,52 +1339,32 @@ export class ViralService implements OnModuleInit {
     const label =
       String(res.label || '').slice(0, 300) ||
       decodeEntities((posts[0] as any).title).slice(0, 120);
-    // VÒNG LẶP VIẾT LẠI (phễu 90/70/3, ngưỡng chỉnh trong Cài đặt): điểm nằm
-    // giữa "tự bỏ" và "tự duyệt" → viết lại + chấm lại, GIỮ BẢN TỐT HƠN, tối
-    // đa N vòng. Đạt ngưỡng duyệt → dừng sớm; hết vòng chưa đạt → chờ người.
+    // Đặc tả v2 (15/10/2026): BỎ vòng "viết lại tới khi điểm cao hơn". Bản
+    // viết (aiContent) do NGƯỜI CHẤM ĐỘC LẬP chấm theo rubric dự báo share:
+    // ≥ 90 duyệt · 75–89 sửa đúng 1 việc rồi chấm lại 1 lần · còn lại bỏ.
+    // Người chấm lỗi (thiếu key / mạng) → giữ điểm lọc cũ, đứng ở Chờ duyệt.
     const cfg = getViralConfig();
-    let rounds = 0;
-    // ⏸① Phanh TỰ DUYỆT: bỏ vòng viết lại (mục đích của nó là đẩy điểm lên
-    // ngưỡng tự duyệt — đang chặn duyệt thì viết lại chỉ tốn tiền AI vô ích).
-    while (
-      !cfg.pauseApprove &&
-      rounds < cfg.rewriteMaxRounds &&
-      score < cfg.autoApproveMin &&
-      score >= cfg.autoSkipMax
-    ) {
-      rounds++;
-      const syn: any = res.synthesis || {};
-      const rw = await this._openai
-        .viralRewriteAndScore({
-          title: label,
-          content:
-            [syn.angle, ...(syn.agreedFacts || []), syn.whyItMatters]
-              .filter(Boolean)
-              .join('\n') || aiContent,
-          prevContent: aiContent,
-          prevScore: score,
-          persona,
-          personasText,
-          rubric,
-        })
-        .catch(() => null);
-      if (!rw || typeof rw.score !== 'number' || !rw.content) break;
-      const newScore = Math.max(0, Math.min(100, Math.round(rw.score)));
-      if (newScore > score) {
-        score = newScore;
-        aiContent = String(rw.content).slice(0, 4000);
-        persona = rw.persona ? String(rw.persona).slice(0, 30) : persona;
-        scores = rw.scores || scores;
-        verdict = rw.verdict || verdict;
-        reason = rw.reason || reason;
-      }
+    const rounds = 0; // giữ field cho UI cũ — không còn vòng viết lại
+    let judged: Awaited<ReturnType<ViralService['judgeGtWithOneFix']>> | null = null;
+    if (aiContent) {
+      judged = await this.judgeGtWithOneFix(aiContent).catch(() => null);
     }
-    // ⏸① Phanh TỰ DUYỆT: điểm cao đến mấy cũng đứng ở Chờ duyệt
-    // (điểm thấp vẫn tự bỏ như thường để khỏi ngập rác).
-    let status = viralStatusForScore(score, {
-      approveMin: cfg.autoApproveMin,
-      skipMax: cfg.autoSkipMax,
-    });
+    let status: string;
+    if (judged?.result) {
+      aiContent = judged.content.slice(0, 4000);
+      score = judged.result.total;
+      scores = judged.result.scores;
+      verdict = judged.result.verdict;
+      reason = judged.result.one_fix;
+      status = judged.result.verdict === 'đăng' ? 'approved' : 'skipped';
+    } else {
+      status = viralStatusForScore(score, {
+        approveMin: cfg.autoApproveMin,
+        skipMax: cfg.autoSkipMax,
+      });
+      if (status === 'approved') status = 'pending';
+    }
+    // ⏸① Phanh TỰ DUYỆT: điểm cao đến mấy cũng đứng ở Chờ duyệt.
     if (cfg.pauseApprove && status === 'approved') status = 'pending';
     await this._repo.updateTopic(topic.id, {
       label,
@@ -1318,6 +1382,14 @@ export class ViralService implements OnModuleInit {
         // loại, AI chấm lúc tổng hợp chủ đề.
         lead_magnets: normalizeLeadMagnets(res.lead_magnets),
         rounds, // số vòng viết lại đã chạy (đếm theo yêu cầu vận hành)
+        ...(judged?.result
+          ? {
+              rubric: 'du-bao-share-v2',
+              gates: judged.result.gates,
+              evidence: judged.result.evidence,
+              fixed: judged.fixed,
+            }
+          : {}),
       }).slice(0, 6000),
       status,
       synthesizedAt: new Date(),
@@ -1461,6 +1533,12 @@ export class ViralService implements OnModuleInit {
       const formats = [primary];
       if ((d.podcast_score ?? 0) >= 75 && primary !== 'podcast')
         formats.push('podcast');
+      // Podcast TTS tạm dừng → chủ đề kiểu video rơi về infographic.
+      if (paused('podcast-tts')) {
+        const i = formats.indexOf('podcast');
+        if (i >= 0) formats.splice(i, 1);
+        if (!formats.length) formats.push('infographic');
+      }
       const key = formats.join(',');
       groups.set(key, [...(groups.get(key) || []), id]);
     }
@@ -2323,9 +2401,14 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
     body: { ids?: string[]; source?: string; formats?: string[]; bgm?: boolean }
   ): Promise<{ queued: number }> {
     const ids = (body.ids || []).filter(Boolean).slice(0, 20);
-    const formats = (body.formats || []).filter((f) =>
-      ViralService.PRODUCE_FORMATS.includes(f)
+    const formats = (body.formats || []).filter(
+      (f) =>
+        ViralService.PRODUCE_FORMATS.includes(f) &&
+        !(f === 'podcast' && paused('podcast-tts'))
     );
+    if (!formats.length && (body.formats || []).includes('podcast')) {
+      throw new HttpException(PAUSED_MSG, 423);
+    }
     if (!ids.length || !formats.length) return { queued: 0 };
     // dọn xác 'processing' bỏ rơi trước — kẻo chúng ăn oan trần 40 job
     await this._repo.failStaleProducts(orgId).catch(() => null);
@@ -2587,6 +2670,25 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
   private async produceOne(orgId: string, product: any) {
     const input = await this.produceInput(orgId, product);
     if (!input) throw new Error('Bài nguồn không còn (đã bị xóa?).');
+    // Đặc tả v2: điểm tựa = 1 câu chuyện thật từ thư viện (khớp chủ đề/nỗi lo).
+    // Thư viện chưa cấu hình / không có câu hợp -> giữ điểm tựa xoay vòng cũ.
+    if (
+      storyLibraryConfigured() &&
+      (product.format === 'blog' || product.format === 'infographic')
+    ) {
+      try {
+        const [st] = await pickStories({
+          topic: `${input.topic} ${input.idea} ${input.category || ''}`,
+          limit: 1,
+        });
+        if (st) {
+          input.story = storyBlock(st);
+          markStoryUsed(st.key);
+        }
+      } catch (e) {
+        console.warn(`[viral] Thư viện câu chuyện lỗi: ${(e as Error).message}`);
+      }
+    }
 
     if (product.format === 'blog') {
       const { system, user } = buildBlogPrompt(input);

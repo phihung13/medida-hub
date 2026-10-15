@@ -325,14 +325,21 @@ export class UsageService implements OnModuleDestroy {
    */
   async contentReport(q: ReportQuery) {
     const { from, to, size } = this.range(q);
-    const [postDays, viralDays] = await Promise.all([
+    const [postDays, viralDays, dup] = await Promise.all([
       this._contentStats.postDaysTouched(from, to),
       this._contentStats.viralDaysTouched(from, to),
+      this.autoPublishIntegrations(),
     ]);
-    const [posts, viral] = await Promise.all([
-      this._contentStats.postsByDay(postDays.map((d) => d.ngay)),
+    const days = postDays.map((d) => d.ngay);
+    const [posts, gop, dupRows, viral] = await Promise.all([
+      this._contentStats.postsByDay(days, dup),
+      this._contentStats.postsByDayGop(days, dup),
+      this._contentStats.dupDraftsByDay(days, dup),
       this._contentStats.viralByDay(viralDays.map((d) => d.ngay)),
     ]);
+    const dupOf = new Map(
+      dupRows.map((r) => [`${r.ngay}_${r.kenh}_${r.loai}`, r.so])
+    );
 
     const rows = [
       ...posts.map((r) => {
@@ -354,9 +361,41 @@ export class UsageService implements OnModuleDestroy {
           so_loi: r.loi,
           so_nhap: r.nhap,
           so_bo: r.da_xoa,
+          so_het_han: r.het_han,
+          so_nhap_trung:
+            r.agent === 'zalo-bot'
+              ? dupOf.get(`${r.ngay}_${r.kenh}_${r.loai}`) || 0
+              : 0,
+          don_vi: 'the',
           ty_le_dung: r.lam_ra ? Math.round((dung / r.lam_ra) * 1000) / 10 : 0,
         };
       }),
+      // Cùng số liệu nhưng đơn vị BÀI (gộp thẻ nhiều kênh của cùng nội dung).
+      // Bảng tổng / theo agent PHẢI dùng dòng này, không cộng các dòng
+      // `bai-dang` (mỗi kênh một thẻ) — cộng thẻ là nguồn lệch số cũ.
+      ...gop.map((r) => ({
+        id: `ndb_${r.ngay}_${r.agent}_${r.loai}`,
+        nguon: 'bai-dang-gop',
+        ngay: r.ngay,
+        luc: `${r.ngay}T00:00:00+07:00`,
+        cap_nhat_luc: toVn(r.cap_nhat),
+        agent: r.agent,
+        kenh: 'tat-ca',
+        loai: r.loai,
+        tinh_nang: `noi-dung.${r.agent}`,
+        so_lam_ra: r.lam_ra,
+        so_dung: r.dung,
+        so_da_dang: r.da_dang,
+        so_cho_dang: r.cho_dang,
+        so_loi: r.loi,
+        so_nhap: r.nhap,
+        so_bo: r.da_xoa,
+        so_het_han: r.het_han,
+        so_nhap_trung: r.nhap_trung,
+        so_the: r.so_kenh,
+        don_vi: 'bai',
+        ty_le_dung: r.lam_ra ? Math.round((r.dung / r.lam_ra) * 1000) / 10 : 0,
+      })),
       ...this.viralRows(viral),
     ];
 
@@ -366,6 +405,59 @@ export class UsageService implements OnModuleDestroy {
       trang_sau:
         offset + size < rows.length ? encodeCursor({ o: offset + size }) : null,
     };
+  }
+
+  /**
+   * Kênh Hub của các nhóm Zalo đang bật TỰ ĐĂNG (Facebook → kênh facebook,
+   * GBP → kênh gmb): thẻ nháp bot đẩy vào các kênh này là bản trùng. Đọc
+   * routes.json qua bot (ZALO_BOT_URL + HUB_BOT_TOKEN). Bot không phản hồi →
+   * [] (báo cáo vẫn chạy, chỉ không loại được bản trùng).
+   */
+  private async autoPublishIntegrations(): Promise<string[]> {
+    const base = (process.env.ZALO_BOT_URL || 'http://127.0.0.1:8088').replace(/\/$/, '');
+    let raw: any;
+    try {
+      const res = await fetch(base + '/api/routes', {
+        headers: process.env.HUB_BOT_TOKEN
+          ? { 'x-hub-token': process.env.HUB_BOT_TOKEN }
+          : {},
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) return [];
+      raw = await res.json();
+    } catch {
+      return [];
+    }
+    const want = new Map<string, Set<string>>(); // integrationId -> kênh cần khớp
+    for (const r of raw?.routes || []) {
+      if (r?.enabled === false) continue;
+      const kinds = new Set<string>();
+      if (r?.facebookAutoPublish) kinds.add('facebook');
+      if (r?.gbpAutoPublish) kinds.add('gmb');
+      if (!kinds.size) continue;
+      const ids: string[] = Array.isArray(r.postizIntegrationIds)
+        ? r.postizIntegrationIds
+        : r.postizIntegrationId
+        ? [r.postizIntegrationId]
+        : [];
+      for (const id of ids.map((x) => String(x || '').trim()).filter(Boolean)) {
+        const set = want.get(id) || new Set<string>();
+        kinds.forEach((k) => set.add(k));
+        want.set(id, set);
+      }
+    }
+    if (!want.size) return [];
+    const prov = await this._contentStats.integrationProviders([...want.keys()]);
+    return prov.filter((p) => want.get(p.id)?.has(p.kenh)).map((p) => p.id);
+  }
+
+  /** Đánh dấu một blog đã đăng lên website (cột "đã lên web" của báo cáo). */
+  async markBlogOnWeb(orgId: string, productId: string, url: string) {
+    if (!/^https?:\/\//i.test(url || '')) {
+      throw new BadRequestException({ loi: 'url phải bắt đầu bằng http(s)://' });
+    }
+    const n = await this._contentStats.markBlogOnWeb(orgId, productId, url);
+    return { ok: n > 0, cap_nhat: n };
   }
 
   // Phát hiện / Sản xuất: gộp trạng thái của từng (ngày, loại sản phẩm) thành
@@ -396,17 +488,27 @@ export class UsageService implements OnModuleDestroy {
             so_loi: 0,
             so_nhap: 0,
             so_bo: 0,
+            so_xong: 0,
+            so_len_web: 0,
+            don_vi: 'san-pham',
             ty_le_dung: 0,
             _updated: 0,
           })
           .get(key);
       g.so_lam_ra += r.so;
+      // Blog: "dùng" = đã lên website (meta.webUrl); "sản xuất xong" đếm riêng
+      // ở so_xong — trước đây gộp làm một nên blog luôn 100% dùng.
       const used =
         r.kind === 'bai-cua-minh'
           ? r.status === 'posted'
           : r.format === 'podcast'
           ? r.status === 'da_phat_hanh'
+          : r.format === 'blog'
+          ? r.status === 'len_web'
           : r.status === 'xong';
+      if (r.status === 'xong' || r.status === 'len_web' || r.status === 'da_phat_hanh')
+        g.so_xong += r.so;
+      if (r.status === 'len_web') g.so_len_web += r.so;
       if (r.status === 'da_xoa') g.so_bo += r.so;
       else if (r.status === 'error') g.so_loi += r.so;
       else if (used) {

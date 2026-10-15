@@ -580,8 +580,43 @@ export const ZaloRoutesTab: FC<{
                       on={r.autoHashtags !== false}
                       onChange={() => patch(tid, { autoHashtags: !(r.autoHashtags !== false) }, true)}
                     />
-                    {t('zalo_group_hashtags', 'Thêm 5 hashtag cuối bài')}
+                    {t('zalo_group_hashtags_v2', 'Thêm 3 hashtag cuối bài (#TruongVietAnh, cơ sở, chủ đề)')}
                   </label>
+                  <label className="flex items-center gap-[10px] text-[13px] cursor-pointer w-fit mobile:min-h-[44px]">
+                    <Toggle
+                      small
+                      on={r.autoPostStable === true}
+                      onChange={() => patch(tid, { autoPostStable: !(r.autoPostStable === true) }, true)}
+                    />
+                    {t('zalo_group_auto_stable', 'Nhóm ổn định: tự đăng khi bài đạt từ 80 điểm (ảnh bị gắn cờ an toàn vẫn chờ duyệt)')}
+                  </label>
+                </div>
+
+                {/* Cấp học + cơ sở — biến trong prompt viết bài và hashtag */}
+                <div className="flex flex-wrap gap-[12px]">
+                  <div className="flex flex-col gap-[6px] w-[200px] mobile:w-full">
+                    <FieldLabel>{t('zalo_group_cap_hoc', 'Cấp học')}</FieldLabel>
+                    <select
+                      value={r.capHoc || 'mầm non'}
+                      onChange={(e) => patch(tid, { capHoc: e.target.value }, true)}
+                      className={inputCls}
+                    >
+                      {['mầm non', 'tiểu học', 'THCS', 'THPT'].map((v) => (
+                        <option key={v} value={v}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-[6px] w-[260px] mobile:w-full">
+                    <FieldLabel>{t('zalo_group_co_so', 'Cơ sở')}</FieldLabel>
+                    <input
+                      value={r.coSo || ''}
+                      placeholder={t('zalo_group_co_so_ph', 'VD: Mầm non Nhân Lễ')}
+                      onChange={(e) => patch(tid, { coSo: e.target.value })}
+                      className={inputCls}
+                    />
+                  </div>
                 </div>
 
                 {/* Thời gian gom bài — viết thành câu thay cho 2 ô "debounce/maxWait" */}

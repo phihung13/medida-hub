@@ -42,7 +42,10 @@ import {
   organizationId,
   postId as postIdSearchParam,
 } from '@gitroom/nestjs-libraries/temporal/temporal.search.attribute';
-import { AnalyticsData } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
+import {
+  AnalyticsData,
+  PostShareMetrics,
+} from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
 import { RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abstract';
@@ -230,6 +233,80 @@ export class PostsService {
     }
 
     return [];
+  }
+
+  // Id bài GỐC (không phải bình luận) của 1 kênh trong group — dùng làm
+  // utm_campaign cho link ở bình luận đầu.
+  async findRootPostId(orgId: string, group: string, integrationId: string) {
+    const all = await this._postRepository.getPostsByGroup(orgId, group);
+    return (
+      all.find((p) => !p.parentPostId && p.integrationId === integrationId)
+        ?.id || null
+    );
+  }
+
+  async getPostsBrief(orgId: string, ids: string[]) {
+    if (!ids.length) return [];
+    return this._postRepository.getPostsBrief(orgId, ids);
+  }
+
+  findPublishedForShareMetrics(
+    from: Date,
+    to: Date,
+    providers: string[],
+    take: number
+  ) {
+    return this._postRepository.findPublishedForShareMetrics(
+      from,
+      to,
+      providers,
+      take
+    );
+  }
+
+  // Số liệu "ưu tiên share" của MỘT bài (đặc tả v2). null = kênh không hỗ trợ
+  // hoặc chưa có releaseId. Làm mới token y như checkPostAnalytics.
+  async getPostShareMetrics(
+    orgId: string,
+    postId: string,
+    forceRefresh = false
+  ): Promise<PostShareMetrics | null> {
+    const post = await this._postRepository.getPostById(postId, orgId);
+    if (!post || !post.releaseId || post.releaseId === 'missing') {
+      return null;
+    }
+    const provider = this._integrationManager.getSocialIntegration(
+      post.integration.providerIdentifier
+    );
+    if (!provider?.postShareMetrics) {
+      return null;
+    }
+    const integration = post.integration!;
+    if (
+      dayjs(integration?.tokenExpiration).isBefore(dayjs()) ||
+      forceRefresh
+    ) {
+      const data = await this._refreshIntegrationService.refresh(integration);
+      if (!data || !data.accessToken) {
+        return null;
+      }
+      integration.token = data.accessToken;
+      if (provider.refreshWait) {
+        await timer(10000);
+      }
+    }
+    try {
+      return await provider.postShareMetrics(
+        integration.internalId,
+        integration.token,
+        post.releaseId.split(',')[0]
+      );
+    } catch (e) {
+      if (e instanceof RefreshToken && !forceRefresh) {
+        return this.getPostShareMetrics(orgId, postId, true);
+      }
+      throw e;
+    }
   }
 
   async getStatistics(orgId: string, id: string) {
@@ -681,6 +758,27 @@ export class PostsService {
     }
 
     return { error: true };
+  }
+
+  /**
+   * Đặc tả v2: nháp của agent (Bot Zalo) quá `hours` giờ không ai duyệt → xoá
+   * mềm (deletedAt) như bấm xoá trên Lịch, ghi error = reason để báo cáo đếm
+   * là "hết hạn" chứ không phải "bị bỏ". Không đụng nháp người tự soạn.
+   */
+  async expireStaleAgentDrafts(agent: string, hours: number, reason: string) {
+    const before = new Date(Date.now() - hours * 3600_000);
+    const stale = await this._postRepository.findStaleAgentDrafts(agent, before);
+    const seen = new Set<string>();
+    let deleted = 0;
+    for (const p of stale) {
+      const k = `${p.organizationId}:${p.group}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      await this.deletePost(p.organizationId, p.group);
+      await this._postRepository.markGroupExpired(p.organizationId, p.group, reason);
+      deleted++;
+    }
+    return { deleted };
   }
 
   async countPostsFromDay(orgId: string, date: Date) {

@@ -219,6 +219,19 @@ export class InstagramStandaloneProvider
     );
   }
 
+  async postShareMetrics(
+    integrationId: string,
+    accessToken: string,
+    postId: string
+  ) {
+    return instagramProvider.postShareMetrics(
+      integrationId,
+      accessToken,
+      postId,
+      'graph.instagram.com'
+    );
+  }
+
   async postAnalytics(
     integrationId: string,
     accessToken: string,

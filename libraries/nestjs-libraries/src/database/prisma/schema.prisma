@@ -788,6 +788,46 @@ model Post {
   @@index([integrationId])
 }
 
+// Đặc tả v2 "ưu tiên share" (15/10/2026): điểm DỰ BÁO của người chấm độc lập
+// nằm CẠNH số liệu share THẬT của cùng bài, để mỗi tháng đối chiếu và chỉnh
+// trọng số rubric. Một dòng / bài (postId = Post.id). Không gắn relation vào
+// Post để khỏi đụng model cũ; bài xoá thì dòng này vẫn giữ cho báo cáo.
+model PostShareStat {
+  id             String    @id @default(cuid())
+  postId         String    @unique
+  organizationId String
+  agent          String?
+  // ugc-anh | carousel | video | bai-chu | blog | khac
+  format         String?
+  // GT (Trao giá trị) | UGC (khoảnh khắc lớp học — Bot Zalo)
+  rubricType     String?
+  forecastScore  Int?
+  // đăng | sửa 1 lần | bỏ | loại
+  verdict        String?
+  // JSON nguyên văn kết quả người chấm (gates, scores, evidence, one_fix)
+  rubric         String?
+  // Góc kể Bot Zalo: A..E
+  goc            String?
+  zaloThreadId   String?
+  // Số liệu thật (Meta), đo sau 72 giờ
+  reach          Int?
+  shares         Int?
+  comments       Int?
+  reactions      Int?
+  clicks         Int?
+  // Lượt lưu — chỉ Instagram có; Facebook Page không trả qua API
+  saves          Int?
+  shareRate      Float?
+  utmCampaign    String?
+  measuredAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([organizationId])
+  @@index([createdAt])
+  @@index([measuredAt])
+}
+
 model Notifications {
   id             String       @id @default(uuid())
   organizationId String

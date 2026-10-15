@@ -1250,18 +1250,35 @@ CHI tra JSON array: [{"profile_id","moi_quan_tam","tam_ly","hanh_vi","insights"}
       (input.persona ? ` (ưu tiên nhóm ${input.persona} nếu vẫn hợp)` : '') +
       '. Mặc định nhóm HCM; chỉ chọn CG/RG khi nội dung gắn rõ địa phương.\n' +
       '(B) VIẾT LẠI thành bài đăng 3-5 câu, giọng "Vui Vẻ & Thực Dụng", mở đầu hook mạnh, có insight/giá trị rõ, kết CTA tự nhiên + 5-7 hashtag. Phải HAY HƠN, sắc hơn, cụ thể hơn bản trước — KHÔNG lặp lại y hệt. CẤM: định kiến vùng miền/giàu nghèo, tên trường đối thủ, sao chép nguyên văn bài gốc.\n' +
-      '(C) Chấm bản mới theo rubric. Mục tiêu điểm PHẢI cao hơn bản trước' +
-      (typeof input.prevScore === 'number' ? ` (bản trước ${input.prevScore}/100)` : '') +
-      '; nếu chưa hơn hãy viết lại cho tới khi hơn.\n\n' +
+      // Đặc tả v2 (15/10/2026): BỎ "điểm phải cao hơn bản trước" — điểm thật
+      // do người chấm độc lập (share.judge.ts) chấm riêng; điểm ở đây chỉ là
+      // tham khảo của bên viết, không dùng để quyết định đăng.
+      '(C) Tự đánh giá nhanh bản mới theo rubric (chỉ tham khảo).\n\n' +
       `CÁC NHÓM CHÂN DUNG:\n${input.personasText}\n\n${input.rubric}\n\n` +
       'verdict ∈ ["xuất sắc - đăng ngay","đăng ngay","sửa nhẹ","sửa nhiều"].\n' +
       'Trả JSON: {"persona","content","score","scores":{"hook","clarity","brand_voice","value","cta","seo"},"verdict","reason"}';
     const user =
       `Tiêu đề gốc: ${input.title}\nNội dung gốc: ${(input.content || '(chỉ có tiêu đề)').slice(0, 2000)}` +
       (input.prevContent
-        ? `\n\nBẢN TRƯỚC (phải viết HAY HƠN bản này):\n${input.prevContent.slice(0, 1500)}`
+        ? `\n\nBẢN TRƯỚC (tham khảo, KHÔNG lặp lại y hệt):\n${input.prevContent.slice(0, 1500)}`
         : '');
     return claudeJson(system, user, 2500);
+  }
+
+  // Đặc tả v2: bài GT 75–89 điểm → sửa ĐÚNG 1 việc người chấm chỉ ra (one_fix),
+  // giữ nguyên phần còn lại. Không chấm ở đây — người chấm độc lập chấm lại.
+  async applyOneFix(content: string, oneFix: string): Promise<string | null> {
+    if (!content?.trim() || !oneFix?.trim()) return null;
+    const system =
+      vietAnhSystem() +
+      '\n\nNhiệm vụ: sửa bài đăng theo ĐÚNG MỘT yêu cầu. Giữ nguyên mọi phần khác (ý, số liệu, độ dài tương đương). ' +
+      'KHÔNG thêm dữ kiện mới không có trong bài. Chỉ trả về BÀI ĐÃ SỬA, không giải thích.';
+    const out = await claudeText(
+      system,
+      `YÊU CẦU SỬA:\n${oneFix.slice(0, 600)}\n\nBÀI:\n${content.slice(0, 6000)}`,
+      3000
+    ).catch(() => '');
+    return out.trim() || null;
   }
 
   // Phân tích "bài chiến thắng" của 1 kênh FB → mô hình thắng + gợi ý content.

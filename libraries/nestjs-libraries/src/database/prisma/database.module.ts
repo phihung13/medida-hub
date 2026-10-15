@@ -11,6 +11,7 @@ import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/in
 import { IntegrationRepository } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.repository';
 import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
 import { PostsRepository } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.repository';
+import { DraftExpiryService } from '@gitroom/nestjs-libraries/database/prisma/posts/draft-expiry.service';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { MediaService } from '@gitroom/nestjs-libraries/database/prisma/media/media.service';
 import { MediaRepository } from '@gitroom/nestjs-libraries/database/prisma/media/media.repository';
@@ -26,6 +27,11 @@ import { TrackService } from '@gitroom/nestjs-libraries/track/track.service';
 import { ShortLinkService } from '@gitroom/nestjs-libraries/short-linking/short.link.service';
 import { WebhooksRepository } from '@gitroom/nestjs-libraries/database/prisma/webhooks/webhooks.repository';
 import { WebhooksService } from '@gitroom/nestjs-libraries/database/prisma/webhooks/webhooks.service';
+import { ShareStatsRepository } from '@gitroom/nestjs-libraries/database/prisma/share-stats/share-stats.repository';
+import { ShareStatsService } from '@gitroom/nestjs-libraries/database/prisma/share-stats/share-stats.service';
+import { ShareReportRepository } from '@gitroom/nestjs-libraries/database/prisma/share-stats/share-report.repository';
+import { ShareReportService } from '@gitroom/nestjs-libraries/database/prisma/share-stats/share-report.service';
+import { ShareMetricsCollector } from '@gitroom/nestjs-libraries/database/prisma/share-stats/share-metrics.collector';
 import { SignatureRepository } from '@gitroom/nestjs-libraries/database/prisma/signatures/signature.repository';
 import { SignatureService } from '@gitroom/nestjs-libraries/database/prisma/signatures/signature.service';
 import { AiCreditRepository } from '@gitroom/nestjs-libraries/database/prisma/ai-credits/ai.credit.repository';
@@ -80,10 +86,16 @@ import { BulkImportService } from '@gitroom/nestjs-libraries/database/prisma/con
     NotificationsRepository,
     WebhooksRepository,
     WebhooksService,
+    ShareStatsRepository,
+    ShareStatsService,
+    ShareReportRepository,
+    ShareReportService,
+    ShareMetricsCollector,
     IntegrationService,
     IntegrationRepository,
     PostsService,
     PostsRepository,
+    DraftExpiryService,
     StripeService,
     SignatureRepository,
     AutopostRepository,

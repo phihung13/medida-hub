@@ -1,5 +1,6 @@
 import {
   AnalyticsData,
+  PostShareMetrics,
   AuthTokenDetails,
   PostDetails,
   PostResponse,
@@ -1051,6 +1052,37 @@ export class InstagramProvider
       duration: audio.duration_in_ms || 0,
       previewUrl: audio.download_url || '',
     }));
+  }
+
+  // Đặc tả v2 "ưu tiên share": số liệu MỘT bài (Instagram có cả lượt lưu).
+  async postShareMetrics(
+    integrationId: string,
+    token: string,
+    postId: string,
+    type = 'graph.facebook.com'
+  ): Promise<PostShareMetrics> {
+    const [accessToken] = token.split('___');
+    const res = await (
+      await fetch(
+        `https://${type}/v21.0/${postId}/insights?metric=reach,saved,likes,comments,shares&access_token=${accessToken}`
+      )
+    ).json();
+    if (res?.error) {
+      throw new Error(res.error.message || 'instagram post metrics error');
+    }
+    const v = (name: string): number | null => {
+      const m = (res?.data || []).find((d: any) => d.name === name);
+      const x = m?.values?.[0]?.value;
+      return typeof x === 'number' ? x : null;
+    };
+    return {
+      reach: v('reach'),
+      shares: v('shares'),
+      comments: v('comments'),
+      reactions: v('likes'),
+      saves: v('saved'),
+      clicks: null,
+    };
   }
 
   async postAnalytics(

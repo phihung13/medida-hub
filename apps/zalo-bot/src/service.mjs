@@ -12,6 +12,7 @@ import { assembleCaption } from "./caption.mjs";
 import { publishFacebookDraft, publishGbpDraft } from "./publish.mjs";
 import { startWeb } from "./web.mjs";
 import { pushToPostiz } from "./postiz.mjs";
+import { passesAutoPost } from "./judge.mjs";
 import * as store from "./store.mjs";
 import * as live from "./live.mjs";
 import { createRecovery, createSeenStore, createGapTracker } from "./recover.mjs";
@@ -79,6 +80,7 @@ async function main() {
           guide: route.writeGuide || route.styleSample || "",
           autoHashtags: route.autoHashtags !== false,
           curate: route.curateImages !== false, // TẮT ở nhóm này -> giữ nguyên mọi ảnh, không lọc
+          capHoc: route.capHoc, coSo: route.coSo, maxPhotos: 3, // đặc tả v2: tối đa 3 ảnh
 
           onStage: (stage, extra) => live.processing(batch.threadId, stage, extra),
         });
@@ -116,6 +118,7 @@ async function main() {
           // Thứ tự: thân bài -> chân bài (hotline/địa chỉ) -> hashtag
           caption: assembleCaption(res.caption, route.captionFooter, res.hashtags),
           droppedCount: res.droppedCount, createdAt: Date.now(), reason,
+          goc: res.goc || null, rubric: res.rubric || null, safetyFlagged: !!res.safetyFlagged,
           approvals: {
             ...(hasFb ? { facebook: { status: "pending" } } : {}),
             ...(gbpForThisPost ? { gbp: { status: "pending" } } : {}),
@@ -158,12 +161,19 @@ async function main() {
         // Cầu nối Media Hub: đẩy bản nháp sang Social Hub (nếu bật). Chạy nền.
         // Đánh dấu pushedToHub khi thành công → panel Zalo KHÔNG hiện nút "Đẩy
         // sang Media Hub" lần nữa (tránh nhân đôi bài chờ duyệt).
+        // Đặc tả v2: nhóm ỔN ĐỊNH -> đăng ngay khi qua 5 cổng + ≥80 điểm và
+        // checkSafety không gắn cờ ảnh nào; còn lại vẫn là nháp chờ duyệt.
+        const hubAutoPost = route.autoPostStable && passesAutoPost(res.rubric, { safetyFlagged: res.safetyFlagged });
+        const shareStat = (res.rubric || res.goc) ? {
+          rubricType: "UGC", format: "ugc-anh", goc: res.goc || null, zaloThreadId: String(batch.threadId),
+          ...(res.rubric ? { forecastScore: Math.round(res.rubric.total), verdict: res.rubric.verdict, rubric: JSON.stringify(res.rubric) } : {}),
+        } : null;
         if (process.env.POSTIZ_ENABLED === "true") {
           // Bản đẩy Hub KHÔNG kèm chân bài của bot — Media Hub tự chèn chân bài
           // của kênh (cài trong Lịch) dưới caption, trên hashtag. Tránh trùng 2 chân bài.
-          pushToPostiz({ caption: assembleCaption(res.caption, "", res.hashtags), imagePaths: draft.allSavedImages || [], videoPaths: draft.savedVideos || [], imageCaptions: draft.allImageCaptions || [], videoCaptions: draft.videoCaptions || [], imageHidden: draft.imageHidden || [], imageHiddenReasons: draft.imageHiddenReasons || [], groupName: route.label, integrationIds: route.postizIntegrationIds || [], integrationId: route.postizIntegrationId || '' })
+          pushToPostiz({ caption: assembleCaption(res.caption, "", res.hashtags), imagePaths: draft.allSavedImages || [], videoPaths: draft.savedVideos || [], imageCaptions: draft.allImageCaptions || [], videoCaptions: draft.videoCaptions || [], imageHidden: draft.imageHidden || [], imageHiddenReasons: draft.imageHiddenReasons || [], groupName: route.label, integrationIds: route.postizIntegrationIds || [], integrationId: route.postizIntegrationId || '', type: hubAutoPost ? 'now' : 'draft', shareStat })
             .then((r) => {
-              if (r?.ok) { try { store.updatePending(draft.id, { pushedToHub: true, ...(r.postId ? { hubPostId: r.postId } : {}) }); } catch {} store.pushLog(`Đã đẩy bản nháp "${route.label}" sang Media Hub (${r.media} media) — chờ duyệt trên Lịch.`); }
+              if (r?.ok) { try { store.updatePending(draft.id, { pushedToHub: true, ...(r.postId ? { hubPostId: r.postId } : {}) }); } catch {} store.pushLog(hubAutoPost ? `TỰ ĐĂNG (nhóm ổn định, ${res.rubric.total} điểm): "${route.label}" — Media Hub đăng ngay.` : `Đã đẩy bản nháp "${route.label}" sang Media Hub (${r.media} media) — chờ duyệt trên Lịch.`); }
               else if (r && !r.skipped) {
                 store.pushLog(`Đẩy Media Hub lỗi: ${r.error || r.status}`);
                 // Route thuần Media Hub mà đẩy lỗi → giữ thẻ trong hàng chờ của bot
@@ -314,6 +324,19 @@ async function main() {
 
   startWeb({ status, reloadConfig, getZalo: () => currentApi, relogin: reloginZalo, reconnect: reconnectZalo, getLive: () => live.snapshot(), recovery, getGaps: () => gaps.list(),
     closeNow: (tid) => batcher.close(String(tid), "manual") }); // web dashboard
+
+  // ===== Đặc tả v2: NHÁP QUÁ 48 GIỜ TỰ XOÁ (hàng chờ của bot) =====
+  // Bài đã hẹn giờ hoặc đang đăng thì giữ. Ảnh trên đĩa giữ nguyên (chỉ bỏ thẻ chờ).
+  const DRAFT_TTL_MS = Number(process.env.DRAFT_TTL_HOURS || 48) * 3600 * 1000;
+  setInterval(() => {
+    const cutoff = Date.now() - DRAFT_TTL_MS;
+    let n = 0;
+    for (const d of store.listPending()) {
+      if (d.scheduledAt || d._publishing) continue;
+      if ((d.createdAt || 0) && d.createdAt < cutoff) { store.removePending(d.id); n++; }
+    }
+    if (n) store.pushLog(`Đã tự xoá ${n} bản nháp quá ${DRAFT_TTL_MS / 3600000} giờ chưa duyệt.`);
+  }, 3600 * 1000).unref?.();
 
   // ===== BỘ HẸN GIỜ: mỗi 30s, đăng các bài đã tới giờ hẹn =====
   setInterval(async () => {

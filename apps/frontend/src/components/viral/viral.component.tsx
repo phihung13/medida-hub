@@ -14,6 +14,12 @@ import { MobileFab } from '@gitroom/frontend/components/new-layout/mobile.fab';
 import { useIsMobile } from '@gitroom/frontend/components/new-layout/use.is.mobile';
 import { useUser } from '@gitroom/frontend/components/layout/user.context';
 import { ViralGroupsPanel } from '@gitroom/frontend/components/viral/viral-groups.panel';
+import { isFeaturePaused } from '@gitroom/helpers/utils/paused.features';
+
+// Đặc tả v2 (15/10/2026): tạm dừng Podcast TTS + "Viết lại + chấm điểm" (ẩn,
+// không xoá) — bật lại: bỏ key khỏi HUB_PAUSED_FEATURES_DEFAULT.
+const PAUSE_PODCAST = isFeaturePaused('podcast-tts');
+const PAUSE_REWRITE = isFeaturePaused('viet-lai-cham-diem');
 
 // ── Lò Bài Thắng: tường bài viral giáo dục → mổ công thức → nhân bản ───────
 // Thước đo chính: LƯỢT SHARE.
@@ -512,7 +518,7 @@ const DetailModal: FC<{ post: any; onDone: () => void }> = ({ post, onDone }) =>
                 <p className="text-[12.5px] leading-[1.55]">{f[k]}</p>
               </div>
             ))}
-          {!!f && canModerate && (
+          {!!f && canModerate && !PAUSE_REWRITE && (
             <div className="flex flex-col gap-[8px] mt-[2px]">
               <Button onClick={cloneToMine} loading={cloning}>
                 {cloning ? t('viral_claude_writing', 'Claude is writing…') : t('viral_make_mine', 'Rewrite into my post →')}
@@ -1400,9 +1406,11 @@ const MineCard: FC<{
           <button onClick={openProduceMine} className="px-[11px] py-[7px] rounded-[8px] text-[12px] font-[700] bg-[#57D9A3]/15 text-[#57D9A3] hover:bg-[#57D9A3]/25" title={t('viral_produce_bulk', 'Produce')}>
             🏭
           </button>
-          <button onClick={regen} disabled={!!busy} className="px-[11px] py-[7px] rounded-[8px] text-[12px] text-textItemBlur border border-newBgLineColor hover:text-textColor disabled:opacity-50" title={t('viral_regenerate', 'Regenerate a better version')}>
-            {busy === 'regen' ? '…' : '↻'}
-          </button>
+          {!PAUSE_REWRITE && (
+            <button onClick={regen} disabled={!!busy} className="px-[11px] py-[7px] rounded-[8px] text-[12px] text-textItemBlur border border-newBgLineColor hover:text-textColor disabled:opacity-50" title={t('viral_regenerate', 'Regenerate a better version')}>
+              {busy === 'regen' ? '…' : '↻'}
+            </button>
+          )}
           <button onClick={del} disabled={!!busy} className="px-[11px] py-[7px] rounded-[8px] text-[12px] text-[#FF5A52] hover:bg-[#FF5A52]/10 disabled:opacity-50">✕</button>
         </div>
       )}
@@ -1554,8 +1562,12 @@ const useTopics = (sort: string, status: string) => {
 // Định dạng AI đề xuất cho 1 content (đọc từ scoreDetail đã parse sẵn).
 const topicDefaults = (sd: any): string[] => {
   const primary =
-    sd?.content_type === 'blog' ? 'blog' : sd?.content_type === 'video' ? 'podcast' : 'infographic';
-  return (sd?.podcast_score ?? 0) >= 75 && primary !== 'podcast' ? [primary, 'podcast'] : [primary];
+    sd?.content_type === 'blog'
+      ? 'blog'
+      : sd?.content_type === 'video' && !PAUSE_PODCAST
+      ? 'podcast'
+      : 'infographic';
+  return !PAUSE_PODCAST && (sd?.podcast_score ?? 0) >= 75 && primary !== 'podcast' ? [primary, 'podcast'] : [primary];
 };
 
 // Chi tiết 1 content: bản tổng hợp + điểm + bài nguồn (bằng chứng) + hành động.
@@ -1780,7 +1792,7 @@ const ProduceModal: FC<{ ids: string[]; source: 'post' | 'clone' | 'topic'; onDo
     { key: 'blog', desc: t('viral_produce_blog_desc', 'SEO article for the website (EEAT structure) — download as .docx') },
     { key: 'infographic', desc: t('viral_produce_info_desc', 'AI-designed image (Gemini) — saved to Media library') },
     { key: 'podcast', desc: t('viral_produce_pod_desc', 'Script + Vietnamese TTS voice (MiniMax) — mp3 audio') },
-  ];
+  ].filter((o) => !(o.key === 'podcast' && PAUSE_PODCAST));
   return (
     <div className="flex flex-col gap-[12px]">
       <div className="text-[12.5px] text-textItemBlur">
@@ -1832,7 +1844,9 @@ const DuplicateFormatModal: FC<{
   const [busyFmt, setBusyFmt] = useState<string | null>(null);
   const [bgm, setBgm] = useState(true);
   const { data: cfg } = useSWR('viral-config', async () => (await fetch('/viral/config')).json());
-  const formats = (['blog', 'infographic', 'podcast'] as const).filter((f) => f !== excludeFormat);
+  const formats = (['blog', 'infographic', 'podcast'] as const).filter(
+    (f) => f !== excludeFormat && !(f === 'podcast' && PAUSE_PODCAST)
+  );
   const DESC: Record<string, string> = {
     blog: t('viral_produce_blog_desc', 'SEO article for the website (EEAT structure) — download as .docx'),
     infographic: t('viral_produce_info_desc', 'AI-designed image (Gemini) — saved to Media library'),
@@ -3671,7 +3685,7 @@ export const ViralComponent: FC = () => {
       if (d.content_type === 'video' || (d.podcast_score ?? 0) >= 75) podcast = true;
     }
     const top = (count.infographic || 0) > (count.blog || 0) ? 'infographic' : 'blog';
-    const defaults = podcast ? [top, 'podcast'] : [top];
+    const defaults = podcast && !PAUSE_PODCAST ? [top, 'podcast'] : [top];
     modal.openModal({
       title: t('viral_modal_produce', 'Produce content'),
       withCloseButton: true,

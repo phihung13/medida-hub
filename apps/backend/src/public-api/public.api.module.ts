@@ -11,12 +11,15 @@ import { CodesService } from '@gitroom/nestjs-libraries/services/codes.service';
 import { PublicIntegrationsController } from '@gitroom/backend/public-api/routes/v1/public.integrations.controller';
 import { PublicViralController } from '@gitroom/backend/public-api/routes/v1/public.viral.controller';
 import { PublicViralGroupsController } from '@gitroom/backend/public-api/routes/v1/public.viral-groups.controller';
+import { PublicShareController } from '@gitroom/backend/public-api/routes/v1/public.share.controller';
+import { ShareJudgeService } from '@gitroom/nestjs-libraries/viral/share.judge.service';
 import { PublicAuthMiddleware } from '@gitroom/backend/services/auth/public.auth.middleware';
 
 const authenticatedController = [
   PublicIntegrationsController,
   PublicViralController,
   PublicViralGroupsController,
+  PublicShareController,
 ];
 @Module({
   imports: [UploadModule],
@@ -30,6 +33,7 @@ const authenticatedController = [
     PermissionsService,
     CodesService,
     IntegrationManager,
+    ShareJudgeService,
   ],
   get exports() {
     return [...this.imports, ...this.providers];

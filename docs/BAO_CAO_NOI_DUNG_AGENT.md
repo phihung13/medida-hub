@@ -46,6 +46,9 @@ mới đăng, thì ba hôm sau dòng của **hôm nay** đổi từ "nháp" sang
 | `so_loi` | Đăng lỗi (hoặc sản xuất lỗi) |
 | `so_nhap` | Vẫn còn là nháp, chưa ai đụng tới |
 | `so_bo` | Bị xoá: người duyệt không dùng |
+| `so_het_han` | Nháp Bot Zalo quá 48 giờ không ai duyệt, Hub tự xoá (từ 15/10/2026). Vẫn nằm trong `so_lam_ra`, không tính là "bỏ" |
+| `so_nhap_trung` | Nháp **trùng** của nhóm Zalo bật tự đăng (bài đã lên Facebook/GBP thẳng). **Đã loại khỏi** `so_lam_ra` và `so_nhap` |
+| `don_vi` | `the` (thẻ trên Lịch của một kênh), `bai` (một nội dung, gộp các kênh) hoặc `san-pham` |
 | `so_dung` | **Dùng** = `so_da_dang` + `so_cho_dang` + `so_loi`: người duyệt đã chấp nhận và cho đi đăng (lỗi là do kênh, không phải do nội dung) |
 | `ty_le_dung` | `so_dung / so_lam_ra × 100` (%) |
 
@@ -54,9 +57,20 @@ Riêng **Phát hiện / Sản xuất** (`nguon` = `phat-hien-san-xuat`), "dùng"
 | Sản phẩm | "Dùng" khi |
 |---|---|
 | Podcast | đã phát hành lên kênh podcast RSS |
-| Blog | sản xuất xong (Hub không đăng blog; không biết có tải file về hay không) |
+| Blog | **đã đăng lên website** (có link, đánh dấu bằng tool MCP `hub_blog_da_len_web` hoặc `POST /share-report/blog/:id/web`). Cột `so_xong` = sản xuất xong, `so_len_web` = đã lên web |
 | Infographic | sản xuất xong; số **đẩy lên Lịch và đăng** xem ở dòng `nguon` = `bai-dang`, `agent` = `viral-infographic` |
 | "Bài của mình" | đã đẩy lên Lịch |
+
+### 2.2b Bài hay thẻ (đọc trước khi cộng số)
+
+Bot Zalo đẩy **mỗi kênh một thẻ**: một bài lên Facebook + GBP = 1 bài = 2 thẻ. Báo cáo cũ cộng thẻ ở bảng này và đếm bài ở
+bảng khác nên số lệch nhau. Từ 15/10/2026:
+
+- `nguon` = `bai-dang`: mỗi dòng theo **kênh**, đơn vị **thẻ**. Dùng cho bảng theo kênh và agent × kênh.
+- `nguon` = `bai-dang-gop`: cùng ngày / agent / loại nhưng đơn vị **bài**, `kenh` = `tat-ca`, `so_the` = số thẻ của các bài
+  đó. Dùng cho bảng tổng, theo agent, theo loại. Trạng thái một bài = trạng thái tốt nhất của các thẻ (có thẻ đã đăng là
+  đã đăng).
+- **Không** cộng `bai-dang` với `bai-dang-gop`, cũng không cộng `bai-dang` qua nhiều kênh rồi gọi là "bài".
 
 ### 2.3 Loại nội dung (`loai`)
 
@@ -115,7 +129,7 @@ bài bị xoá. Tỷ lệ dùng 60%.
 | `excel-ai` | Nhập Excel có bấm "AI chuốt" | Từ 06/10 |
 | `autopost-rss` | Autopost từ RSS | |
 | `generator` | Bộ tạo bài cũ (ít dùng) | |
-| `thu-cong` | **Người tự soạn** trong Hub | Có thể đã dùng bút phép thuật / tạo ảnh AI. Số lần dùng xem ở `/tinh-nang` |
+| `thu-cong` | **Nhân viên tự soạn trên Hub** (không qua agent nào) | Có thể đã dùng bút phép thuật / tạo ảnh AI. Số lần dùng xem ở `/tinh-nang` |
 | `api` / `cli` | Bài gửi qua API công khai / CLI mà không khai agent | Gồm Excel không bấm AI chuốt |
 | `ai-khac` | Bài AI làm ra **trước 06/10** từ Phát hiện hoặc Agent (hồi đó chưa tách được) | Sẽ không tăng thêm |
 
@@ -245,8 +259,9 @@ Mỗi model đều chọn được trong Cài đặt → Claude API key:
 - **Trước 06/10/2026**, bài từ Phát hiện và trang Agent gộp chung là `ai-khac`, Excel gộp vào `api`. Bot Zalo vẫn
   nhận ra được nhờ tag.
 - Nhóm Zalo bật **"tự đăng Facebook / GBP"** thì bot đăng thẳng lên Facebook **và vẫn đẩy một bản nháp vào Lịch**.
-  Bản nháp đó nằm im nên bị tính là "chưa dùng" dù bài đã đăng thật, nên tỷ lệ dùng của `zalo-bot` có thể **thấp hơn
-  thực tế**. Đối chiếu với danh sách nhóm đang bật tự đăng (trang Zalo → Nhóm Zalo).
+  Từ 15/10/2026 Hub đọc danh sách nhóm tự đăng từ bot và **loại** các thẻ nháp đó khỏi mẫu số (`so_nhap_trung`). Nhóm
+  không chọn kênh Hub riêng (dùng kênh mặc định của bot) thì chưa nhận ra được. Bot không phản hồi lúc lấy báo cáo thì
+  không loại được.
 - "Bài của mình" xoá thì bị xoá cứng (không lưu lại), nên số làm ra của ngày đó giảm theo.
 - Báo cáo chỉ biết bài đã đăng hay chưa, **không biết hiệu quả** (like, share, reach). Muốn so hiệu quả theo agent
   phải nối thêm số liệu Facebook / Meta (bước sau).

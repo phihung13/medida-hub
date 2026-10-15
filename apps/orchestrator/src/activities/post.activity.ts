@@ -24,6 +24,8 @@ import {
   postId as postIdSearchParam,
 } from '@gitroom/nestjs-libraries/temporal/temporal.search.attribute';
 import { SubscriptionService } from '@gitroom/nestjs-libraries/database/prisma/subscriptions/subscription.service';
+import { ShareStatsService } from '@gitroom/nestjs-libraries/database/prisma/share-stats/share-stats.service';
+import { addUtm } from '@gitroom/helpers/utils/add.utm';
 
 // Drops fields the workflow and downstream activities never read — biggest wins are `error` (grows per retry) and `childrenPost` (Prisma side-loads it on every recursive row).
 function slimPost(post: any) {
@@ -63,7 +65,8 @@ export class PostActivity {
     private _refreshIntegrationService: RefreshIntegrationService,
     private _webhookService: WebhooksService,
     private _temporalService: TemporalService,
-    private _subscriptionService: SubscriptionService
+    private _subscriptionService: SubscriptionService,
+    private _shareStatsService: ShareStatsService
   ) {}
 
   @ActivityMethod()
@@ -161,6 +164,37 @@ export class PostActivity {
     return !!getIntegration.comment;
   }
 
+  private async rootPostIdForUtm(integration: Integration, posts: Post[]) {
+    try {
+      const group = posts?.[0]?.group;
+      if (!group) return null;
+      return await this._postService.findRootPostId(
+        integration.organizationId,
+        group,
+        integration.id
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  // Gắn UTM vào link của trường; ghi utmCampaign cạnh điểm dự báo. Lỗi ghi
+  // số liệu KHÔNG được chặn việc đăng bình luận.
+  private withUtm(message: string, campaign: string | null, orgId: string) {
+    if (!campaign) return message;
+    const { text, changed } = addUtm(message, campaign);
+    if (changed) {
+      this._shareStatsService
+        .upsertForecast({
+          postId: campaign,
+          organizationId: orgId,
+          utmCampaign: campaign,
+        })
+        .catch(() => undefined);
+    }
+    return text;
+  }
+
   @ActivityMethod()
   async postComment(
     postId: string,
@@ -177,6 +211,13 @@ export class PostActivity {
       posts
     );
 
+    // Đặc tả v2: link của trường ở bình luận Facebook mang UTM
+    // (utm_campaign = id bài gốc trên Hub) để truy Qlead / lượt bấm về đúng bài.
+    const utmCampaign =
+      integration.providerIdentifier === 'facebook'
+        ? await this.rootPostIdForUtm(integration, posts)
+        : null;
+
     return getIntegration.comment(
       integration.internalId,
       postId,
@@ -185,13 +226,17 @@ export class PostActivity {
       await Promise.all(
         (newPosts || []).map(async (p) => ({
           id: p.id,
-          message: stripHtmlValidation(
-            getIntegration.editor,
-            p.content,
-            true,
-            false,
-            !/<\/?[a-z][\s\S]*>/i.test(p.content),
-            getIntegration.mentionFormat
+          message: this.withUtm(
+            stripHtmlValidation(
+              getIntegration.editor,
+              p.content,
+              true,
+              false,
+              !/<\/?[a-z][\s\S]*>/i.test(p.content),
+              getIntegration.mentionFormat
+            ),
+            utmCampaign,
+            integration.organizationId
           ),
           settings: JSON.parse(p.settings || '{}'),
           // .filter(!hidden): ảnh bị ẩn (AI lọc mờ/tối/trùng/nguy hiểm, hoặc

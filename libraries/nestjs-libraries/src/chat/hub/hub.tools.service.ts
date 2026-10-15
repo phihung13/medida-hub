@@ -10,6 +10,8 @@ import { HubChannelsTools } from '@gitroom/nestjs-libraries/chat/hub/hub.channel
 import { HubViralExtraTools } from '@gitroom/nestjs-libraries/chat/hub/hub.viral.extra.tools';
 import { HubAutomationTools } from '@gitroom/nestjs-libraries/chat/hub/hub.automation.tools';
 import { HubZaloAdminTools } from '@gitroom/nestjs-libraries/chat/hub/hub.zalo.admin.tools';
+import { HubShareTools } from '@gitroom/nestjs-libraries/chat/hub/hub.share.tools';
+import { HubReportTools } from '@gitroom/nestjs-libraries/chat/hub/hub.report.tools';
 import { HubToolMap } from '@gitroom/nestjs-libraries/chat/hub/hub.tool.helpers';
 
 export const hubToolGroups = [
@@ -24,6 +26,8 @@ export const hubToolGroups = [
   HubViralExtraTools,
   HubAutomationTools,
   HubZaloAdminTools,
+  HubShareTools,
+  HubReportTools,
 ];
 
 // Gộp mọi nhóm công cụ Hub cho máy chủ MCP (start.mcp.ts). Không nạp vào
@@ -41,7 +45,9 @@ export class HubToolsService {
     private _channels: HubChannelsTools,
     private _viralExtra: HubViralExtraTools,
     private _automation: HubAutomationTools,
-    private _zaloAdmin: HubZaloAdminTools
+    private _zaloAdmin: HubZaloAdminTools,
+    private _share: HubShareTools,
+    private _report: HubReportTools
   ) {}
 
   tools(): HubToolMap {
@@ -57,6 +63,8 @@ export class HubToolsService {
       ...this._viralExtra.tools(),
       ...this._automation.tools(),
       ...this._zaloAdmin.tools(),
+      ...this._share.tools(),
+      ...this._report.tools(),
     };
   }
 }

@@ -34,6 +34,13 @@ export interface IAuthenticator {
     postId: string,
     fromDate: number,
   ): Promise<AnalyticsData[]>;
+  // Số liệu "ưu tiên share" của MỘT bài đã đăng (đặc tả v2). Trường nào nền
+  // tảng không trả thì để null — KHÔNG bịa 0.
+  postShareMetrics?(
+    integrationId: string,
+    accessToken: string,
+    postId: string
+  ): Promise<PostShareMetrics>;
   changeNickname?(
     id: string,
     accessToken: string,
@@ -48,6 +55,15 @@ export interface IAuthenticator {
     id: string,
     accessToken: string
   ): Promise<{ id: string; url: string }[]>;
+}
+
+export interface PostShareMetrics {
+  reach?: number | null;
+  shares?: number | null;
+  comments?: number | null;
+  reactions?: number | null;
+  clicks?: number | null;
+  saves?: number | null;
 }
 
 export interface AnalyticsData {

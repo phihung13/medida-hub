@@ -18,6 +18,26 @@ export type PostAggRow = {
   loi: number;
   nhap: number;
   da_xoa: number;
+  het_han: number;
+  nhap_trung: number;
+  cap_nhat: Date;
+};
+
+// Một dòng theo BÀI (gộp các thẻ nhiều kênh của cùng một nội dung).
+export type PostGopRow = {
+  ngay: string;
+  agent: string;
+  loai: string;
+  so_kenh: number;
+  lam_ra: number;
+  dung: number;
+  da_dang: number;
+  cho_dang: number;
+  loi: number;
+  nhap: number;
+  da_xoa: number;
+  het_han: number;
+  nhap_trung: number;
   cap_nhat: Date;
 };
 
@@ -67,17 +87,36 @@ const TYPE_SQL = Prisma.sql`
   END`;
 
 const RSS_RE = String.raw`"rss"\s*:\s*\{`;
+// Blog đã lên website: meta có "webUrl":"http..." (đánh dấu bằng tool MCP
+// hub_blog_da_len_web). Không có = mới "sản xuất xong".
+const WEB_RE = String.raw`"webUrl"\s*:\s*"https?://`;
+
+// DraftExpiryService xoá nháp bot Zalo quá 48 giờ và ghi error = 'tu-xoa-48h':
+// đó là "hết hạn, không ai duyệt", KHÔNG phải người duyệt bấm bỏ.
+const EXPIRED = 'tu-xoa-48h';
+
+// Khoá "một bài": bot Zalo gọi API riêng cho TỪNG kênh nên mỗi kênh một
+// group — gộp lại bằng nội dung + ảnh đầu tiên (upload 1 lần, dùng chung).
+// Bài khác: các kênh tạo cùng lúc chung một group.
+const BAI_KEY_SQL = Prisma.sql`
+  CASE WHEN ${AGENT_SQL} = 'zalo-bot'
+    THEN md5(COALESCE(p.content, '') || COALESCE(substring(p.image from '"path":"([^"]+)"'), ''))
+    ELSE p."group"
+  END`;
 
 @Injectable()
 export class ContentStatsRepository {
-  constructor(private _raw: PrismaRepository<'$queryRaw'>) {}
+  constructor(
+    private _raw: PrismaRepository<'$queryRaw'>,
+    private _exec: PrismaRepository<'$executeRaw'>
+  ) {}
 
   /**
    * Mỗi dòng = (ngày làm ra, agent, kênh, loại) với số bài theo trạng thái
    * HIỆN TẠI. Một "bài" = một thẻ trên Lịch (gốc thread, parentPostId null).
    * `days` = các ngày VN (YYYY-MM-DD) cần tính lại TRỌN NGÀY.
    */
-  postsByDay(days: string[]) {
+  postsByDay(days: string[], dupIntegrations: string[] = []) {
     if (!days.length) return Promise.resolve([] as PostAggRow[]);
     return this._raw.model.$queryRaw<PostAggRow[]>`
       SELECT to_char((p."createdAt" + interval '7 hours')::date, 'YYYY-MM-DD') AS ngay,
@@ -89,14 +128,127 @@ export class ContentStatsRepository {
              (count(*) FILTER (WHERE p."deletedAt" IS NULL AND p.state = 'PUBLISHED'))::int AS da_dang,
              (count(*) FILTER (WHERE p."deletedAt" IS NULL AND p.state = 'ERROR'))::int AS loi,
              (count(*) FILTER (WHERE p."deletedAt" IS NULL AND p.state = 'DRAFT'))::int AS nhap,
-             (count(*) FILTER (WHERE p."deletedAt" IS NOT NULL))::int AS da_xoa,
+             (count(*) FILTER (WHERE p."deletedAt" IS NOT NULL AND p.error IS DISTINCT FROM ${EXPIRED}))::int AS da_xoa,
+             (count(*) FILTER (WHERE p."deletedAt" IS NOT NULL AND p.error = ${EXPIRED}))::int AS het_han,
+             0::int AS nhap_trung,
              max(GREATEST(p."updatedAt", COALESCE(p."deletedAt", p."updatedAt"))) AS cap_nhat
       FROM "Post" p
       JOIN "Integration" i ON i.id = p."integrationId"
       WHERE p."parentPostId" IS NULL
         AND to_char((p."createdAt" + interval '7 hours')::date, 'YYYY-MM-DD') = ANY(${days})
+        AND NOT ${this.dupDraft(dupIntegrations)}
       GROUP BY 1, 2, 3, 4
       ORDER BY 1, 2, 3, 4
+    `;
+  }
+
+  /**
+   * Bản nháp TRÙNG: nhóm Zalo bật tự đăng Facebook/GBP thì bot đã đăng thẳng
+   * lên trang, NHƯNG vẫn đẩy một thẻ nháp vào Lịch. Thẻ nháp của bot nằm trên
+   * kênh thuộc nhóm tự đăng = bản thừa, không phải "nội dung chưa dùng" →
+   * loại khỏi mẫu số (đếm riêng ở cột nhap_trung).
+   */
+  private dupDraft(dupIntegrations: string[]) {
+    if (!dupIntegrations.length) return Prisma.sql`false`;
+    return Prisma.sql`(
+      ${AGENT_SQL} = 'zalo-bot' AND p."deletedAt" IS NULL AND p.state = 'DRAFT'
+      AND p."integrationId" = ANY(${dupIntegrations})
+    )`;
+  }
+
+  /** Số thẻ nháp trùng (đã loại khỏi mẫu số) theo ngày / kênh / loại. */
+  dupDraftsByDay(days: string[], dupIntegrations: string[]) {
+    type Row = { ngay: string; kenh: string; loai: string; so: number };
+    if (!days.length || !dupIntegrations.length)
+      return Promise.resolve([] as Row[]);
+    return this._raw.model.$queryRaw<Row[]>`
+      SELECT to_char((p."createdAt" + interval '7 hours')::date, 'YYYY-MM-DD') AS ngay,
+             i."providerIdentifier" AS kenh,
+             ${TYPE_SQL} AS loai,
+             count(*)::int AS so
+      FROM "Post" p
+      JOIN "Integration" i ON i.id = p."integrationId"
+      WHERE p."parentPostId" IS NULL
+        AND to_char((p."createdAt" + interval '7 hours')::date, 'YYYY-MM-DD') = ANY(${days})
+        AND ${this.dupDraft(dupIntegrations)}
+      GROUP BY 1, 2, 3
+    `;
+  }
+
+  /**
+   * Cùng số liệu nhưng đơn vị là BÀI (nội dung), không phải THẺ (mỗi kênh một
+   * thẻ). Trạng thái một bài = trạng thái "tốt nhất" của các thẻ: có thẻ đã
+   * đăng → đã đăng; chờ đăng / lỗi → vẫn là dùng; mọi thẻ bị xoá → bỏ; còn
+   * lại nháp. Dùng cho bảng tổng / theo agent; bảng theo kênh dùng postsByDay.
+   */
+  postsByDayGop(days: string[], dupIntegrations: string[] = []) {
+    if (!days.length) return Promise.resolve([] as PostGopRow[]);
+    return this._raw.model.$queryRaw<PostGopRow[]>`
+      WITH the AS (
+        SELECT to_char((p."createdAt" + interval '7 hours')::date, 'YYYY-MM-DD') AS ngay,
+               ${AGENT_SQL} AS agent,
+               ${TYPE_SQL} AS loai,
+               ${BAI_KEY_SQL} AS bai,
+               p."integrationId" AS kenh_id,
+               (p."deletedAt" IS NULL AND p.state = 'PUBLISHED') AS da_dang,
+               (p."deletedAt" IS NULL AND p.state = 'QUEUE') AS cho_dang,
+               (p."deletedAt" IS NULL AND p.state = 'ERROR') AS loi,
+               (p."deletedAt" IS NULL AND p.state = 'DRAFT') AS nhap,
+               (p."deletedAt" IS NOT NULL AND p.error = ${EXPIRED}) AS het_han,
+               ${this.dupDraft(dupIntegrations)} AS trung,
+               GREATEST(p."updatedAt", COALESCE(p."deletedAt", p."updatedAt")) AS cap_nhat
+        FROM "Post" p
+        WHERE p."parentPostId" IS NULL
+          AND to_char((p."createdAt" + interval '7 hours')::date, 'YYYY-MM-DD') = ANY(${days})
+      ), bai AS (
+        SELECT ngay, agent, max(loai) AS loai, bai,
+               count(DISTINCT kenh_id) FILTER (WHERE NOT trung) AS so_kenh,
+               bool_or(da_dang) AS da_dang,
+               bool_or(cho_dang) AS cho_dang,
+               bool_or(loi) AS loi,
+               bool_or(nhap AND NOT trung) AS nhap,
+               bool_or(het_han) AS het_han,
+               bool_and(trung) AS chi_trung,
+               bool_or(trung) AS co_trung,
+               max(cap_nhat) AS cap_nhat
+        FROM the
+        GROUP BY ngay, agent, bai
+      )
+      SELECT ngay, agent, loai,
+             sum(so_kenh)::int AS so_kenh,
+             (count(*) FILTER (WHERE NOT chi_trung))::int AS lam_ra,
+             (count(*) FILTER (WHERE NOT chi_trung AND (da_dang OR cho_dang OR loi)))::int AS dung,
+             (count(*) FILTER (WHERE NOT chi_trung AND da_dang))::int AS da_dang,
+             (count(*) FILTER (WHERE NOT chi_trung AND NOT da_dang AND cho_dang))::int AS cho_dang,
+             (count(*) FILTER (WHERE NOT chi_trung AND NOT da_dang AND NOT cho_dang AND loi))::int AS loi,
+             (count(*) FILTER (WHERE NOT chi_trung AND NOT (da_dang OR cho_dang OR loi) AND nhap))::int AS nhap,
+             (count(*) FILTER (WHERE NOT chi_trung AND NOT (da_dang OR cho_dang OR loi OR nhap) AND NOT het_han))::int AS da_xoa,
+             (count(*) FILTER (WHERE NOT chi_trung AND NOT (da_dang OR cho_dang OR loi OR nhap) AND het_han))::int AS het_han,
+             (count(*) FILTER (WHERE co_trung))::int AS nhap_trung,
+             max(cap_nhat) AS cap_nhat
+      FROM bai
+      GROUP BY 1, 2, 3
+      ORDER BY 1, 2, 3
+    `;
+  }
+
+  /** Loại kênh (providerIdentifier) của các kênh Hub theo id. */
+  integrationProviders(ids: string[]) {
+    if (!ids.length) return Promise.resolve([] as { id: string; kenh: string }[]);
+    return this._raw.model.$queryRaw<{ id: string; kenh: string }[]>`
+      SELECT id, "providerIdentifier" AS kenh FROM "Integration" WHERE id = ANY(${ids})
+    `;
+  }
+
+  /** Đánh dấu blog đã lên website (meta.webUrl). Trả số dòng cập nhật. */
+  markBlogOnWeb(orgId: string, productId: string, url: string) {
+    return this._exec.model.$executeRaw`
+      UPDATE "ViralProduct"
+      SET meta = (COALESCE(NULLIF(meta, '')::jsonb, '{}'::jsonb)
+                  || jsonb_build_object('webUrl', ${url}::text, 'webAt', now()::text))::text,
+          "updatedAt" = now()
+      WHERE id = ${productId} AND "organizationId" = ${orgId}
+        AND format = 'blog' AND "deletedAt" IS NULL
     `;
   }
 
@@ -129,6 +281,7 @@ export class ContentStatsRepository {
                WHEN v."deletedAt" IS NOT NULL THEN 'da_xoa'
                WHEN v.status <> 'done' THEN v.status
                WHEN v.format = 'podcast' AND COALESCE(v.meta, '') ~ ${RSS_RE} THEN 'da_phat_hanh'
+               WHEN v.format = 'blog' AND COALESCE(v.meta, '') ~ ${WEB_RE} THEN 'len_web'
                ELSE 'xong'
              END AS status,
              count(*)::int AS so,

@@ -1,3 +1,4 @@
+import { isFeaturePaused } from '@gitroom/helpers/utils/paused.features';
 import {
   Logger,
   Controller,
@@ -393,6 +394,15 @@ export class CopilotController {
     @Res() res: Response,
     @GetOrgFromRequest() organization: Organization
   ) {
+    // Đặc tả v2 (15/10/2026): trang Agent chat tạm dừng (HUB_PAUSED_FEATURES).
+    // Chỉ chặn chat của trang /agents — MCP /mcp cho agent ngoài vẫn chạy.
+    if (isFeaturePaused('agent-chat', process.env.HUB_PAUSED_FEATURES)) {
+      res.status(423).json({
+        error:
+          'Trang Agent chat đang tạm dừng theo Đặc tả v2 (15/10/2026) — đến khi rubric dự báo share chạy ổn.',
+      });
+      return;
+    }
     if (!getAnthropicKey()) {
       this.replyNoAnthropicKey(req, res);
       return;
