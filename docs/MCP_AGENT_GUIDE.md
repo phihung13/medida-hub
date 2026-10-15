@@ -217,6 +217,134 @@ Tên tham số chính xác nằm trong schema của từng công cụ (client MC
 
 ---
 
+### 5b. Công cụ bổ sung (ảnh, chân bài, hashtag, kênh, viral, tự động hoá, Zalo)
+
+Quy ước thêm:
+- **Ảnh đánh số từ 1** theo thứ tự đang hiển thị trong bài. `hub_bai_anh` / `zalo_bai_anh` đổi thứ tự, bỏ, chèn, đặt ảnh bìa mà không phải gửi lại cả danh sách.
+- **Sửa ảnh luôn tạo ảnh MỚI** trong thư viện, ảnh gốc giữ nguyên. Truyền `thay_vao_bai: true` để thay luôn vào bài.
+- Chỉ đọc ảnh nằm trong kho của Hub. Link ngoài phải tải lên trước bằng `uploadFromUrlTool`.
+- Tool ghi "(ghi cần cao hơn)": xem được bằng khoá chỉ đọc, còn thao tác sửa bên trong đòi quyền tạo nháp / được đăng.
+- Sửa bài **đã lên lịch** (ảnh, hashtag, chân bài…) cần quyền **được đăng**, giống `hub_bai_sua`. Bài đã đăng không sửa được.
+- Chân bài kênh (`hub_chan_bai_kenh`) **không** nằm trong nội dung bài; Hub chèn lúc đăng thật. Muốn đưa chân bài/chữ ký vào nội dung thì dùng `hub_chan_bai_ap`.
+- Chân bài nhóm Zalo: `zalo_chan_bai_nhom_sua` với `noi_ap_dung: "kenh"` là bền nhất. Kiểu `"nhom"` bị xoá khi ai đó lưu lại trang Nhóm Zalo trên Hub.
+- Một số tool viral (sửa cấu hình, skill, podcast) chỉ chạy với khoá do **quản trị hệ thống** tạo.
+- `hub_anh_ai_sua` xoá phông sẽ ra nền trắng (Gemini không trả nền trong suốt).
+- Chưa làm được: đổi tên file media, chú thích **video** trong hàng chờ Zalo (bot chưa hỗ trợ), tải file lên (nhạc nền, ảnh bìa podcast).
+
+### Ảnh & media
+
+| Tool | Quyền | Việc |
+|---|---|---|
+| `hub_bai_anh` | tạo nháp | Sắp xếp / bỏ / chèn ảnh trong bài |
+| `hub_media_thong_tin` | tạo nháp | Đặt alt / thumbnail cho media |
+| `hub_anh_sua` | tạo nháp | Sửa ảnh (cắt, chỉnh màu, chữ, logo…) |
+| `hub_anh_ghep` | tạo nháp | Ghép nhiều ảnh (collage) |
+| `hub_anh_ai_sua` | tạo nháp | AI sửa ảnh theo câu lệnh |
+| `hub_anh_cham_diem` | chỉ đọc (ghi cần cao hơn) | Chấm điểm ảnh & tìm ảnh trùng |
+| `hub_anh_kiem_tra_kenh` | chỉ đọc (ghi cần cao hơn) | Kiểm ảnh theo luật kênh |
+| `hub_video_thumbnail` | tạo nháp | Thumbnail cho video |
+| `zalo_bai_anh` | tạo nháp | Sắp xếp / bỏ / chèn ảnh bài chờ Zalo |
+| `zalo_bai_anh_sua` | tạo nháp | Sửa một ảnh của bài chờ Zalo |
+
+### Soạn bài: chân bài, chữ ký, hashtag, thread, link, nhân bản, kiểm tra
+
+| Tool | Quyền | Việc |
+|---|---|---|
+| `hub_chan_bai_kenh` | chỉ đọc (ghi cần cao hơn) | Chân bài cố định của kênh |
+| `hub_chan_bai_ap` | tạo nháp | Gắn chữ ký / chân bài vào bài |
+| `hub_chu_ky` | chỉ đọc (ghi cần cao hơn) | Quản lý chữ ký |
+| `hub_hashtag` | chỉ đọc (ghi cần cao hơn) | Xử lý hashtag trong bài |
+| `hub_hashtag_goi_y` | tạo nháp | AI gợi ý hashtag |
+| `hub_bai_tach_thread` | tạo nháp | Tách bài dài thành thread |
+| `hub_rut_gon_link` | tạo nháp | Rút gọn link |
+| `hub_bai_nhan_ban` | tạo nháp | Nhân bản bài |
+| `hub_bo_cai_dat` | chỉ đọc (ghi cần cao hơn) | Mẫu bài (sets) |
+| `hub_ai_sinh_bai` | tạo nháp | AI sinh bài (Generator) |
+| `hub_bai_kiem_tra` | chỉ đọc | Kiểm tra bài trước khi đăng |
+| `hub_bai_gan_link_da_dang` | được đăng | Gắn link cho bài đã đăng bị thiếu |
+| `hub_khach_hang` | chỉ đọc | Khách hàng & kênh |
+
+### Kênh
+
+| Tool | Quyền | Việc |
+|---|---|---|
+| `hub_kenh_danh_sach` | chỉ đọc | Danh sách kênh & trạng thái |
+| `hub_kenh_bat_tat` | được đăng | Bật / tắt kênh |
+| `hub_kenh_doi_ten` | tạo nháp | Đổi tên hiển thị kênh |
+| `hub_kenh_nhom` | tạo nháp | Gán kênh cho khách hàng |
+| `hub_kenh_gio_dang` | chỉ đọc (ghi cần cao hơn) | Khung giờ đăng mặc định của kênh |
+| `hub_kenh_cai_dat` | chỉ đọc (ghi cần cao hơn) | Cài đặt thêm của kênh |
+| `hub_kenh_plugs` | chỉ đọc (ghi cần cao hơn) | Plugs của kênh |
+
+### Viral mở rộng
+
+| Tool | Quyền | Việc |
+|---|---|---|
+| `hub_viral_ban_tin_xoa` | được đăng | Xoá bản tin viral |
+| `hub_viral_ban_tin_gui_zalo` | được đăng | Gửi bản tin qua Zalo |
+| `hub_viral_ban_tin_tao_ngay` | được đăng | Tạo & gửi bản tin tuần ngay |
+| `hub_viral_cau_hinh` | chỉ đọc | Cấu hình viral |
+| `hub_viral_cau_hinh_sua` | được đăng | Sửa cấu hình viral |
+| `hub_viral_cham_diem` | tạo nháp | AI chấm điểm bài chưa có điểm |
+| `hub_viral_nguon_loai` | được đăng | Đổi loại nguồn |
+| `hub_viral_nguon_don_dep` | được đăng | Dọn nguồn theo dõi |
+| `hub_viral_nguon_nhap_mac_dinh` | được đăng | Nhập bộ nguồn mặc định |
+| `hub_viral_moi_cau` | tạo nháp | Gợi ý mồi câu (lead magnet) |
+| `hub_viral_cong_thuc` | tạo nháp | Mổ công thức bài viral |
+| `hub_viral_san_pham_goi_y_kenh` | tạo nháp | Gợi ý kênh cho sản phẩm |
+| `hub_viral_san_pham_blog` | chỉ đọc | Nội dung blog của sản phẩm |
+| `hub_viral_san_pham_rss` | được đăng | Phát hành / gỡ podcast khỏi feed RSS |
+| `hub_viral_skill` | chỉ đọc | Kho công thức AI (skill) |
+| `hub_viral_skill_sua` | được đăng | Sửa / đặt lại công thức AI |
+| `hub_viral_podcast_cau_hinh` | chỉ đọc | Cấu hình show podcast |
+| `hub_viral_podcast_cau_hinh_sua` | được đăng | Sửa cấu hình show podcast |
+| `hub_viral_xoa_han` | được đăng | Xoá hẳn bài / chủ đề viral |
+| `hub_viral_luu_tru_don_sach` | được đăng | Dọn sạch Lưu trữ viral |
+| `hub_group_fb_bai_xoa` | được đăng | Xoá bài group Facebook |
+| `hub_group_fb_ky_xoa` | được đăng | Xoá kỳ cào group Facebook |
+
+### Tự động hoá, webhook, bên thứ ba, so sánh số liệu
+
+| Tool | Quyền | Việc |
+|---|---|---|
+| `hub_webhook_danh_sach` | chỉ đọc | Danh sách webhook |
+| `hub_webhook_luu` | được đăng | Thêm / sửa webhook |
+| `hub_webhook_xoa` | được đăng | Xoá webhook |
+| `hub_webhook_thu` | được đăng | Gửi thử webhook |
+| `hub_autopost_thu` | chỉ đọc | Thử đọc nguồn RSS |
+| `hub_excel_xoa_file` | được đăng | Xoá file lịch đăng đã nhập |
+| `hub_ben_thu_ba` | chỉ đọc | Tích hợp bên thứ ba |
+| `hub_ben_thu_ba_goi` | tạo nháp | Gọi hàm tích hợp bên thứ ba |
+| `hub_ben_thu_ba_nhap_media` | tạo nháp | Nhập media bên thứ ba vào thư viện |
+| `hub_so_lieu_so_sanh` | chỉ đọc | So sánh số liệu (hai kỳ / hai kênh) |
+
+### Zalo bot: nhóm, chân bài, kết nối, lấy lại tin
+
+| Tool | Quyền | Việc |
+|---|---|---|
+| `zalo_nhom_cai_dat` | chỉ đọc | Cấu hình các nhóm Zalo của bot |
+| `zalo_nhom_sua` | được đăng | Sửa cấu hình một nhóm Zalo |
+| `zalo_chan_bai_nhom` | chỉ đọc | Xem chân bài của nhóm Zalo |
+| `zalo_chan_bai_nhom_sua` | được đăng | Đặt chân bài cho nhóm Zalo |
+| `zalo_cai_dat_bot` | chỉ đọc | Cài đặt bot Zalo |
+| `zalo_ket_noi_lai` | được đăng | Kết nối lại Zalo |
+| `zalo_lay_lai_tin_xem` | chỉ đọc | Xem trước tin bị lỡ |
+| `zalo_lay_lai_tin_chay` | tạo nháp | Tạo bản nháp từ tin bị lỡ |
+| `zalo_da_dang_tai_lai_chan_bai` | tạo nháp | Áp lại chân bài cho bài đã đăng |
+| `zalo_da_dang_nhap_lai` | tạo nháp | Đăng nháp lại bài đã đăng |
+| `zalo_video_kenh` | chỉ đọc | Kênh Zalo Video của tài khoản |
+
+### 5c. Luồng mẫu
+
+**Dọn ảnh và chuẩn hoá bài trước khi duyệt**
+1. `hub_anh_cham_diem` với `bai_id`: điểm và lý do từng ảnh, nhóm ảnh trùng. Thêm `ai: true` nếu cần soi nhắm mắt / bố cục.
+2. `hub_anh_cham_diem` với `bo_duoi: 50, xep_lai: true`: bỏ ảnh xấu và ảnh trùng, đưa ảnh đẹp lên đầu.
+3. `hub_anh_kiem_tra_kenh` với `tu_sua: true`: cắt / đệm / nén cho đúng luật kênh.
+4. `hub_hashtag` (`chuan_hoa`) → `hub_chan_bai_ap` (chữ ký mặc định).
+5. `hub_bai_kiem_tra` → `hub_bai_dang_ngay` hoặc `hub_bai_duyet_hang_loat`.
+
+**Bài trong hàng chờ Zalo**: `zalo_hang_cho` → `hub_anh_cham_diem` (bài Zalo, kèm `bo_duoi`) → `zalo_bai_anh` / `zalo_bai_anh_sua` → `zalo_bai_sua` → `zalo_bai_duyet_facebook`.
+
 ## 6. Những việc MCP KHÔNG làm được (đừng cố)
 
 | Việc | Nên làm gì |

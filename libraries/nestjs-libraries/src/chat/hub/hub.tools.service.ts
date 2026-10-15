@@ -4,6 +4,12 @@ import { HubInsightsTools } from '@gitroom/nestjs-libraries/chat/hub/hub.insight
 import { HubAutopostTools } from '@gitroom/nestjs-libraries/chat/hub/hub.autopost.tools';
 import { HubViralTools } from '@gitroom/nestjs-libraries/chat/hub/hub.viral.tools';
 import { HubZaloTools } from '@gitroom/nestjs-libraries/chat/hub/hub.zalo.tools';
+import { HubImageTools } from '@gitroom/nestjs-libraries/chat/hub/hub.image.tools';
+import { HubComposeTools } from '@gitroom/nestjs-libraries/chat/hub/hub.compose.tools';
+import { HubChannelsTools } from '@gitroom/nestjs-libraries/chat/hub/hub.channels.tools';
+import { HubViralExtraTools } from '@gitroom/nestjs-libraries/chat/hub/hub.viral.extra.tools';
+import { HubAutomationTools } from '@gitroom/nestjs-libraries/chat/hub/hub.automation.tools';
+import { HubZaloAdminTools } from '@gitroom/nestjs-libraries/chat/hub/hub.zalo.admin.tools';
 import { HubToolMap } from '@gitroom/nestjs-libraries/chat/hub/hub.tool.helpers';
 
 export const hubToolGroups = [
@@ -12,6 +18,12 @@ export const hubToolGroups = [
   HubAutopostTools,
   HubViralTools,
   HubZaloTools,
+  HubImageTools,
+  HubComposeTools,
+  HubChannelsTools,
+  HubViralExtraTools,
+  HubAutomationTools,
+  HubZaloAdminTools,
 ];
 
 // Gộp mọi nhóm công cụ Hub cho máy chủ MCP (start.mcp.ts). Không nạp vào
@@ -23,7 +35,13 @@ export class HubToolsService {
     private _insights: HubInsightsTools,
     private _autopost: HubAutopostTools,
     private _viral: HubViralTools,
-    private _zalo: HubZaloTools
+    private _zalo: HubZaloTools,
+    private _image: HubImageTools,
+    private _compose: HubComposeTools,
+    private _channels: HubChannelsTools,
+    private _viralExtra: HubViralExtraTools,
+    private _automation: HubAutomationTools,
+    private _zaloAdmin: HubZaloAdminTools
   ) {}
 
   tools(): HubToolMap {
@@ -33,6 +51,12 @@ export class HubToolsService {
       ...this._autopost.tools(),
       ...this._viral.tools(),
       ...this._zalo.tools(),
+      ...this._image.tools(),
+      ...this._compose.tools(),
+      ...this._channels.tools(),
+      ...this._viralExtra.tools(),
+      ...this._automation.tools(),
+      ...this._zaloAdmin.tools(),
     };
   }
 }

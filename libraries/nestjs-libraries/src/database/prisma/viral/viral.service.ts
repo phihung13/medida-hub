@@ -901,8 +901,8 @@ export class ViralService implements OnModuleInit {
     const settings = {
       __type: integration.providerIdentifier as any,
       title: '',
-      tags: [],
-      subreddit: [],
+      tags: [] as any[],
+      subreddit: [] as any[],
     };
     const value = [{ id: makeId(10), delay: 0, content, image: images }];
     if (mode === 'now') {

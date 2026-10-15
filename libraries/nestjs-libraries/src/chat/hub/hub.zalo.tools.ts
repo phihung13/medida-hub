@@ -8,6 +8,7 @@ import {
   htmlToText,
   hubTool,
 } from '@gitroom/nestjs-libraries/chat/hub/hub.tool.helpers';
+import { bot } from '@gitroom/nestjs-libraries/chat/hub/hub.zalo.client';
 
 // ============================================================================
 //  Nhóm "Zalo": điều khiển bot Zalo (service zalo-bot trong compose) — y như
@@ -18,50 +19,6 @@ import {
 //  Đăng Zalo Video: tạo bài trên Lịch cho kênh Zalo Video (hub_bai_tao) — bot
 //  tự đăng khi tới giờ; ở đây chỉ xem trạng thái phiên.
 // ============================================================================
-
-const botBase = () =>
-  (process.env.ZALO_BOT_URL || 'http://127.0.0.1:8088').replace(/\/$/, '');
-
-const bot = async (
-  path: string,
-  init: { method?: 'GET' | 'POST'; body?: any } = {},
-  timeoutMs = 60_000
-) => {
-  let res: Response;
-  try {
-    res = await fetch(botBase() + path, {
-      method: init.method || 'GET',
-      headers: {
-        'content-type': 'application/json',
-        ...(process.env.HUB_BOT_TOKEN
-          ? { 'x-hub-token': process.env.HUB_BOT_TOKEN }
-          : {}),
-      },
-      body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-  } catch {
-    throw new HubToolError(
-      'Bot Zalo không phản hồi (bot đang tắt hoặc ZALO_BOT_URL sai).'
-    );
-  }
-  const text = await res.text();
-  let data: any;
-  try {
-    data = text ? JSON.parse(text) : {};
-  } catch {
-    data = { raw: text.slice(0, 500) };
-  }
-  if (res.status === 401) {
-    throw new HubToolError(
-      'Bot Zalo từ chối — HUB_BOT_TOKEN của Hub và bot phải giống nhau.'
-    );
-  }
-  if (!res.ok || data?.ok === false) {
-    throw new HubToolError(data?.error || `Bot Zalo lỗi ${res.status}`);
-  }
-  return data;
-};
 
 const id = z.string().describe('id bài trong hàng chờ bot (zalo_hang_cho)');
 

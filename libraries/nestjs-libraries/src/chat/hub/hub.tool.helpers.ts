@@ -133,6 +133,9 @@ export const hubTool = <S extends z.ZodTypeAny>(def: {
   input: S;
   destructive?: boolean;
   openWorld?: boolean;
+  // Mức 'doc' nhưng có hành động ghi (kiểm quyền cao hơn bên trong run) →
+  // không gắn nhãn chỉ-đọc cho client MCP.
+  writes?: boolean;
   run: (input: z.infer<S>, org: HubOrg) => Promise<any>;
 }) =>
   createTool({
@@ -141,9 +144,9 @@ export const hubTool = <S extends z.ZodTypeAny>(def: {
     mcp: {
       annotations: {
         title: def.title,
-        readOnlyHint: def.level === 'doc',
+        readOnlyHint: def.level === 'doc' && !def.writes,
         destructiveHint: !!def.destructive,
-        idempotentHint: def.level === 'doc',
+        idempotentHint: def.level === 'doc' && !def.writes,
         openWorldHint: !!def.openWorld,
       },
     },

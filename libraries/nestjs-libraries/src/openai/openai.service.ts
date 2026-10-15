@@ -1382,4 +1382,28 @@ CHI tra JSON array: [{"profile_id","moi_quan_tam","tam_ly","hanh_vi","insights"}
     const data: any = await res.json();
     return (data.content || []).map((c: any) => c.text || '').join('').trim();
   }
+
+  // Gợi ý hashtag cho một bài (MCP hub_hashtag_goi_y). Đi qua claudeJson →
+  // tôn trọng nhà cung cấp text đang chọn (Anthropic / OpenRouter).
+  async suggestHashtags(
+    text: string,
+    count = 8,
+    platform?: string
+  ): Promise<string[]> {
+    const n = Math.max(1, Math.min(30, count));
+    const data = await claudeJson<{ hashtags: string[] }>(
+      vietAnhSystem() +
+        '\n\nBạn là chuyên gia hashtag mạng xã hội. Gợi ý hashtag sát nội dung, có người tìm thật, trộn hashtag phổ biến và hashtag ngách; không dấu cách, không trùng lặp, không bịa tên riêng.',
+      `Gợi ý ${n} hashtag${
+        platform ? ` cho nền tảng ${platform}` : ''
+      } cho bài dưới đây. Trả về JSON {"hashtags": string[]} (mỗi phần tử bắt đầu bằng #).\n\nBài:\n${String(
+        text || ''
+      ).slice(0, 6000)}`,
+      800
+    );
+    return (data?.hashtags || [])
+      .filter((h) => typeof h === 'string' && h.trim())
+      .map((h) => '#' + h.trim().replace(/^#+/, '').replace(/\s+/g, ''))
+      .slice(0, n);
+  }
 }
