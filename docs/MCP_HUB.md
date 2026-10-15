@@ -192,4 +192,33 @@ Bot Zalo dùng chung cho cả Hub (một tài khoản Zalo). Hub gọi bot qua m
 2. `zalo_bai_day_sang_hub` cho từng bài: bài thành nháp trên Lịch.
 3. `hub_lich_xem` (hôm nay → 7 ngày tới): xem lịch còn trống chỗ nào.
 4. `hub_bai_sua`: chỉnh caption theo `hub_mau_bai`. Tiếp theo là `hub_bai_doi_gio` vào giờ trống (`hub_gio_trong`).
-5. Khoá `nhap` dừng ở đây; người duyệt bấm đăng trên Hub. Khoá `dang` có thể gọi `hub_bai_trang_thai` với `schedule`.
+5. Khoá `nhap` dừng ở đây; người duyệt bấm đăng trên Hub. Khoá `dang` có thể:
+   - gọi `hub_bai_trang_thai` với `schedule` cho từng bài;
+   - gọi `hub_bai_duyet_hang_loat` cho cả loạt;
+   - gọi `hub_bai_dang_ngay` khi người dùng bảo đăng luôn.
+
+### Group Facebook → content → đăng
+
+Giao diện: tab 👥 Group FB → ⚡ Làm content → Chờ duyệt (lọc nguồn 👥 Group FB) → Duyệt → Viết lại / Sản xuất → Chờ đăng → 📤 nháp hoặc 🚀 đăng ngay.
+
+Qua MCP:
+1. `hub_group_fb_tong_quan`: kỳ cào mới nhất, `hotTopics` / `askedTopics`.
+2. `hub_group_fb_bai` (`loai: "hoi"`, `chu_de: …`): chọn bài tiêu biểu, có link.
+3. `hub_group_fb_lam_content`: được `topicId`. AI tổng hợp và chấm điểm (vài phút).
+4. `hub_viral_chu_de_duyet` (`approve`), rồi một trong hai:
+   - `hub_viral_chu_de_viet_lai`: viết lại thành bài social;
+   - `hub_viral_san_xuat`: sản xuất infographic / blog / podcast.
+5. `hub_viral_bai_cua_minh_len_lich` hoặc `hub_viral_san_pham_len_lich`: mặc định tạo **nháp**. Truyền `dang_ngay=true` để đăng thật (khoá `dang`, chỉ khi người dùng nói rõ).
+
+## 7. Đối tác cào (Public API, không phải MCP)
+
+Claude chạy skill `cao-facebook-viral-vietanh` gửi dữ liệu thô qua Public API (header `Authorization: <API key tổ chức>` + User-Agent trình duyệt):
+
+| Endpoint | Việc |
+|---|---|
+| `GET /public/v1/viral/priorities` | Gợi ý ưu tiên cào (chủ đề nóng, persona) |
+| `POST /public/v1/viral` → `POST /public/v1/viral/finish` | Bài KOL / trường đối thủ → phễu content (`sourceType`, `sourceName`) |
+| `GET /public/v1/viral/groups` | Danh sách group FB đang bật |
+| `POST /public/v1/viral/groups` | Đăng ký group (`url`, `name`, `area`) |
+| `POST /public/v1/viral/groups/posts` | 1 bài group: `groupUrl`, `text` (bắt buộc), `url` (permalink), `groupName`, `topic`, `kind` (`hoi` / `chia_se` / `review` / `phan_nan` / `khac`), `level`, `likes` / `comments` / `shares`, `postedAt`, `topComments[]` |
+| `POST /public/v1/viral/groups/finish` | Kết kỳ: `summary`, `hotTopics[]`, `askedTopics[]` (`{topic, posts, comments, groups[], urls[], note}`); thiếu thì Hub tự đếm theo nhãn `topic` |
