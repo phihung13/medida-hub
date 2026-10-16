@@ -73,6 +73,8 @@ export class ShareReportService {
       reach: p.reach,
       share: p.shares,
       binh_luan: p.comments,
+      luot_bam_link: p.linkClicks || 0,
+      luot_chia_se_vao_nhom_zalo: p.zaloShares || 0,
       ty_le_share_phan_tram: pct(rate(p)),
       diem_du_bao: p.forecastScore,
     });
@@ -141,6 +143,13 @@ export class ShareReportService {
         p.agent === 'zalo-bot' && p.goc ? `${p.goc} — ${GOC_TEN[p.goc] || p.goc}` : null
       ),
       qua_nguong: { trao_gia_tri: pass('GT'), bot_zalo: pass('UGC') },
+      tong_luot_bam_link: posts.reduce((n, p) => n + (p.linkClicks || 0), 0),
+      tong_luot_chia_se_vao_nhom_zalo: posts.reduce(
+        (n, p) => n + (p.zaloShares || 0),
+        0
+      ),
+      ghi_chu_zalo:
+        'Lượt bấm = bấm link của trường ở bình luận đầu (qua link chuyển hướng của Hub, không tính bot xem trước). Lượt chia sẻ vào nhóm Zalo = số lần Bot Zalo thấy link bài trong các nhóm nó có mặt — nhóm không có bot thì không đếm được.',
       qlead_tu_noi_dung_tu_nhien: null as number | null,
       ghi_chu_qlead: 'Chờ nối Pancake (UTM → Qlead).',
       cho_duyet_trung_vi_gio: med == null ? null : Math.round(med * 10) / 10,

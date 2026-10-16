@@ -382,3 +382,27 @@ export async function writeCaption(batch, o = {}) {
     return { caption: fallbackCaption(texts), source: "fallback", goc: null };
   }
 }
+
+// Đặc tả v2: BÌNH LUẬN ĐẦU của bài đẩy sang Media Hub — 1 lời mời nhẹ có thật
+// (theo skill cta-that của Hub), ghép theo cấp học của nhóm. Hub tự gắn UTM +
+// đổi link thành link chuyển hướng để đếm lượt bấm / lượt chia sẻ từng bài.
+const CTA = {
+  banDo: "Ba mẹ muốn xem con đang phát triển thế nào ở 4 lĩnh vực? Thử Bản đồ Khôn Lớn (cho con từ 3 tuổi): https://nguyenmanhduong.com/ban-do-khon-lon",
+  quiz: "Con đang ở trình độ tiếng Anh nào? Làm bài quiz ngắn để ước lượng (Pre-A1 đến B2): https://truongvietanh.com/quiz",
+  huongNghiep: "Con từ lớp 8 trở lên đang băn khoăn chọn hướng đi? Tham khảo Hướng nghiệp: https://huongnghiep.bandohoctap.com",
+};
+
+export function ctaOptions(capHoc) {
+  const c = String(capHoc || "").toLowerCase();
+  if (/thpt|cấp 3|lớp (8|9|1[0-2])\b/.test(c)) return [CTA.huongNghiep, CTA.banDo, CTA.quiz];
+  if (/thcs|cấp 2/.test(c)) return [CTA.banDo, CTA.quiz, CTA.huongNghiep];
+  if (/tiểu học|cấp 1/.test(c)) return [CTA.banDo, CTA.quiz];
+  return [CTA.banDo, CTA.quiz]; // mầm non (mặc định)
+}
+
+/** Bình luận đầu: 1 lời mời theo cấp học (xoay theo seedKey) + liên hệ của nhóm (route.comment). */
+export function firstComment(capHoc, seedKey, contact = "") {
+  const opts = ctaOptions(capHoc);
+  const line = opts[hashSeed(`cta_${seedKey}`) % opts.length];
+  return [line, String(contact || "").trim()].filter(Boolean).join("\n\n");
+}

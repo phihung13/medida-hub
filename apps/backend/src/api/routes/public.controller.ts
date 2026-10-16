@@ -29,6 +29,7 @@ import { isSafePublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/webhooks/we
 import { ssrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import { ViralService } from '@gitroom/nestjs-libraries/database/prisma/viral/viral.service';
 import { readCover } from '@gitroom/nestjs-libraries/viral/podcast.keys';
+import { ShareStatsService } from '@gitroom/nestjs-libraries/database/prisma/share-stats/share-stats.service';
 
 const pump = promisify(pipeline);
 
@@ -40,7 +41,8 @@ export class PublicController {
     private _agentGraphInsertService: AgentGraphInsertService,
     private _postsService: PostsService,
     private _subscriptionService: SubscriptionService,
-    private _viralService: ViralService
+    private _viralService: ViralService,
+    private _shareStatsService: ShareStatsService
   ) {}
   @Post('/agent')
   async createAgent(@Body() body: { text: string; apiKey: string }) {
@@ -57,6 +59,28 @@ export class PublicController {
   // ── KÊNH PODCAST RSS — Spotify/Apple kéo feed này qua HTTP KHÔNG auth ────
   // (spec Spotify v1.9: XML UTF-8, application/rss+xml; Spotify tự quét lại
   // vài lần mỗi giờ sau khi nộp — tập mới bật 📡 tự xuất hiện.)
+  // ── LINK CHUYỂN HƯỚNG ĐẾM LƯỢT BẤM (đặc tả v2) — bình luận đầu của bài ──
+  // Chỉ chuyển tới đích đã lưu; mã lạ -> trang chủ trường.
+  @Get('/r/:code')
+  async shareLink(
+    @Param('code') code: string,
+    @Req() req: Request,
+    @Res() res: Response
+  ) {
+    let target: string | null = null;
+    try {
+      target = await this._shareStatsService.click(
+        code,
+        req.headers['user-agent']
+      );
+    } catch {
+      target = null;
+    }
+    res
+      .setHeader('Cache-Control', 'no-store')
+      .redirect(302, target || 'https://truongvietanh.com');
+  }
+
   @Get('/podcast/feed.xml')
   async podcastFeed(@Res() res: Response) {
     const xml = await this._viralService.podcastFeedXml();

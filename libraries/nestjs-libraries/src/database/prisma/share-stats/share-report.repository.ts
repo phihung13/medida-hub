@@ -24,6 +24,8 @@ export type SharePostRow = {
   shares: number | null;
   comments: number | null;
   shareRate: number | null;
+  linkClicks: number | null;
+  zaloShares: number | null;
   measuredAt: Date | null;
 };
 
@@ -59,7 +61,8 @@ export class ShareReportRepository {
              left(regexp_replace(COALESCE(p.content, ''), '<[^>]+>', ' ', 'g'), 160) AS noi_dung,
              p."releaseURL" AS link,
              s.format, s."rubricType", s."forecastScore", s.verdict, s.goc,
-             s.reach, s.shares, s.comments, s."shareRate", s."measuredAt"
+             s.reach, s.shares, s.comments, s."shareRate",
+             s."linkClicks", s."zaloShares", s."measuredAt"
       FROM "Post" p
       JOIN "Integration" i ON i.id = p."integrationId"
       LEFT JOIN "PostShareStat" s ON s."postId" = p.id

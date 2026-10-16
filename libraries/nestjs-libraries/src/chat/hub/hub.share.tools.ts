@@ -30,7 +30,7 @@ export class HubShareTools implements HubToolGroup {
         title: 'Tỷ lệ share và điểm dự báo từng bài',
         level: 'doc',
         description:
-          'Liệt kê bài trong khoảng ngày (theo ngày tạo) kèm điểm dự báo rubric, kết luận, góc kể Bot Zalo, định dạng, reach, share, bình luận, lượt lưu (chỉ Instagram) và TỶ LỆ SHARE = share ÷ reach (đo sau 72 giờ; chưa đo = null). Sắp theo tỷ lệ share giảm dần; bài chưa đo xếp cuối.',
+          'Liệt kê bài trong khoảng ngày (theo ngày tạo) kèm điểm dự báo rubric, kết luận, góc kể Bot Zalo, định dạng, reach, share, bình luận, lượt lưu (chỉ Instagram), lượt bấm link của trường (qua link chuyển hướng của Hub), lượt chia sẻ vào nhóm Zalo (Bot Zalo thấy link bài) và TỶ LỆ SHARE = share ÷ reach (đo sau 72 giờ; chưa đo = null). Sắp theo tỷ lệ share giảm dần; bài chưa đo xếp cuối.',
         input: z.object({
           tu_ngay: z.string().optional().describe('YYYY-MM-DD, mặc định 30 ngày trước'),
           den_ngay: z.string().optional().describe('YYYY-MM-DD, mặc định hôm nay'),
@@ -85,6 +85,8 @@ export class HubShareTools implements HubToolGroup {
                 binh_luan: r.comments ?? null,
                 reaction: r.reactions ?? null,
                 luu: r.saves ?? null,
+                luot_bam_link: r.linkClicks ?? 0,
+                luot_chia_se_vao_nhom_zalo: r.zaloShares ?? 0,
                 ty_le_share:
                   r.shareRate != null
                     ? Math.round(r.shareRate * 10000) / 100 + '%'

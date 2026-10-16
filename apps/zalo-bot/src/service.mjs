@@ -5,10 +5,11 @@ import path from "node:path";
 import { Zalo, ThreadType } from "zca-js";
 import qrcode from "qrcode-terminal";
 import { extractEvent } from "./extract.mjs";
+import { watchShares } from "./sharewatch.mjs";
 import { Batcher, MemoryStore } from "./batcher.mjs";
 import { loadConfig, routeForThread } from "./config.mjs";
 import { processBatch } from "./pipeline.mjs";
-import { assembleCaption } from "./caption.mjs";
+import { assembleCaption, firstComment } from "./caption.mjs";
 import { publishFacebookDraft, publishGbpDraft } from "./publish.mjs";
 import { startWeb } from "./web.mjs";
 import { pushToPostiz } from "./postiz.mjs";
@@ -171,7 +172,7 @@ async function main() {
         if (process.env.POSTIZ_ENABLED === "true") {
           // Bản đẩy Hub KHÔNG kèm chân bài của bot — Media Hub tự chèn chân bài
           // của kênh (cài trong Lịch) dưới caption, trên hashtag. Tránh trùng 2 chân bài.
-          pushToPostiz({ caption: assembleCaption(res.caption, "", res.hashtags), imagePaths: draft.allSavedImages || [], videoPaths: draft.savedVideos || [], imageCaptions: draft.allImageCaptions || [], videoCaptions: draft.videoCaptions || [], imageHidden: draft.imageHidden || [], imageHiddenReasons: draft.imageHiddenReasons || [], groupName: route.label, integrationIds: route.postizIntegrationIds || [], integrationId: route.postizIntegrationId || '', type: hubAutoPost ? 'now' : 'draft', shareStat })
+          pushToPostiz({ caption: assembleCaption(res.caption, "", res.hashtags), imagePaths: draft.allSavedImages || [], videoPaths: draft.savedVideos || [], imageCaptions: draft.allImageCaptions || [], videoCaptions: draft.videoCaptions || [], imageHidden: draft.imageHidden || [], imageHiddenReasons: draft.imageHiddenReasons || [], groupName: route.label, integrationIds: route.postizIntegrationIds || [], integrationId: route.postizIntegrationId || '', type: hubAutoPost ? 'now' : 'draft', shareStat, comment: process.env.BOT_FIRST_COMMENT === "0" ? "" : firstComment(route.capHoc, draft.id, route.comment) })
             .then((r) => {
               if (r?.ok) { try { store.updatePending(draft.id, { pushedToHub: true, ...(r.postId ? { hubPostId: r.postId } : {}) }); } catch {} store.pushLog(hubAutoPost ? `TỰ ĐĂNG (nhóm ổn định, ${res.rubric.total} điểm): "${route.label}" — Media Hub đăng ngay.` : `Đã đẩy bản nháp "${route.label}" sang Media Hub (${r.media} media) — chờ duyệt trên Lịch.`); }
               else if (r && !r.skipped) {
@@ -210,6 +211,8 @@ async function main() {
   // Gắn toàn bộ listener cho 1 phiên api (dùng lại được khi đổi tài khoản)
   function attachListeners(api) {
     api.listener.on("message", async (m) => {
+      // Đếm lượt chia sẻ link bài vào nhóm (chạy nền, cả khi bot tạm dừng).
+      watchShares(m, { log: (x) => console.log(x) }).catch(() => {});
       try {
         const ev = extractEvent(m);
         if (ev.threadId) threadTypeOf.set(ev.threadId, m.type);

@@ -819,6 +819,10 @@ model PostShareStat {
   saves          Int?
   shareRate      Float?
   utmCampaign    String?
+  // Lượt bấm link của trường qua link chuyển hướng của Hub (/public/r/:code)
+  linkClicks     Int       @default(0)
+  // Số lần Bot Zalo thấy link bài được chia sẻ vào một nhóm Zalo nó có mặt
+  zaloShares     Int       @default(0)
   measuredAt     DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -826,6 +830,20 @@ model PostShareStat {
   @@index([organizationId])
   @@index([createdAt])
   @@index([measuredAt])
+}
+
+// Đặc tả v2: link của trường ở bình luận đầu được đổi thành link chuyển hướng
+// của Hub để đếm lượt bấm từng bài (kể cả bấm từ nhóm Zalo).
+model ShareLink {
+  id             String   @id @default(cuid())
+  code           String   @unique
+  postId         String
+  organizationId String
+  target         String
+  clicks         Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  @@index([postId])
 }
 
 model Notifications {

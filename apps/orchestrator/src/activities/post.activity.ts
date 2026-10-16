@@ -178,21 +178,29 @@ export class PostActivity {
     }
   }
 
-  // Gắn UTM vào link của trường; ghi utmCampaign cạnh điểm dự báo. Lỗi ghi
-  // số liệu KHÔNG được chặn việc đăng bình luận.
-  private withUtm(message: string, campaign: string | null, orgId: string) {
+  // Gắn UTM vào link của trường; ghi utmCampaign cạnh điểm dự báo, rồi đổi
+  // link thành link chuyển hướng của Hub để đếm lượt bấm. Lỗi ghi số liệu
+  // KHÔNG được chặn việc đăng bình luận.
+  private async withUtm(
+    message: string,
+    campaign: string | null,
+    orgId: string
+  ) {
     if (!campaign) return message;
     const { text, changed } = addUtm(message, campaign);
-    if (changed) {
-      this._shareStatsService
-        .upsertForecast({
-          postId: campaign,
-          organizationId: orgId,
-          utmCampaign: campaign,
-        })
-        .catch(() => undefined);
+    if (!changed) return text;
+    this._shareStatsService
+      .upsertForecast({
+        postId: campaign,
+        organizationId: orgId,
+        utmCampaign: campaign,
+      })
+      .catch(() => undefined);
+    try {
+      return await this._shareStatsService.wrapLinks(text, campaign, orgId);
+    } catch {
+      return text;
     }
-    return text;
   }
 
   @ActivityMethod()
@@ -226,7 +234,7 @@ export class PostActivity {
       await Promise.all(
         (newPosts || []).map(async (p) => ({
           id: p.id,
-          message: this.withUtm(
+          message: await this.withUtm(
             stripHtmlValidation(
               getIntegration.editor,
               p.content,

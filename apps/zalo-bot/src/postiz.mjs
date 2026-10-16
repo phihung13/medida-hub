@@ -103,6 +103,9 @@ export async function pushToPostiz({
   type = 'draft',
   // Điểm dự báo + góc kể -> Hub lưu cạnh tỷ lệ share thật (bảng PostShareStat).
   shareStat = null,
+  // Đặc tả v2: bình luận đầu (lời mời có link của trường). Hub đăng nó thành
+  // bình luận ngay dưới bài (kênh hỗ trợ bình luận), gắn UTM + link đếm bấm.
+  comment = '',
 }) {
   if (process.env.POSTIZ_ENABLED !== 'true') return { skipped: 'disabled' };
 
@@ -166,7 +169,10 @@ export async function pushToPostiz({
       posts: [
         {
           integration: { id: ids[i] },
-          value: [{ content: caption || '', image: media }],
+          value: [
+            { content: caption || '', image: media },
+            ...(comment ? [{ content: comment, image: [] }] : []),
+          ],
         },
       ],
     };

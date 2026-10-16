@@ -28,7 +28,11 @@ export interface ShareMetricsInput {
 
 @Injectable()
 export class ShareStatsRepository {
-  constructor(private _stat: PrismaRepository<'postShareStat'>) {}
+  constructor(
+    private _stat: PrismaRepository<'postShareStat'>,
+    private _link: PrismaRepository<'shareLink'>,
+    private _post: PrismaRepository<'post'>
+  ) {}
 
   // Ghi/ghi đè phần DỰ BÁO (điểm, góc kể...). Chỉ field có giá trị mới ghi.
   upsertForecast(input: ShareStatInput) {
@@ -61,6 +65,62 @@ export class ShareStatsRepository {
     return this._stat.model.postShareStat.findMany({
       where: { organizationId, createdAt: { gte: from, lte: to } },
       orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  // ── Link chuyển hướng của Hub (đếm lượt bấm) ─────────────────────────────
+  findLink(postId: string, target: string) {
+    return this._link.model.shareLink.findFirst({ where: { postId, target } });
+  }
+
+  createLink(data: {
+    code: string;
+    postId: string;
+    organizationId: string;
+    target: string;
+  }) {
+    return this._link.model.shareLink.create({ data });
+  }
+
+  getLinkByCode(code: string) {
+    return this._link.model.shareLink.findUnique({ where: { code } });
+  }
+
+  async countClick(code: string) {
+    const link = await this._link.model.shareLink.update({
+      where: { code },
+      data: { clicks: { increment: 1 } },
+    });
+    await this.increment(link.postId, link.organizationId, 'linkClicks');
+    return link;
+  }
+
+  increment(
+    postId: string,
+    organizationId: string,
+    field: 'linkClicks' | 'zaloShares'
+  ) {
+    return this._stat.model.postShareStat.upsert({
+      where: { postId },
+      create: { postId, organizationId, [field]: 1 },
+      update: { [field]: { increment: 1 } },
+    });
+  }
+
+  // Bài gốc đã đăng có releaseURL/releaseId chứa mã bài Facebook
+  // (vd 1234_5678, 5678 hoặc pfbid...).
+  findPostByReleaseFragment(organizationId: string, fragment: string) {
+    return this._post.model.post.findFirst({
+      where: {
+        organizationId,
+        deletedAt: null,
+        parentPostId: null,
+        OR: [
+          { releaseURL: { contains: fragment } },
+          { releaseId: { contains: fragment } },
+        ],
+      },
+      select: { id: true, organizationId: true },
     });
   }
 }
