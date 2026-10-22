@@ -1120,6 +1120,26 @@ export class ViralRepository {
     });
   }
 
+  // Trạng thái các content (chủ đề) — cho thẻ bài Group FB biết bài đã đi
+  // tới bước nào của phễu (Chờ duyệt / Đã duyệt / Lưu trữ / Chờ đăng).
+  topicsBrief(orgId: string, ids: string[]) {
+    if (!ids.length) return Promise.resolve([] as any[]);
+    return this._topics.model.viralTopic.findMany({
+      where: { organizationId: orgId, id: { in: ids } },
+      select: { id: true, status: true, score: true, synthesizedAt: true, deletedAt: true },
+    });
+  }
+
+  async topicIdsWithClones(orgId: string, topicIds: string[]): Promise<string[]> {
+    if (!topicIds.length) return [];
+    const rows = await this._clones.model.viralClone.findMany({
+      where: { organizationId: orgId, topicId: { in: topicIds }, deletedAt: null },
+      select: { topicId: true },
+      distinct: ['topicId'],
+    });
+    return rows.map((r) => r.topicId as string);
+  }
+
   getTopic(orgId: string, id: string) {
     return this._topics.model.viralTopic.findFirst({
       where: { id, organizationId: orgId, deletedAt: null },

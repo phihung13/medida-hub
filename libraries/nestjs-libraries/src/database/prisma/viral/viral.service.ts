@@ -1567,6 +1567,19 @@ export class ViralService implements OnModuleInit {
 
   // Nhập tay ("Thêm bài viral"): tạo chủ đề 1 nguồn + tổng hợp NGAY (bất kể
   // ngưỡng hội tụ) để thẻ hiện điểm + trạng thái như trước.
+  // Content 1 nguồn mà AI tổng hợp lỗi (mạng/key) thì không bao giờ hiện ở
+  // tab nào (danh sách chỉ lấy chủ đề đã tổng hợp) và lượt gom tự động bỏ qua
+  // chủ đề 1 bài -> cho tổng hợp lại theo yêu cầu.
+  async resynthesizeTopic(orgId: string, topicId: string): Promise<boolean> {
+    const topic = await this._repo.getTopic(orgId, topicId);
+    if (!topic || topic.synthesizedAt) return false;
+    const personasText = await this.personasTextFor(orgId);
+    const rubric = getSkill('tieu-chi-cham-diem') || VIRAL_RUBRIC;
+    return this.synthesizeOne(orgId, { id: topic.id }, personasText, rubric).catch(
+      () => false
+    );
+  }
+
   private async makeManualTopic(orgId: string, postId: string): Promise<void> {
     const post = await this._repo.getById(orgId, postId);
     if (!post) return;
@@ -2031,6 +2044,34 @@ TIN HIEU MOI (${cnt[p.code] || 0} content):
     const valid = ['approved', 'pending', 'skipped'];
     if (!valid.includes(status)) throw new Error('Trạng thái không hợp lệ');
     return this._repo.setStatus(orgId, id, status);
+  }
+
+  // Bài Group FB đã "Thành content" đang nằm ở bước nào của phễu:
+  // dang-tong-hop (AI chưa xong) · pending · approved · skipped (Lưu trữ) ·
+  // deleted · ready (đã có thành phẩm ở Chờ đăng).
+  async contentStages(orgId: string, topicIds: string[]) {
+    const ids = [...new Set(topicIds.filter((x) => x && x !== 'pushed'))];
+    const out: Record<string, { stage: string; score: number | null }> = {};
+    if (!ids.length) return out;
+    const [topics, withProducts, withClones] = await Promise.all([
+      this._repo.topicsBrief(orgId, ids),
+      this._repo.topicIdsWithProducts(orgId, ids),
+      this._repo.topicIdsWithClones(orgId, ids),
+    ]);
+    const ready = new Set([...withProducts, ...withClones]);
+    for (const t of topics as any[]) {
+      out[t.id] = {
+        stage: t.deletedAt
+          ? 'deleted'
+          : ready.has(t.id)
+          ? 'ready'
+          : !t.synthesizedAt
+          ? 'dang-tong-hop'
+          : t.status,
+        score: t.score ?? null,
+      };
+    }
+    return out;
   }
 
   statusCounts(orgId: string) {

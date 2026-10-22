@@ -4058,7 +4058,7 @@ export const ViralComponent: FC = () => {
 
       {/* 📰 Bản tin tuần — đọc lại + tick todo + cấu hình gửi Zalo */}
       {isGroups ? (
-        <ViralGroupsPanel canModerate={canModerate} />
+        <ViralGroupsPanel canModerate={canModerate} onOpenTopic={(id) => openTopic(id)()} />
       ) : isReports ? (
         <div className="flex flex-col gap-[12px]">
           <ZaloSendPanel latestId={(reportsData?.items || [])[0]?.id} />

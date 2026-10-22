@@ -21,6 +21,16 @@ const KIND_META: Record<string, { icon: string; key: string; label: string; cls:
   khac: { icon: '•', key: 'viral_gr_kind_khac', label: 'Other', cls: 'bg-newBgColor text-textItemBlur' },
 };
 
+// Bài đã "Thành content" đang ở bước nào của phễu (backend: contentStages).
+const STAGE_META: Record<string, { key: string; label: string; cls: string }> = {
+  'dang-tong-hop': { key: 'viral_gr_stage_synth', label: 'AI is summarising — not in any tab yet', cls: 'text-[#FFC53D]' },
+  pending: { key: 'viral_gr_stage_pending', label: 'In "To review"', cls: 'text-btnPrimary' },
+  approved: { key: 'viral_gr_stage_approved', label: 'Approved — producing', cls: 'text-[#57D9A3]' },
+  ready: { key: 'viral_gr_stage_ready', label: 'In "Ready to post"', cls: 'text-[#57D9A3]' },
+  skipped: { key: 'viral_gr_stage_skipped', label: 'Low score — moved to "Archive"', cls: 'text-[#FF5A52]' },
+  deleted: { key: 'viral_gr_stage_deleted', label: 'Deleted — in "Archive"', cls: 'text-textItemBlur' },
+};
+
 const useGroupsOverview = () => {
   const fetch = useFetch();
   return useSWR('/viral-groups', async (u: string) => (await fetch(u)).json());
@@ -96,7 +106,7 @@ const TopicList: FC<{
   );
 };
 
-const PostCard: FC<{ post: any; canModerate: boolean; onDone: () => void }> = ({ post, canModerate, onDone }) => {
+const PostCard: FC<{ post: any; canModerate: boolean; onDone: () => void; onOpenTopic?: (id: string) => void }> = ({ post, canModerate, onDone, onOpenTopic }) => {
   const t = useT();
   const fetch = useFetch();
   const toast = useToaster();
@@ -107,11 +117,16 @@ const PostCard: FC<{ post: any; canModerate: boolean; onDone: () => void }> = ({
     setBusy(true);
     try {
       const res = await fetch(`/viral-groups/posts/${post.id}/to-content`, { method: 'POST' });
+      const j = res.ok ? await res.json().catch(() => null) : null;
       toast.show(
-        res.ok
-          ? t('viral_gr_to_content_ok', 'Sent to the content funnel — AI is summarising it, see "To review" in a minute.')
-          : t('viral_gr_to_content_fail', 'Could not create content — try again.'),
-        res.ok ? 'success' : 'warning'
+        !res.ok
+          ? t('viral_gr_to_content_fail', 'Could not create content — try again.')
+          : j?.existed
+          ? j?.retried
+            ? t('viral_gr_resynth_ok', 'Summarised again — the content is now in its tab.')
+            : t('viral_gr_resynth_fail', 'AI still could not summarise this post — try again later.')
+          : t('viral_gr_to_content_ok', 'Sent to the content funnel — AI is summarising it, see "To review" in a minute.'),
+        !res.ok || (j?.existed && !j?.retried) ? 'warning' : 'success'
       );
       onDone();
     } finally {
@@ -164,7 +179,39 @@ const PostCard: FC<{ post: any; canModerate: boolean; onDone: () => void }> = ({
       {canModerate && (
         <div className="flex gap-[6px]">
           {post.pushedTopicId ? (
-            <span className="flex-1 py-[6px] text-center text-[11.5px] font-[700] text-[#57D9A3]">✓ {t('viral_gr_in_content', 'Already in content')}</span>
+            (() => {
+              const sm = STAGE_META[post.contentStage || ''];
+              const canOpen = !!onOpenTopic && post.pushedTopicId !== 'pushed' && post.contentStage && post.contentStage !== 'dang-tong-hop';
+              return (
+                <div className="flex-1 flex items-center gap-[6px] min-w-0">
+                  <button
+                    type="button"
+                    disabled={!canOpen}
+                    onClick={() => canOpen && onOpenTopic!(post.pushedTopicId)}
+                    title={canOpen ? t('viral_gr_open_content', 'Open this content') : undefined}
+                    className={clsx(
+                      'flex-1 min-w-0 py-[6px] px-[8px] rounded-[7px] text-[11.5px] font-[700] text-start truncate',
+                      sm?.cls || 'text-[#57D9A3]',
+                      canOpen ? 'hover:bg-newBgColor cursor-pointer' : 'cursor-default'
+                    )}
+                  >
+                    ✓ {t('viral_gr_in_content', 'Already in content')}
+                    {sm ? ` · ${t(sm.key, sm.label)}` : ''}
+                    {post.contentScore != null && post.contentStage !== 'dang-tong-hop' ? ` · ${post.contentScore}đ` : ''}
+                    {canOpen ? ' ↗' : ''}
+                  </button>
+                  {post.contentStage === 'dang-tong-hop' && (
+                    <button
+                      onClick={toContent}
+                      disabled={busy}
+                      className="shrink-0 py-[6px] px-[10px] rounded-[7px] text-[11.5px] font-[700] bg-btnPrimary/12 text-btnPrimary hover:bg-btnPrimary/25 disabled:opacity-50"
+                    >
+                      {busy ? t('viral_gr_sending', 'Sending…') : `↻ ${t('viral_gr_resynth', 'Summarise again')}`}
+                    </button>
+                  )}
+                </div>
+              );
+            })()
           ) : (
             <button onClick={toContent} disabled={busy} className="flex-1 py-[6px] rounded-[7px] text-[11.5px] font-[700] bg-btnPrimary/12 text-btnPrimary hover:bg-btnPrimary/25 disabled:opacity-50">
               {busy ? t('viral_gr_sending', 'Sending…') : `⚡ ${t('viral_gr_to_content', 'Make content')}`}
@@ -259,7 +306,7 @@ const GroupsManager: FC<{ groups: any[]; canModerate: boolean; onDone: () => voi
   );
 };
 
-export const ViralGroupsPanel: FC<{ canModerate: boolean }> = ({ canModerate }) => {
+export const ViralGroupsPanel: FC<{ canModerate: boolean; onOpenTopic?: (id: string) => void }> = ({ canModerate, onOpenTopic }) => {
   const t = useT();
   const { data: ov, mutate: mutateOv } = useGroupsOverview();
   const groups: any[] = ov?.groups || [];
@@ -364,7 +411,7 @@ export const ViralGroupsPanel: FC<{ canModerate: boolean }> = ({ canModerate }) 
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-[12px]">
           {posts.map((p) => (
-            <PostCard key={p.id} post={p} canModerate={canModerate} onDone={refresh} />
+            <PostCard key={p.id} post={p} canModerate={canModerate} onDone={refresh} onOpenTopic={onOpenTopic} />
           ))}
         </div>
       )}

@@ -326,6 +326,12 @@ export class ViralGroupService {
       q: str(f.q, 100) || undefined,
       days: f.batch ? undefined : 30,
     });
+    const stages = await this._viral
+      .contentStages(
+        orgId,
+        rows.map((p) => p.pushedTopicId || '')
+      )
+      .catch(() => ({} as Record<string, { stage: string; score: number | null }>));
     return rows.map((p) => ({
       id: p.id,
       groupId: p.groupId,
@@ -350,6 +356,8 @@ export class ViralGroupService {
       createdAt: p.createdAt,
       batchId: p.batchId,
       pushedTopicId: p.pushedTopicId,
+      contentStage: p.pushedTopicId ? stages[p.pushedTopicId]?.stage || null : null,
+      contentScore: p.pushedTopicId ? stages[p.pushedTopicId]?.score ?? null : null,
     }));
   }
 
@@ -366,7 +374,15 @@ export class ViralGroupService {
   async toContent(orgId: string, id: string) {
     const p = await this._repo.getPost(orgId, id);
     if (!p) throw new HttpException('Không tìm thấy bài.', 404);
-    if (p.pushedTopicId) return { topicId: p.pushedTopicId, existed: true };
+    if (p.pushedTopicId) {
+      // Bấm lại khi content còn kẹt "AI đang tổng hợp" -> tổng hợp lại.
+      const retried =
+        p.pushedTopicId !== 'pushed' &&
+        (await this._viral
+          .resynthesizeTopic(orgId, p.pushedTopicId)
+          .catch(() => false));
+      return { topicId: p.pushedTopicId, existed: true, retried };
+    }
     let comments: string[] = [];
     try {
       comments = p.topComments ? JSON.parse(p.topComments) : [];
