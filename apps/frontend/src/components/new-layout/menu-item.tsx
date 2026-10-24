@@ -4,6 +4,13 @@ import { usePathname } from 'next/navigation';
 import clsx from 'clsx';
 import Link from 'next/link';
 
+// Mục menu đang mở khi đường dẫn TRÙNG path hoặc là trang con của nó. So theo
+// đoạn "/" chứ không theo tiền tố chuỗi — tránh /media-board làm sáng cả /media.
+export const isPathActive = (currentPath: string, path: string) =>
+  !!path &&
+  path !== '#' &&
+  (currentPath === path || currentPath.indexOf(path.replace(/\/$/, '') + '/') === 0);
+
 export const MenuItem: FC<{ label: string; icon: ReactNode; path: string; onClick?: () => void }> = ({
   label,
   icon,
@@ -11,7 +18,7 @@ export const MenuItem: FC<{ label: string; icon: ReactNode; path: string; onClic
   onClick,
 }) => {
   const currentPath = usePathname();
-  const isActive = currentPath.indexOf(path) === 0;
+  const isActive = isPathActive(currentPath, path);
 
   const className = clsx(
     'group w-full minCustom:h-[54px] custom:h-[44px] py-[8px] px-[6px] minCustom:gap-[4px] custom:gap-[2px] flex flex-col font-[600] items-center justify-center rounded-[12px] hover:text-textItemFocused hover:bg-boxFocused transition-colors',

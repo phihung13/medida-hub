@@ -6,6 +6,7 @@ import Link from 'next/link';
 import clsx from 'clsx';
 import dynamic from 'next/dynamic';
 import { useMenuItem } from '@gitroom/frontend/components/layout/top.menu';
+import { isPathActive } from '@gitroom/frontend/components/new-layout/menu-item';
 import { useUser } from '@gitroom/frontend/components/layout/user.context';
 import { useVariables } from '@gitroom/react/helpers/variable.context';
 import { LanguageComponent } from '@gitroom/frontend/components/layout/language.component';
@@ -127,8 +128,7 @@ export const MobileNav: FC = () => {
     };
   }, [moreOpen]);
 
-  const isActive = (path: string) =>
-    path !== '#' && !!path && pathname.indexOf(path) === 0;
+  const isActive = (path: string) => isPathActive(pathname, path);
   const moreActive = rest.some((i) => isActive(i.path));
 
   return (
