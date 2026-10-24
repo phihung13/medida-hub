@@ -105,6 +105,47 @@ export const useMenuItem = () => {
       path: '/viral',
     },
     {
+      name: t('media_board', 'Media production board'),
+      icon: (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="22"
+          height="22"
+          viewBox="0 0 24 24"
+          fill="none"
+        >
+          <rect
+            x="3"
+            y="4"
+            width="5"
+            height="16"
+            rx="1.5"
+            stroke="currentColor"
+            strokeWidth="1.8"
+          />
+          <rect
+            x="10"
+            y="4"
+            width="5"
+            height="11"
+            rx="1.5"
+            stroke="currentColor"
+            strokeWidth="1.8"
+          />
+          <rect
+            x="17"
+            y="4"
+            width="4"
+            height="7"
+            rx="1.5"
+            stroke="currentColor"
+            strokeWidth="1.8"
+          />
+        </svg>
+      ),
+      path: '/media-board',
+    },
+    {
       name: 'Agent',
       icon: (
         <svg

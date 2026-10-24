@@ -43,6 +43,8 @@ model Organization {
   webhooks            Webhooks[]
   oauthApp            OAuthApp[]
   oauthAuthorizations OAuthAuthorization[]
+  mediaVideos         MediaVideo[]
+  mediaBoardConfig    MediaBoardConfig?
 
   @@index([apiKey])
   @@index([streakSince])
@@ -844,6 +846,32 @@ model ShareLink {
   createdAt      DateTime @default(now())
 
   @@index([postId])
+}
+
+// Bảng sản xuất Media (Kịch bản → Quay → Dựng → Duyệt → Phát hành).
+// Lưu nguyên thẻ trong `data` (title, stream, episode, format, ngày, link,
+// stageAt, goal…); `status` tách ra cột để lọc/nhóm. Tách theo tổ chức.
+model MediaVideo {
+  id             String       @id @default(uuid())
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  organizationId String
+  status         String
+  data           Json
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+}
+
+// Cấu hình bảng sản xuất của tổ chức: luồng nội dung, thành viên, quy tắc
+// (limitScope, maxLongPerSlot, scheduleWarnDays, maxBacklogPerPerson,
+// reviewHours, editLeadDays, shootLeadDays).
+model MediaBoardConfig {
+  organizationId String       @id
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  data           Json
+  updatedAt      DateTime     @updatedAt
 }
 
 model Notifications {

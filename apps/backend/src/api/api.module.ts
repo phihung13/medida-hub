@@ -32,6 +32,7 @@ import { ViralController } from '@gitroom/backend/api/routes/viral.controller';
 import { ViralGroupsController } from '@gitroom/backend/api/routes/viral-groups.controller';
 import { AutopostController } from '@gitroom/backend/api/routes/autopost.controller';
 import { SetsController } from '@gitroom/backend/api/routes/sets.controller';
+import { MediaBoardController } from '@gitroom/backend/api/routes/media-board.controller';
 import { ThirdPartyController } from '@gitroom/backend/api/routes/third-party.controller';
 import { MonitorController } from '@gitroom/backend/api/routes/monitor.controller';
 import { NoAuthIntegrationsController } from '@gitroom/backend/api/routes/no.auth.integrations.controller';
@@ -71,6 +72,7 @@ const authenticatedController = [
   ViralGroupsController,
   AutopostController,
   SetsController,
+  MediaBoardController,
   ThirdPartyController,
   OAuthAppController,
   ApprovedAppsController,
