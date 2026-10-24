@@ -105,7 +105,9 @@ export const useMenuItem = () => {
       path: '/viral',
     },
     {
-      name: t('media_board', 'Media production board'),
+      // Bảng Kanban: khung bảng + hàng tiêu đề cột + thẻ xếp dưới mỗi cột.
+      // Nhãn ngắn để vừa 1 dòng ô menu (54px); tên đầy đủ nằm trên trang.
+      name: t('media_board', 'Production'),
       icon: (
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -115,31 +117,24 @@ export const useMenuItem = () => {
           fill="none"
         >
           <rect
-            x="3"
-            y="4"
-            width="5"
-            height="16"
-            rx="1.5"
+            x="2.5"
+            y="3.5"
+            width="19"
+            height="17"
+            rx="3"
             stroke="currentColor"
             strokeWidth="1.8"
           />
-          <rect
-            x="10"
-            y="4"
-            width="5"
-            height="11"
-            rx="1.5"
+          <path
+            d="M2.5 8.5H21.5M9 8.5V20.5M15 8.5V20.5"
             stroke="currentColor"
             strokeWidth="1.8"
           />
-          <rect
-            x="17"
-            y="4"
-            width="4"
-            height="7"
-            rx="1.5"
+          <path
+            d="M5 11.5H6.5M5 14.5H6.5M11.25 11.5H12.75M17.5 11.5H19M17.5 14.5H19M17.5 17.5H19"
             stroke="currentColor"
             strokeWidth="1.8"
+            strokeLinecap="round"
           />
         </svg>
       ),

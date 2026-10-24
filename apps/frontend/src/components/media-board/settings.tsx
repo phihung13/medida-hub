@@ -5,7 +5,7 @@ import {
   Board,
   DEFAULT_GOALS,
   MediaConfig,
-  nowIso,
+  sanitizeConfig,
   splitList,
 } from '@gitroom/frontend/components/media-board/logic';
 import { Field, Fieldset, Sheet, btnCls, inputCls } from '@gitroom/frontend/components/media-board/ui';
@@ -63,41 +63,17 @@ export const SettingsSheet: FC<{
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const num = (v: string) => (v === '' || v == null ? null : Number(v));
-    const streams = rows
-      .map((r) => ({
-        name: (r.name || '').trim(),
-        code: (r.code || '').trim().toUpperCase(),
-        group: r.group || '',
-        owner: (r.owner || '').trim(),
-        reviewer: (r.reviewer || '').trim(),
-        goal: (r.goal || '').trim(),
-        channel: (r.channel || '').trim(),
-        subChannels: splitList(r.subChannels),
-        pubLong: num(r.pubLong),
-        pubShort: num(r.pubShort),
-        shootPerWeek: num(r.shootPerWeek),
-        subseries: String(r.subseries || '')
-          .split(',')
-          .map((x) => x.trim())
-          .filter(Boolean),
-      }))
-      .filter((r) => r.name);
-    const next: MediaConfig = {
-      streams,
-      people: rules.people
-        .split(',')
-        .map((x) => x.trim())
-        .filter(Boolean),
-      maxLongPerSlot: Math.max(1, Number(rules.max) || 2),
+    const next = sanitizeConfig({
+      streams: rows,
+      people: rules.people,
+      maxLongPerSlot: rules.max,
       limitScope: rules.scope,
-      scheduleWarnDays: Math.max(0, Number(rules.warn) || 0),
-      maxBacklogPerPerson: Math.max(0, Number(rules.backlog) || 0),
-      reviewHours: Math.max(1, Number(rules.review) || 24),
-      editLeadDays: Math.max(0, Number(rules.elead) || 0),
-      shootLeadDays: Math.max(0, Number(rules.slead) || 0),
-      updatedAt: nowIso(),
-    };
+      scheduleWarnDays: rules.warn,
+      maxBacklogPerPerson: rules.backlog,
+      reviewHours: rules.review,
+      editLeadDays: rules.elead,
+      shootLeadDays: rules.slead,
+    });
     setSaving(true);
     try {
       await onSave(next);

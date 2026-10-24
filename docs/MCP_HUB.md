@@ -177,6 +177,56 @@ Bot Zalo dùng chung cho cả Hub (một tài khoản Zalo). Hub gọi bot qua m
 
 **Đăng Zalo Video:** tạo bài trên Lịch cho kênh Zalo Video bằng `hub_bai_tao`. Bot tự đăng khi tới giờ.
 
+### 4.7 Bảng sản xuất Media
+
+Trang `/media-board` (menu **Sản xuất**) theo dõi sản xuất video qua các cột: Kịch bản → Chờ quay → Đã quay · chờ dựng → Đang dựng → Chờ duyệt → Lên lịch phát → Đã phát hành. Bảng này chỉ để theo dõi nội bộ, không công cụ nào đăng gì ra mạng xã hội.
+
+**Thẻ được kiểm theo đúng luật của giao diện.** Giao diện và MCP dùng chung logic `@gitroom/helpers/utils/media-board.logic`. Các luật:
+- **Bắt buộc:** tiêu đề và ngày phát hành. Hạn quay và hạn dựng xong được tính ngược từ ngày phát.
+- **Thứ tự ngày:** ngày quay ≤ bắt đầu dựng ≤ xong dựng ≤ ngày phát.
+- **Link** phải là `https://`. **Mã tập** không được trùng.
+- **Video dài** (trên 5 phút) phải chọn buổi xong dựng. Mỗi buổi chỉ nhận tối đa N video dài, tính theo người dựng hoặc cả team tuỳ cài đặt.
+- **Điều kiện vào cột:**
+  - Chờ quay: cần ngày quay.
+  - Đang dựng: cần ngày bắt đầu và xong dựng, và buổi đó còn chỗ.
+  - Chờ duyệt: cần link file dựng.
+  - Lên lịch phát: cần ngày phát.
+  - Đã phát hành: cần URL bài đăng.
+- **Tự chuyển cột** khi dữ liệu đủ:
+  - có link kịch bản và ngày quay → Chờ quay;
+  - có link file dựng → Chờ duyệt;
+  - có URL bài đăng → Đã phát hành.
+
+Thẻ được gọi bằng **id hoặc mã tập** (tham số `the`). Ngày dùng dạng `YYYY-MM-DD`. Muốn xoá một ô thì truyền chuỗi rỗng.
+
+**Duyệt:** đưa thẻ *lần đầu* vào Lên lịch phát hoặc Đã phát hành là bước duyệt, cần quyền `dang`. Khoá `nhap` tạo, sửa, chuyển cột được bình thường, nhưng thẻ sẽ dừng ở Chờ duyệt.
+
+| Công cụ | Quyền | Việc |
+|---|---|---|
+| `media_board_tong_quan` | doc | Như dải chip đầu trang: số thẻ theo cột, thẻ đỏ, đã quay chưa dựng, chờ duyệt, trễ phát, đã phát 7 ngày, luồng lệch nhịp, quy tắc, việc gấp |
+| `media_board_danh_sach` | doc | Danh sách thẻ kèm hạn quay/dựng, cảnh báo, tiến độ bản cắt. Lọc theo luồng, chuyên mục, người, dài/ngắn, chip cảnh báo, cột. |
+| `media_board_xem_the` | doc | Một thẻ đầy đủ, gồm:<br>• bản cắt đã có / còn thiếu<br>• sức chứa buổi dựng<br>• gợi ý "Điền lịch theo hạn"<br>• bước kế tiếp đang bị chặn vì gì |
+| `media_board_lich_dung` | doc | Lịch dựng theo ngày × người × buổi: đã xếp / tối đa, chỗ trống, đang dựng dở, video ngắn, video đã quay chưa xếp lịch |
+| `media_board_luong` | doc | Sức khoẻ từng luồng: nhịp cam kết so với số đã lên lịch, phát gần nhất / kế tiếp, cảnh báo |
+| `media_board_xuat_csv` | doc | Như nút "Tải CSV". Trả theo trang, mỗi trang 90 dòng. |
+| `media_board_cau_hinh` | doc | Luồng, thành viên, quy tắc |
+| `media_board_tao_the` | nhap | Như nút "+ Thêm video". Chọn luồng thì Hub tự điền các ô trống và mã tập. `dien_lich_theo_han` điền ngày quay/dựng. |
+| `media_board_sua_the` | nhap | Sửa các ô được truyền (như bấm Lưu trong editor). Xếp lịch dựng bằng `xong_dung` + `buoi_xong_dung`. |
+| `media_board_chuyen_trang_thai` | nhap | Kéo–thả sang cột khác. Bỏ trống cột đích = nút "→". |
+| `media_board_tao_ban_cat` | nhap | "+ Tạo bản cắt": mã `<gốc>-C<n>`, lấy kênh phụ còn thiếu, phát sau bản gốc 1 ngày |
+| `media_board_tao_tap_cung_buoi` | nhap | "+ Tập khác cùng buổi quay" |
+| `media_board_duyet` | dang | "Duyệt ✓": Chờ duyệt → Lên lịch phát |
+| `media_board_xoa_the` | dang | Xoá thẻ |
+| `media_board_cau_hinh_sua` | dang | Thêm / sửa / đổi tên / xoá luồng, thay danh sách thành viên, đổi quy tắc |
+
+Luồng gợi ý cho agent lập kế hoạch tuần:
+1. `media_board_tong_quan` để xem việc gấp.
+2. `media_board_tao_the` (kèm `luong`, `ngay_phat_hanh`, `dien_lich_theo_han=true`) cho từng tập.
+3. `media_board_lich_dung` để xem chỗ trống.
+4. `media_board_sua_the` để xếp buổi dựng.
+5. Khi có link file dựng, `media_board_sua_the` với `link_file_dung`; thẻ tự sang Chờ duyệt.
+6. Người duyệt (hoặc khoá `dang`) gọi `media_board_duyet`.
+
 
 ## 4b. Công cụ bổ sung: ảnh, chân bài, hashtag, kênh, viral, tự động hoá, Zalo (15/10/2026)
 

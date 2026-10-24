@@ -10,14 +10,15 @@ import {
   MediaCard,
   SIDX,
   STATUSES,
-  addDays,
   checkDates,
-  checkStage,
   codeSort,
+  cutPreset,
+  fillByDeadline,
   fmt,
   inferStatus,
-  nowIso,
-  safeUrl,
+  normalizeCardInput,
+  prepareCardSave,
+  siblingPreset,
   splitList,
   today,
 } from '@gitroom/frontend/components/media-board/logic';
@@ -101,33 +102,10 @@ export const EditorSheet: FC<{
   const errRef = useRef<HTMLDivElement>(null);
   const set = (k: keyof Form) => (e: { target: { value: string } }) => setF((p) => ({ ...p, [k]: e.target.value }));
 
-  const read = (): Partial<MediaCard> => ({
-    title: f.title.trim(),
-    stream: f.stream,
-    subseries: f.subseries.trim(),
-    episode: f.episode.trim().toUpperCase(),
-    parentCode: f.parentCode.trim().toUpperCase(),
-    duration: f.duration,
-    // ô chọn chỉ có 2 giá trị — thẻ cũ thiếu format được lưu là "ngan" như bản gốc
-    format: f.format === 'dai' ? 'dai' : 'ngan',
-    channel: f.channel.trim(),
-    assignee: f.assignee.trim(),
-    streamOwner: f.streamOwner.trim(),
-    reviewer: f.reviewer.trim(),
-    status: f.status,
-    shootDate: f.shootDate,
-    shootTime: f.shootTime,
-    scriptUrl: f.scriptUrl.trim(),
-    editStart: f.editStart,
-    editEnd: f.editEnd,
-    editSlot: f.editSlot,
-    subChannels: f.parentCode.trim() ? [] : splitList(f.subch),
-    editedUrl: f.editedUrl.trim(),
-    publishDate: f.publishDate,
-    publishUrl: f.publishUrl.trim(),
-    goal: f.goal.trim(),
-    notes: f.notes.trim(),
-  });
+  const read = (): Partial<MediaCard> => {
+    const { subch, ...rest } = f;
+    return normalizeCardInput({ ...rest, subChannels: subch });
+  };
   const fail = (m: string) => {
     setErr(m);
     setTimeout(() => errRef.current?.scrollIntoView({ block: 'nearest' }), 0);
@@ -155,11 +133,9 @@ export const EditorSheet: FC<{
     const bad = checkDates(d);
     if (bad) dlWarn.push(bad.toLowerCase().replace(/\.$/, ''));
   }
-  const fillByDeadline = () => {
-    const sd = f.shootDate || (dl.shootBy < t ? t : dl.shootBy);
-    const es = f.editStart || (addDays(sd, 1) > dl.editBy ? sd : addDays(sd, 1));
-    const ee = f.editEnd || (dl.editBy < es ? es : dl.editBy);
-    setF((p) => ({ ...p, shootDate: sd, editStart: es, editEnd: ee }));
+  const fillSchedule = () => {
+    const r = fillByDeadline(board, d, t);
+    if (r) setF((p) => ({ ...p, ...r }));
   };
 
   let cutHint = f.parentCode
@@ -196,53 +172,13 @@ export const EditorSheet: FC<{
   };
   const makeCut = () => {
     if (!base) return;
-    const x = read();
-    if (!x.episode) return fail('Cần có mã tập cho bản gốc trước khi tạo bản cắt.');
-    const ch = board.missingCuts({ ...base, ...x })[0] || '';
-    let n = board.childrenOf({ episode: x.episode }).length + 1,
-      code: string;
-    do {
-      code = `${x.episode}-C${n++}`;
-    } while (board.cards.some((y) => (y.episode || '').toUpperCase() === code));
-    onReopen({
-      stream: x.stream,
-      subseries: x.subseries,
-      parentCode: x.episode,
-      episode: code,
-      format: 'ngan',
-      channel: ch,
-      title: `${x.title}${ch ? ' — ' + ch : ' — bản cắt'}`,
-      assignee: x.assignee,
-      streamOwner: x.streamOwner,
-      reviewer: x.reviewer,
-      goal: x.goal,
-      publishDate: x.publishDate ? addDays(x.publishDate, 1) : '',
-      shootDate: x.shootDate,
-      shootTime: x.shootTime,
-      scriptUrl: x.scriptUrl,
-      status: x.shootDate ? 'da-quay' : 'kich-ban',
-      notes: `Bản cắt từ ${x.episode}.`,
-    });
+    const r = cutPreset(board, base, read());
+    if (r.error) return fail(r.error);
+    onReopen(r.preset);
   };
   const makeSibling = () => {
     if (!base) return;
-    const x = read();
-    onReopen({
-      stream: x.stream,
-      subseries: x.subseries,
-      episode: board.nextCode(x.stream),
-      format: x.format,
-      duration: x.duration,
-      channel: x.channel,
-      assignee: x.assignee,
-      streamOwner: x.streamOwner,
-      reviewer: x.reviewer,
-      goal: x.goal,
-      shootDate: x.shootDate,
-      shootTime: x.shootTime,
-      status: SIDX[base.status] <= SIDX['da-quay'] ? base.status : 'da-quay',
-      notes: `Quay cùng buổi với ${x.episode || x.title}.`,
-    });
+    onReopen(siblingPreset(board, base, read()));
   };
   const remove = async () => {
     if (!base) return;
@@ -254,39 +190,12 @@ export const EditorSheet: FC<{
   };
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const x = read();
-    if (!x.title) return fail('Cần đặt tiêu đề video.');
-    if (!x.publishDate && x.status !== 'da-phat')
-      return fail('Cần điền ngày phát hành ngay sau tiêu đề và thời lượng — lịch quay và dựng được tính ngược từ ngày này.');
-    const badDates = checkDates(x);
-    if (badDates) return fail(badDates);
-    if (x.editEnd && !x.editStart) x.editStart = x.editEnd;
-    for (const [k, lab] of [
-      ['scriptUrl', 'Link kịch bản'],
-      ['editedUrl', 'Link file đã dựng'],
-      ['publishUrl', 'URL bài đăng'],
-    ] as const)
-      if (x[k] && !safeUrl(x[k])) return fail(`${lab} phải bắt đầu bằng https://`);
-    if (x.episode && board.cards.some((y) => y.id !== id && (y.episode || '').toUpperCase() === x.episode))
-      return fail(`Mã tập ${x.episode} đã được dùng. Chọn mã khác.`);
-    x.status = inferStatus(x);
-    const stage = checkStage(x, x.status);
-    if (stage) return fail(stage);
-    const cap = board.checkCapacity({ ...x, id: id as string });
-    if (cap) return fail(cap);
+    const r = prepareCardSave(board, base, read());
+    if (r.error) return fail(r.error);
     setSaving(true);
     try {
-      const now = nowIso();
-      const stageAt = { ...(base?.stageAt || {}) };
-      if (!base || base.status !== x.status) stageAt[x.status as string] = now;
-      const body: Partial<MediaCard> = { ...x, stageAt, updatedAt: now };
-      if (base) {
-        if (base.status === 'cho-duyet' && SIDX[x.status as string] >= SIDX['len-lich'] && !base.approvedAt) body.approvedAt = now;
-        const full: Partial<MediaCard> = { ...base, ...body, createdAt: base.createdAt || now };
-        delete full.id;
-        delete full.editDate;
-        await onSet(base.id, full);
-      } else await onCreate({ ...body, createdAt: now });
+      if (base) await onSet(base.id, r.card);
+      else await onCreate(r.card);
     } catch {
       setSaving(false);
       fail('Chưa lưu được, thử lại sau ít giây.');
@@ -391,7 +300,7 @@ export const EditorSheet: FC<{
                     <span className="text-[#FF5A52] font-[600]">{dlWarn.join('; ')}</span>
                   </>
                 )}{' '}
-                <button type="button" className={clsx(btnCls('default', true), 'ms-[6px]')} onClick={fillByDeadline}>
+                <button type="button" className={clsx(btnCls('default', true), 'ms-[6px]')} onClick={fillSchedule}>
                   Điền lịch theo hạn
                 </button>
               </>

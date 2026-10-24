@@ -6,10 +6,9 @@ import {
   Board,
   MediaCard,
   SLOT_NAME,
-  addDays,
+  Slot,
+  calendarData,
   fmt,
-  parse,
-  today,
 } from '@gitroom/frontend/components/media-board/logic';
 
 const Open: FC<{ id: string; onOpen: (id: string) => void; children: string }> = ({ id, onOpen, children }) => (
@@ -29,26 +28,15 @@ const joinOpen = (items: MediaCard[], onOpen: (id: string) => void, label: (c: M
   ));
 
 // Lịch dựng 14 ngày: mỗi ô = 1 ngày × 1 người dựng (hoặc cả team), chia buổi
-// sáng/chiều theo buổi HOÀN THÀNH dựng của video dài.
+// sáng/chiều theo buổi HOÀN THÀNH dựng của video dài. Dữ liệu từ calendarData
+// (dùng chung với công cụ MCP media_board_lich_dung).
 export const CalendarView: FC<{
   board: Board;
   list: MediaCard[];
   onOpen: (id: string) => void;
   onNew: (preset: Partial<MediaCard>) => void;
 }> = ({ board, list, onOpen, onNew }) => {
-  const { config } = board;
-  const t = today(),
-    days = Array.from({ length: 14 }, (_, i) => addDays(t, i));
-  const team = config.limitScope === 'team';
-  const editors = team
-    ? ['Cả team']
-    : (() => {
-        const s = new Set(list.filter((c) => c.editEnd).map((c) => c.assignee || '(chưa gán)'));
-        (config.people || []).forEach((p) => s.add(p));
-        return [...s].sort((a, b) => a.localeCompare(b, 'vi'));
-      })();
-  const max = config.maxLongPerSlot || 2;
-  const backlog = list.filter((c) => c.status === 'da-quay' && !c.editEnd);
+  const { team, editors, max, days, backlog } = calendarData(board, list);
   const td = 'border-b border-e border-newBgLineColor p-[8px] align-top text-start';
 
   return (
@@ -71,120 +59,104 @@ export const CalendarView: FC<{
           </tr>
         </thead>
         <tbody>
-          {days.map((d) => {
-            const wd = parse(d).getDay();
-            return (
-              <tr key={d}>
-                <td
-                  className={clsx(
-                    td,
-                    'whitespace-nowrap font-mono text-[12px] w-[96px]',
-                    (wd === 0 || wd === 6) && 'text-textItemBlur',
-                    d === t && 'text-btnPrimary font-[600]'
-                  )}
-                >
-                  {fmt(d)}
-                  {d === t && (
-                    <>
-                      <br />
-                      hôm nay
-                    </>
-                  )}
-                </td>
-                {editors.map((p) => {
-                  const mine = list.filter((c) => c.editEnd === d && (team || (c.assignee || '(chưa gán)') === p));
-                  const longs = mine.filter((c) => c.format === 'dai'),
-                    shorts = mine.filter((c) => c.format !== 'dai');
-                  const slot = (k: 'sang' | 'chieu') => {
-                    const xs = longs.filter((c) => c.editSlot === k);
-                    return (
-                      <div className="flex gap-[6px] items-start mb-[6px]">
-                        <span className="font-mono text-[10.5px] text-textItemBlur w-[42px] flex-none pt-[2px]">
-                          {SLOT_NAME[k]}
-                          <br />
+          {days.map((day) => (
+            <tr key={day.date}>
+              <td
+                className={clsx(
+                  td,
+                  'whitespace-nowrap font-mono text-[12px] w-[96px]',
+                  day.weekend && 'text-textItemBlur',
+                  day.isToday && 'text-btnPrimary font-[600]'
+                )}
+              >
+                {fmt(day.date)}
+                {day.isToday && (
+                  <>
+                    <br />
+                    hôm nay
+                  </>
+                )}
+              </td>
+              {day.cells.map((cell) => {
+                const slot = (k: Slot) => {
+                  const xs = cell.slots[k];
+                  return (
+                    <div className="flex gap-[6px] items-start mb-[6px]">
+                      <span className="font-mono text-[10.5px] text-textItemBlur w-[42px] flex-none pt-[2px]">
+                        {SLOT_NAME[k]}
+                        <br />
+                        <span
+                          className={clsx(
+                            xs.length > max ? 'text-[#FF5A52]' : xs.length === max ? 'text-[#D08A22]' : 'text-textItemBlur'
+                          )}
+                        >
+                          {xs.length}/{max}
+                        </span>
+                      </span>
+                      <div className="flex-1 min-w-0 flex flex-col gap-[3px]">
+                        {xs.map((c) => (
                           <span
+                            key={c.id}
+                            onClick={() => onOpen(c.id)}
                             className={clsx(
-                              xs.length > max ? 'text-[#FF5A52]' : xs.length === max ? 'text-[#D08A22]' : 'text-textItemBlur'
+                              'rounded-[4px] px-[6px] py-[2px] cursor-pointer break-words text-[12px]',
+                              xs.length > max ? 'bg-[#FF5A52]/15 text-[#FF5A52]' : 'bg-btnPrimary/15 text-textColor'
                             )}
                           >
-                            {xs.length}/{max}
+                            {c.episode ? c.episode + ' · ' : ''}
+                            {c.title}
+                            {team && c.assignee ? ` (${c.assignee})` : ''}
                           </span>
-                        </span>
-                        <div className="flex-1 min-w-0 flex flex-col gap-[3px]">
-                          {xs.map((c) => (
-                            <span
-                              key={c.id}
-                              onClick={() => onOpen(c.id)}
-                              className={clsx(
-                                'rounded-[4px] px-[6px] py-[2px] cursor-pointer break-words text-[12px]',
-                                xs.length > max ? 'bg-[#FF5A52]/15 text-[#FF5A52]' : 'bg-btnPrimary/15 text-textColor'
-                              )}
-                            >
-                              {c.episode ? c.episode + ' · ' : ''}
-                              {c.title}
-                              {team && c.assignee ? ` (${c.assignee})` : ''}
-                            </span>
-                          ))}
-                          {xs.length < max && (
-                            <span
-                              onClick={() =>
-                                onNew({
-                                  format: 'dai',
-                                  editStart: d,
-                                  editEnd: d,
-                                  editSlot: k,
-                                  assignee: team ? '' : p,
-                                  status: 'da-quay',
-                                })
-                              }
-                              className="rounded-[4px] px-[6px] py-[2px] cursor-pointer text-[12px] border border-dashed border-newBgLineColor text-textItemBlur hover:border-btnPrimary"
-                            >
-                              + xếp video ({max - xs.length} chỗ trống)
-                            </span>
-                          )}
-                        </div>
+                        ))}
+                        {xs.length < max && (
+                          <span
+                            onClick={() =>
+                              onNew({
+                                format: 'dai',
+                                editStart: day.date,
+                                editEnd: day.date,
+                                editSlot: k,
+                                assignee: team ? '' : cell.editor,
+                                status: 'da-quay',
+                              })
+                            }
+                            className="rounded-[4px] px-[6px] py-[2px] cursor-pointer text-[12px] border border-dashed border-newBgLineColor text-textItemBlur hover:border-btnPrimary"
+                          >
+                            + xếp video ({max - xs.length} chỗ trống)
+                          </span>
+                        )}
                       </div>
-                    );
-                  };
-                  const noSlot = longs.filter((c) => !c.editSlot);
-                  const ongoing = list.filter(
-                    (c) =>
-                      c.editStart &&
-                      c.editEnd &&
-                      c.editStart <= d &&
-                      d < c.editEnd &&
-                      (team || (c.assignee || '(chưa gán)') === p)
+                    </div>
                   );
-                  return (
-                    <td key={p} className={td}>
-                      {slot('sang')}
-                      {slot('chieu')}
-                      {noSlot.map((c) => (
-                        <span
-                          key={c.id}
-                          onClick={() => onOpen(c.id)}
-                          className="block rounded-[4px] px-[6px] py-[2px] cursor-pointer text-[12px] bg-[#FF5A52]/15 text-[#FF5A52]"
-                        >
-                          {c.title} (chưa chọn buổi)
-                        </span>
-                      ))}
-                      {ongoing.length > 0 && (
-                        <div className="text-[11.5px] text-textItemBlur mt-[2px]">
-                          Đang dựng dở:{' '}
-                          {joinOpen(ongoing, onOpen, (c) => `${c.episode || c.title} (xong ${fmt(c.editEnd)})`)}
-                        </div>
-                      )}
-                      {shorts.length > 0 && (
-                        <div className="text-[11.5px] text-textItemBlur mt-[2px]">
-                          + {shorts.length} video ngắn: {joinOpen(shorts, onOpen, (c) => c.episode || c.title || '')}
-                        </div>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            );
-          })}
+                };
+                return (
+                  <td key={cell.editor} className={td}>
+                    {slot('sang')}
+                    {slot('chieu')}
+                    {cell.noSlot.map((c) => (
+                      <span
+                        key={c.id}
+                        onClick={() => onOpen(c.id)}
+                        className="block rounded-[4px] px-[6px] py-[2px] cursor-pointer text-[12px] bg-[#FF5A52]/15 text-[#FF5A52]"
+                      >
+                        {c.title} (chưa chọn buổi)
+                      </span>
+                    ))}
+                    {cell.ongoing.length > 0 && (
+                      <div className="text-[11.5px] text-textItemBlur mt-[2px]">
+                        Đang dựng dở: {joinOpen(cell.ongoing, onOpen, (c) => `${c.episode || c.title} (xong ${fmt(c.editEnd)})`)}
+                      </div>
+                    )}
+                    {cell.shorts.length > 0 && (
+                      <div className="text-[11.5px] text-textItemBlur mt-[2px]">
+                        + {cell.shorts.length} video ngắn: {joinOpen(cell.shorts, onOpen, (c) => c.episode || c.title || '')}
+                      </div>
+                    )}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>

@@ -10,14 +10,13 @@ import {
   MediaConfig,
   SIDX,
   STATUSES,
+  boardSummary,
   buildCsv,
-  checkStage,
   createBoard,
-  diffDays,
+  filterCards,
   mergeConfig,
   normalizeCard,
-  nowIso,
-  sevOf,
+  prepareMove,
   today,
 } from '@gitroom/frontend/components/media-board/logic';
 import {
@@ -152,36 +151,13 @@ export const MediaBoardComponent: FC = () => {
   const people = board.peopleList();
   const fp = people.includes(fPerson) ? fPerson : '';
 
-  const visible = useMemo(() => {
-    const qq = q.trim().toLowerCase();
-    return cards.filter((c) => {
-      if (fs && c.stream !== fs) return false;
-      if (fsub && c.subseries !== fsub) return false;
-      if (fp && c.assignee !== fp && board.ownerOf(c) !== fp && board.reviewerOf(c) !== fp) return false;
-      if (fFormat && c.format !== fFormat) return false;
-      if (qq && !`${c.episode} ${c.title} ${c.notes} ${c.goal} ${c.stream} ${c.subseries}`.toLowerCase().includes(qq)) return false;
-      if (alertFilter) {
-        const a = board.alertsFor(c);
-        if (alertFilter === 'red' && sevOf(a) !== 'red') return false;
-        if (alertFilter === 'backlog' && c.status !== 'da-quay') return false;
-        if (alertFilter === 'review' && c.status !== 'cho-duyet') return false;
-        if (alertFilter === 'late-pub' && !a.some((x) => x[1].startsWith('Trễ phát hành'))) return false;
-      }
-      return true;
-    });
-  }, [cards, board, q, fs, fsub, fp, fFormat, alertFilter]);
+  const visible = useMemo(
+    () => filterCards(board, cards, { q, stream: fs, subseries: fsub, person: fp, format: fFormat, alert: alertFilter }),
+    [cards, board, q, fs, fsub, fp, fFormat, alertFilter]
+  );
 
   /* ---------- tổng hợp ---------- */
-  const t = today();
-  const red = cards.filter((c) => sevOf(board.alertsFor(c)) === 'red').length;
-  const backlog = cards.filter((c) => c.status === 'da-quay');
-  const oldest = backlog.reduce((m, c) => (c.shootDate ? Math.max(m, diffDays(c.shootDate, t)) : m), 0);
-  const review = cards.filter((c) => c.status === 'cho-duyet');
-  const latePub = cards.filter((c) => board.alertsFor(c).some((x) => x[1].startsWith('Trễ phát hành'))).length;
-  const week = cards.filter(
-    (c) => c.status === 'da-phat' && c.publishDate && diffDays(c.publishDate, t) >= 0 && diffDays(c.publishDate, t) < 7
-  ).length;
-  const brk = board.streamHealth().filter((s) => s.issues.length).length;
+  const { red, backlog, oldest, review, latePub, week, brk } = useMemo(() => boardSummary(board), [board]);
   const toggleAf = (k: string) => setAlertFilter((v) => (v === k ? '' : k));
   const max = config.maxLongPerSlot || 2;
 
@@ -193,24 +169,13 @@ export const MediaBoardComponent: FC = () => {
 
   const move = useCallback(
     async (c: MediaCard, status: string) => {
-      const forward = SIDX[status] > SIDX[c.status];
-      const msg = forward ? checkStage(c, status) : '';
-      if (msg) {
-        toast(msg, false);
-        openEditor(c.id, { status }, msg);
+      const r = prepareMove(board, c, status);
+      if (r.error) {
+        toast(r.error, false);
+        openEditor(c.id, { status }, r.error);
         return;
       }
-      if (status === 'dang-dung') {
-        const cap = board.checkCapacity(c);
-        if (cap) {
-          toast(cap, false);
-          openEditor(c.id, { status }, cap);
-          return;
-        }
-      }
-      const now = nowIso();
-      const patch: Partial<MediaCard> = { status, updatedAt: now, stageAt: { ...(c.stageAt || {}), [status]: now } };
-      if (c.status === 'cho-duyet' && status === 'len-lich') patch.approvedAt = now;
+      const patch = r.patch;
       try {
         await vids.mutate(
           async () => {
@@ -371,14 +336,14 @@ export const MediaBoardComponent: FC = () => {
         <div className="flex flex-wrap gap-[8px] pt-[14px] pb-[4px]">
           <Chip sev={red ? 'red' : 'green'} label="Thẻ có cảnh báo đỏ" n={red} pressed={alertFilter === 'red'} onClick={() => toggleAf('red')} />
           <Chip
-            sev={backlog.length ? 'amber' : 'green'}
+            sev={backlog ? 'amber' : 'green'}
             label="Đã quay chưa dựng"
-            n={backlog.length}
-            extra={backlog.length ? ` · cũ nhất ${oldest} ngày` : ''}
+            n={backlog}
+            extra={backlog ? ` · cũ nhất ${oldest} ngày` : ''}
             pressed={alertFilter === 'backlog'}
             onClick={() => toggleAf('backlog')}
           />
-          <Chip sev={review.length ? 'amber' : 'green'} label="Chờ duyệt" n={review.length} pressed={alertFilter === 'review'} onClick={() => toggleAf('review')} />
+          <Chip sev={review ? 'amber' : 'green'} label="Chờ duyệt" n={review} pressed={alertFilter === 'review'} onClick={() => toggleAf('review')} />
           <Chip sev={latePub ? 'red' : 'green'} label="Trễ phát hành" n={latePub} pressed={alertFilter === 'late-pub'} onClick={() => toggleAf('late-pub')} />
           <Chip sev="green" label="Đã phát 7 ngày qua" n={week} />
           <Chip sev={brk ? 'amber' : 'green'} label="Luồng lệch nhịp" n={brk} />
