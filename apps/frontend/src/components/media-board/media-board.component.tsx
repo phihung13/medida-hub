@@ -10,12 +10,15 @@ import {
   MediaConfig,
   SIDX,
   STATUSES,
+  applyStreamDefaults,
   boardSummary,
   buildCsv,
   createBoard,
   filterCards,
   mergeConfig,
   normalizeCard,
+  normalizeCardInput,
+  prepareCardSave,
   prepareMove,
   today,
 } from '@gitroom/frontend/components/media-board/logic';
@@ -25,12 +28,13 @@ import {
   useMediaBoardVideos,
 } from '@gitroom/frontend/components/media-board/media-board.hooks';
 import { SEV_CLS, btnCls, inputCls } from '@gitroom/frontend/components/media-board/ui';
-import { KanbanView } from '@gitroom/frontend/components/media-board/board.kanban';
+import { KanbanView, QuickAddResult } from '@gitroom/frontend/components/media-board/board.kanban';
 import { ListView } from '@gitroom/frontend/components/media-board/list';
 import { CalendarView } from '@gitroom/frontend/components/media-board/calendar';
 import { StreamsView } from '@gitroom/frontend/components/media-board/streams';
 import { EditorSheet } from '@gitroom/frontend/components/media-board/editor.sheet';
 import { SettingsSheet } from '@gitroom/frontend/components/media-board/settings';
+import { McpConnectSheet } from '@gitroom/frontend/components/media-board/mcp.connect';
 
 // ============================================================================
 //  Bảng sản xuất Media — Quay → Dựng → Duyệt → Phát hành.
@@ -50,6 +54,7 @@ const VIEW_KEY = 'mt-view';
 type SheetState =
   | { kind: 'editor'; key: number; id: string | null; preset?: Partial<MediaCard>; errMsg?: string }
   | { kind: 'settings' }
+  | { kind: 'mcp' }
   | null;
 
 const Chip: FC<{
@@ -257,8 +262,55 @@ export const MediaBoardComponent: FC = () => {
   const addVideo = () =>
     openEditor(null, fs ? { stream: fs, episode: board.nextCode(fs), streamOwner: '', reviewer: '' } : {});
 
+  // Thêm nhanh trong cột Kanban: mặc định theo bộ lọc đang chọn (luồng, người)
+  // và làn; chạy đúng luật lưu của editor. Thiếu dữ liệu cho cột đích → mở
+  // editor đầy đủ kèm lời nhắc.
+  const basePreset = useMemo(
+    () => ({ ...(fs ? { stream: fs } : {}), ...(fp ? { assignee: fp } : {}), ...(fFormat ? { format: fFormat } : {}) }),
+    [fs, fp, fFormat]
+  );
+  const withDefaults = useCallback(
+    (preset: Partial<MediaCard>) => {
+      const d: Partial<MediaCard> = { format: 'dai', status: 'kich-ban', ...preset };
+      return d.stream ? applyStreamDefaults(board, d) : d;
+    },
+    [board]
+  );
+  const quickAdd = useCallback(
+    async (preset: Partial<MediaCard>): Promise<QuickAddResult> => {
+      const d = withDefaults(preset);
+      const r = prepareCardSave(board, null, normalizeCardInput(d));
+      if (r.error) {
+        openEditor(null, d, r.error);
+        return 'editor';
+      }
+      try {
+        await api.createVideo(r.card);
+        await vids.mutate();
+        toast('Đã tạo thẻ ' + (r.card.episode || '“' + r.card.title + '”'));
+        return 'ok';
+      } catch {
+        toast('Chưa lưu được, thử lại sau ít giây.', false);
+        return 'fail';
+      }
+    },
+    [api, board, openEditor, toast, vids, withDefaults]
+  );
+
   let content: ReactNode = null;
-  if (view === 'board') content = <KanbanView board={board} list={visible} loaded={loaded} onOpen={(id) => openEditor(id)} onMove={move} />;
+  if (view === 'board')
+    content = (
+      <KanbanView
+        board={board}
+        list={visible}
+        loaded={loaded}
+        basePreset={basePreset}
+        onOpen={(id) => openEditor(id)}
+        onMove={move}
+        onAdd={quickAdd}
+        onFull={(p) => openEditor(null, withDefaults(p))}
+      />
+    );
   if (view === 'list') content = <ListView board={board} list={visible} loaded={loaded} onOpen={(id) => openEditor(id)} onCsv={exportCsv} />;
   if (view === 'cal') content = <CalendarView board={board} list={visible} onOpen={(id) => openEditor(id)} onNew={(p) => openEditor(null, p)} />;
   if (view === 'streams')
@@ -302,6 +354,24 @@ export const MediaBoardComponent: FC = () => {
           </div>
           <button type="button" className={btnCls()} onClick={() => setSheet({ kind: 'settings' })}>
             Cài đặt luồng
+          </button>
+          {/* Lối vào kín đáo: kết nối agent AI qua MCP (tạo khoá + hướng dẫn + file tải) */}
+          <button
+            type="button"
+            title="Kết nối agent AI (MCP)"
+            aria-label="Kết nối agent AI (MCP)"
+            onClick={() => setSheet({ kind: 'mcp' })}
+            className="h-[36px] w-[36px] inline-flex items-center justify-center rounded-[8px] text-textItemBlur hover:text-btnPrimary hover:bg-newBgColor transition-colors"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M9 7V3M15 7V3M6 7h12v4a6 6 0 0 1-12 0V7Zm6 10v4"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </button>
           <button type="button" className={btnCls('primary')} onClick={addVideo}>
             + Thêm video
@@ -383,6 +453,7 @@ export const MediaBoardComponent: FC = () => {
         />
       )}
       {sheet?.kind === 'settings' && <SettingsSheet board={board} onClose={close} onSave={onSaveConfig} />}
+      {sheet?.kind === 'mcp' && <McpConnectSheet onClose={close} />}
     </div>
   );
 };

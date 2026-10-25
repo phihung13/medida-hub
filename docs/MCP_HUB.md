@@ -179,6 +179,13 @@ Bot Zalo dùng chung cho cả Hub (một tài khoản Zalo). Hub gọi bot qua m
 
 ### 4.7 Bảng sản xuất Media
 
+**Kết nối nhanh:** trên Bảng sản xuất có nút ổ cắm nhỏ cạnh "Cài đặt luồng" (*Kết nối agent AI*). Ở đó quản trị viên tạo khoá (hoặc dán khoá có sẵn), rồi lấy cấu hình điền sẵn khoá cho các ứng dụng:
+- Claude Code; Claude web/Desktop (qua Connectors hoặc file cấu hình);
+- Cursor, VS Code, Windsurf;
+- n8n, Hermes.
+
+Ở đó cũng có lệnh kiểm tra, câu lệnh mẫu, và file hướng dẫn A–Z `ket-noi-mcp-media-hub.md` có khoá điền sẵn (chép hoặc tải về). Nội dung lấy từ `apps/frontend/src/components/media-board/mcp.guide.ts`.
+
 Trang `/media-board` (menu **Sản xuất**) theo dõi sản xuất video qua các cột: Kịch bản → Chờ quay → Đã quay · chờ dựng → Đang dựng → Chờ duyệt → Lên lịch phát → Đã phát hành. Bảng này chỉ để theo dõi nội bộ, không công cụ nào đăng gì ra mạng xã hội.
 
 **Thẻ được kiểm theo đúng luật của giao diện.** Giao diện và MCP dùng chung logic `@gitroom/helpers/utils/media-board.logic`. Các luật:
