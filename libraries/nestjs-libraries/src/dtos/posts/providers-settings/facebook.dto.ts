@@ -12,6 +12,10 @@ export class FacebookDto {
   @IsUrl()
   url?: string;
 
+  // Bài tạo qua API / bot Zalo lưu post_type = "" (ô chọn chỉ tự đặt "post"
+  // khi khung cài đặt được mở) → coi rỗng như chưa chọn = bài thường, thay vì
+  // chặn Lên lịch / Đăng ngay với lỗi "post_type must be one of…".
+  @ValidateIf((p) => !!p.post_type)
   @IsIn(['post', 'story'])
   @IsOptional()
   post_type?: 'post' | 'story';

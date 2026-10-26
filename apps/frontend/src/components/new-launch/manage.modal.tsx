@@ -57,6 +57,14 @@ const USAGE_KEY = {
   update: 'bai-viet.cap-nhat',
 } as const;
 
+// Một phần của bài (bình luận / thread) không có chữ lẫn ảnh/video.
+const isEmptyPart = (value: any) =>
+  !(value?.media || []).length &&
+  !String(value?.content || '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .trim();
+
 export const ManageModal: FC<AddEditModalProps> = (props) => {
   const t = useT();
   const fetch = useFetch();
@@ -280,7 +288,9 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
         },
         group,
         settings: { ...(post.settings || {}) },
-        value: post.values.map((value: any) => ({
+        // Bỏ phần bình luận/thread trống (vd xoá hết chữ ô bình luận đầu) thay
+        // vì chặn cả bài — phần đầu (bài chính) luôn giữ để server kiểm.
+        value: post.values.filter((value: any, i: number) => i === 0 || !isEmptyPart(value)).map((value: any) => ({
           ...(value.id ? { id: value.id } : {}),
           content: value.content,
           delay: value.delay || 0,
@@ -492,6 +502,22 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
             });
           } else {
             trackFeatureError(USAGE_KEY[type], `HTTP_${res.status}`, extra);
+            // Trước đây vẫn báo "Đã lưu" và đóng khung dù server từ chối →
+            // người dùng tưởng đã lưu/đăng. Giờ báo đúng lý do, giữ khung mở.
+            const err = await res.json().catch(() => null);
+            toaster.show(
+              `${
+                err?.provider
+                  ? `${capitalize(String(err.provider).split('-')[0])}${err.name ? ` (${err.name})` : ''}: `
+                  : ''
+              }${
+                (Array.isArray(err?.message) ? err.message[0] : err?.message) ||
+                t('post_save_failed', 'Chưa lưu được bài, thử lại sau ít giây.')
+              }`,
+              'warning'
+            );
+            setLoading(false);
+            return;
           }
         }
 

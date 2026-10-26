@@ -62,6 +62,16 @@ type PostWithConditionals = Post & {
   childrenPost: Post[];
 };
 
+// Một phần của bài (bài chính / bình luận / thread) không có chữ lẫn ảnh.
+const isEmptyPart = (part?: {
+  content?: string;
+  image?: Array<unknown>;
+}) =>
+  !!part &&
+  stripHtmlValidation('normal', part.content || '', true).trim().length ===
+    0 &&
+  (part.image || []).length === 0;
+
 @Injectable()
 export class PostsService {
   private storage = UploadFactory.createStorage();
@@ -926,11 +936,10 @@ export class PostsService {
         const maximumCharacters = provider.maxLength(additionalSettings);
         const isX = integration.providerIdentifier === 'x';
 
-        const emptyContent = (post.value || []).some((a) => {
-          const strip = stripHtmlValidation('normal', a.content || '', true);
-          const length = isX ? weightedLength(strip) : strip.length;
-          return length === 0 && (a.image || []).length === 0;
-        });
+        // Chỉ phần BÀI CHÍNH bắt buộc có chữ hoặc ảnh. Phần bình luận/thread
+        // trống bị bỏ khi lưu (createPost) — trước đây một ô bình luận trống
+        // chặn cả bài với lỗi "at least one character or one image" khó hiểu.
+        const emptyContent = isEmptyPart((post.value || [])[0]);
 
         const tooLong = (post.value || []).some((a) => {
           const strip = stripHtmlValidation('normal', a.content || '', true);
@@ -982,6 +991,11 @@ export class PostsService {
   ): Promise<any[]> {
     const postList = [];
     for (const post of body.posts) {
+      // Bỏ phần bình luận/thread trống (không chữ, không ảnh) — đăng lên mạng
+      // sẽ lỗi; bài chính (phần đầu) luôn giữ, validatePosts đã kiểm nó.
+      post.value = (post.value || []).filter(
+        (p, i) => i === 0 || !isEmptyPart(p)
+      );
       const provider = this._integrationManager.getSocialIntegration(
         (post.settings as any)?.__type
       );
